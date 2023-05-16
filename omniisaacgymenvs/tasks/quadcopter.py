@@ -103,6 +103,7 @@ class QuadcopterTask(RLTask):
     def get_observations(self) -> dict:
         self.root_pos, self.root_rot = self._copters.get_world_poses(clone=False)
         self.root_velocities = self._copters.get_velocities(clone=False)
+        print('##################', self.root_velocities)
         self.dof_pos = self._copters.get_joint_positions(clone=False)
 
         root_positions = self.root_pos - self._env_pos

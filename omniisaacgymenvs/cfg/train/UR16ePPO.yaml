@@ -34,7 +34,7 @@ params:
   load_path: ${...checkpoint} # path to the checkpoint to load
 
   config:
-    name: ${resolve_default:Cartpole,${....experiment}}
+    name: ${resolve_default:UR16e ,${....experiment}}
     full_experiment_name: ${.name}
     device: ${....rl_device}
     device_name: ${....rl_device}
@@ -61,8 +61,8 @@ params:
     entropy_coef: 0.0
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 16 #16
-    minibatch_size: 128 #8192 self.horizon_length * self.num_actors * self.num_agents 16*512*1 => 16*8*1 
+    horizon_length: 16
+    minibatch_size: 8192
     mini_epochs: 8
     critic_coef: 4
     clip_value: True
