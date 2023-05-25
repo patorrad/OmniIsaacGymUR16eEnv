@@ -31,6 +31,7 @@ from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 from omniisaacgymenvs.robots.articulations.ur10 import UR10
 from omni.isaac.core.objects import DynamicSphere
+from omni.isaac.core.objects import DynamicCuboid
 from omniisaacgymenvs.robots.controller.ocs2 import Controller_ocs2
 from omniisaacgymenvs.robots.controller.osc import Controller_osc
 
@@ -49,7 +50,10 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 
 from skrl.utils import omniverse_isaacgym_utils
 
+from pxr import Usd, UsdGeom
+from .raycast import Raycast
 
+# import warp as wp
 
 class CartpoleTask(RLTask):
     def __init__(
@@ -67,7 +71,8 @@ class CartpoleTask(RLTask):
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
-        self._ur10_positions = torch.tensor([0.0, 0.0, 2.1])
+        self._ur10_positions = torch.tensor([0.0, 0.0, 0.10])
+        self._target_object_positions = torch.tensor([0.30, 0.0, 0.0125])
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
@@ -89,6 +94,7 @@ class CartpoleTask(RLTask):
         # self.get_cartpole()
         self.get_ur10()
         self.get_target()
+        self.get_target_object()
         super().set_up_scene(scene)
         # self._cartpoles = ArticulationView(prim_paths_expr="/World/envs/.*/Cartpole", name="cartpole_view", reset_xform_properties=False)
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/ur10", name="ur10_view", reset_xform_properties=False)
@@ -103,7 +109,18 @@ class CartpoleTask(RLTask):
         self._targets = RigidPrimView(prim_paths_expr="/World/envs/.*/target", name="target_view", reset_xform_properties=False)
         scene.add(self._targets)
 
-        self.controller = Controller_osc(self._robots, self._device)
+        # target object
+        self._target_objects = RigidPrimView(prim_paths_expr="/World/envs/.*/target_object", name="target__object_view", reset_xform_properties=False)
+        scene.add(self._target_objects)
+
+        # Raytracing
+        # prim = scene.stage.GetPrimAtPath("/World/envs/env_0/target_object")
+        # mesh_geom = UsdGeom.Mesh(scene.stage)
+        # mesh_geom = UsdGeom.Mesh(self._target_objects.prims[0])
+        # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", mesh_geom)
+        self.raytracer = Raycast()
+
+        # self.controller = Controller_osc(self._robots, self._device)
 
         
         # # retrieve file path for the Cartpole USD file
@@ -143,6 +160,14 @@ class CartpoleTask(RLTask):
                                color=torch.tensor([1, 0, 0]))
         self._sim_config.apply_articulation_settings("target", get_prim_at_path(target.prim_path), self._sim_config.parse_actor_config("target"))
         target.set_collision_enabled(False)
+
+    def get_target_object(self):
+        target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
+                               name="target_object",
+                               position=self._target_object_positions,
+                               size=.05,
+                               color=torch.tensor([0, 0, 1]))
+        self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
     def get_observations(self) -> dict:
         # dof_pos = self._cartpoles.get_joint_positions(clone=False)
@@ -254,6 +279,9 @@ class CartpoleTask(RLTask):
         # print("##################", self._robots._gripper.get_world_pose())
         # test = self._robots._gripper.get_world_pose()
         # PT
+
+        # Raytracer
+        self.raytracer.render()
 
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
