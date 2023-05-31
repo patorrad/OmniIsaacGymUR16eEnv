@@ -51,7 +51,7 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 from skrl.utils import omniverse_isaacgym_utils
 
 from pxr import Usd, UsdGeom
-from .raycast import Raycast
+from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
 # import warp as wp
 
@@ -72,7 +72,7 @@ class CartpoleTask(RLTask):
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
         self._ur10_positions = torch.tensor([0.0, 0.0, 0.10])
-        self._target_object_positions = torch.tensor([0.30, 0.0, 0.0125])
+        self._target_object_positions = torch.tensor([0.0, 0.0, 0.0])
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
@@ -113,11 +113,8 @@ class CartpoleTask(RLTask):
         self._target_objects = RigidPrimView(prim_paths_expr="/World/envs/.*/target_object", name="target__object_view", reset_xform_properties=False)
         scene.add(self._target_objects)
 
+        
         # Raytracing
-        # prim = scene.stage.GetPrimAtPath("/World/envs/env_0/target_object")
-        # mesh_geom = UsdGeom.Mesh(scene.stage)
-        # mesh_geom = UsdGeom.Mesh(self._target_objects.prims[0])
-        # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", mesh_geom)
         self.raytracer = Raycast()
 
         # self.controller = Controller_osc(self._robots, self._device)
@@ -165,7 +162,7 @@ class CartpoleTask(RLTask):
         target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
                                name="target_object",
                                position=self._target_object_positions,
-                               size=.05,
+                               size=.5,
                                color=torch.tensor([0, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
@@ -220,7 +217,7 @@ class CartpoleTask(RLTask):
         print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
             # self.hand_pos -= self._env_pos
         print("################################ got observation")
-        
+
         return {self._robots.name: {"obs_buf": self.obs_buf}}
         # PT
 
@@ -281,6 +278,7 @@ class CartpoleTask(RLTask):
         # PT
 
         # Raytracer
+        
         self.raytracer.render()
 
     def reset_idx(self, env_ids):
@@ -317,6 +315,13 @@ class CartpoleTask(RLTask):
         self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
         self._targets.set_world_poses(self.hand_pos, indices=indices)
         
+        # Raytracing
+        print(type(get_prim_at_path(self._target_objects.prim_paths[0])))
+        print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
+        print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
+        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0])))
+        warp_mesh = warp_from_trimesh(trimesh, self._device)
+        self.raytracer.set_geom(warp_mesh)
         # PT
 
     def post_reset(self):

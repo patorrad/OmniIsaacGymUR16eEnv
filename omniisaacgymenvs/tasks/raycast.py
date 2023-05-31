@@ -14,7 +14,7 @@
 ##############################################################################
 
 import matplotlib.pyplot as plt
-from pxr import Usd, UsdGeom
+from pxr import Usd, UsdGeom, UsdSkel, Gf
 
 import warp as wp
 import numpy as np
@@ -22,6 +22,8 @@ import sys
 #np.set_printoptions(threshold=sys.maxsize)
 
 import os
+
+import trimesh
 
 wp.init()
 
@@ -63,54 +65,146 @@ class Raycast:
     def __init__(self):
         self.width = 1024
         self.height = 1024
-        # self.cam_pos = (0.0, 1.5, 2.5)
-        self.cam_pos = (0.0, 1.50, 1)
+        self.cam_pos = (0.0, 1.5, 2.5)
+        # self.cam_pos = (0.0, 1.50, 1)
 
-        asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
-        mesh_geom = UsdGeom.Mesh(asset_stage.GetPrimAtPath("/World/Cube"))
-
-        points = np.array(mesh_geom.GetPointsAttr().Get())
-        indices = np.array(mesh_geom.GetFaceVertexIndicesAttr().Get())
-        # print(points.shape)
-        # print(indices)
-        # print(mesh_geom.GetFaceVertexCountsAttr().Get())
-        # print(mesh_geom.GetFaceVertexIndicesAttr())
-        # indices_test = np.array([0, 1, 3, 1, 3, 2])
-        indices_test = np.concatenate((np.delete(indices, np.arange(3, indices.size, 4)), np.delete(indices, np.arange(1, indices.size, 4))))
-        points_test = np.array([[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=float)
+    def set_geom(self, mesh):
+        # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
+        # # cube_geom = asset_stage.GetPrimAtPath("/World/Cube")
+        
+        # points = np.array(geom.GetPointsAttr().Get())
+        # indices = np.array(geom.GetFaceVertexIndicesAttr().Get())
+        # # print(points.shape)
+        # # print(indices)
+        # # print(mesh_geom.GetFaceVertexCountsAttr().Get())
+        # # print(mesh_geom.GetFaceVertexIndicesAttr())
+        # # indices_test = np.array([0, 1, 3, 1, 3, 2])
+        # indices_test = np.concatenate((np.delete(indices, np.arange(3, indices.size, 4)), np.delete(indices, np.arange(1, indices.size, 4))))
+        # points_test = np.array([[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=float)
         self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
 
-        # create wp mesh
-        self.mesh = wp.Mesh(
-            points=wp.array(points, dtype=wp.vec3), velocities=None, indices=wp.array(indices_test, dtype=int)
-        )
+        # # create wp mesh
+        # self.mesh = wp.Mesh(
+        #     points=wp.array(points, dtype=wp.vec3), velocities=None, indices=wp.array(indices_test, dtype=int)
+        # )
 
+        self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
 
     def update(self):
         pass
 
-    def render(self, is_live=False):
+    def render(self, is_live=False, cam_pos):
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, self.cam_pos, self.width, self.height, self.pixels, self.ray_hit],
+                inputs=[self.mesh.id, cam_pos, self.width, self.height, self.pixels, self.ray_hit],
             )
 
             wp.synchronize_device()
 
-        # plt.imshow(
-        #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-        # )
+        plt.imshow(
+            self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
+        )
         # plt.show()
 
         # plt.imshow(
         #     self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
         # )
         # plt.show()
+        plt.savefig("//home/aurmr/Pictures/raycast_cube_1.png",
+            bbox_inches ="tight",
+            pad_inches = 1,
+            transparent = True,
+            facecolor ="g",
+            edgecolor ='w',
+            orientation ='landscape')
         print("raytracer", self.ray_hit.numpy().shape)
         print("raytracer", self.ray_hit)
+
+def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
+    mesh = wp.Mesh(
+        points=wp.array(trimesh.vertices, dtype=wp.vec3, device=device),
+        indices=wp.array(trimesh.faces.flatten(), dtype=int, device=device))
+    return mesh
+
+
+def get_support_surfaces_trimesh(mesh: trimesh.Trimesh, for_normal=None, threshold=None):
+    # No caching at the moment so don't put this in any loops
+    facet_centroids = []
+    if for_normal:
+        scores = mesh.facets_normal.dot(for_normal)
+        support_mask = scores < threshold
+    else:
+        support_mask = np.ones((len(mesh.facets)))
+    facets = []
+    for facet, total_area, is_support in zip(mesh.facets, mesh.facets_area, support_mask):
+        if not is_support:
+            continue
+        facets.append(facet)
+        weighted_centroid = 0
+        for tri_index in facet:
+            weighted_centroid += mesh.area_faces[tri_index] * mesh.triangles_center[tri_index]
+        facet_centroids.append(weighted_centroid / total_area)
+    return facets, mesh.facets_area[support_mask], np.array(facet_centroids), mesh.facets_normal[support_mask]
+
+
+def geom_to_trimesh(geom):
+    if isinstance(geom, UsdGeom.Mesh):
+        trimesh = load_trimesh_from_usdgeom(geom)
+    elif isinstance(geom, UsdGeom.Cube):
+        trimesh = get_trimesh_for_cube(geom)
+    elif isinstance(geom, UsdGeom.Cylinder):
+        trimesh = get_trimesh_for_cylinder(geom)
+    elif isinstance(geom, UsdGeom.Cone):
+        trimesh = get_trimesh_for_cone(geom)
+    elif isinstance(geom, UsdGeom.Sphere):
+        trimesh = get_trimesh_for_sphere(geom)
+    else:
+        raise Exception("No mesh representation for obj" + str(geom))
+    return trimesh
+
+
+def get_trimesh_for_cube(cube: UsdGeom.Cube):
+    transform = cube.GetLocalTransformation()
+    translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
+    transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
+    #transform = UsdSkel.MakeTransform(translate, Gf.Quatf(1, 0, 0, 0), scale)
+    size = cube.GetSizeAttr().Get()
+    baked_trimesh = trimesh.creation.box(extents=(size, size, size))
+    baked_trimesh.apply_transform(transform)
+    return baked_trimesh
+
+
+def get_trimesh_for_cylinder(cylinder: UsdGeom.Cylinder):
+    transform = cylinder.GetLocalTransformation()
+    translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
+    transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
+    baked_trimesh = trimesh.creation.cylinder(radius=cylinder.GetRadiusAttr().Get(), height=cylinder.GetHeightAttr().Get())
+    baked_trimesh.apply_transform(transform)
+    return baked_trimesh
+
+
+def get_trimesh_for_cone(cone: UsdGeom.Cone):
+    baked_trimesh = trimesh.creation.cone(radius=cone.GetRadiusAttr().Get(), height=cone.GetHeightAttr().Get())
+    baked_trimesh.apply_transform(trimesh.transformations.translation_matrix([0,0,-cone.GetHeightAttr().Get() / 2]))
+    return baked_trimesh
+
+
+def get_trimesh_for_sphere(shpere: UsdGeom.Sphere):
+    transform = shpere.GetLocalTransformation()
+    baked_trimesh = trimesh.creation.icosphere(radius=shpere.GetRadiusAttr().Get())
+    baked_trimesh.apply_transform(transform)
+    return baked_trimesh
+
+
+def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
+    transform = mesh.GetLocalTransformation()
+    baked_trimesh = trimesh.Trimesh(vertices=mesh.GetPointsAttr().Get(), faces=np.array(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1,3))
+    baked_trimesh.apply_transform(transform)
+    return baked_trimesh
+
 
 
 if __name__ == "__main__":
