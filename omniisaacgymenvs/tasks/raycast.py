@@ -29,7 +29,7 @@ wp.init()
 
 
 @wp.kernel
-def draw(mesh: wp.uint64, cam_pos: wp.vec3, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
+def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec3, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
     tid = wp.tid()
     #print(tid)
     x = tid % width
@@ -67,6 +67,7 @@ class Raycast:
         self.height = 1024
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
+        self.step = 0
 
     def set_geom(self, mesh):
         # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
@@ -94,12 +95,12 @@ class Raycast:
     def update(self):
         pass
 
-    def render(self, is_live=False, cam_pos):
+    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = (0, 0, -1), is_live=False):
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, cam_pos, self.width, self.height, self.pixels, self.ray_hit],
+                inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit],
             )
 
             wp.synchronize_device()
@@ -113,15 +114,17 @@ class Raycast:
         #     self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
         # )
         # plt.show()
-        plt.savefig("//home/aurmr/Pictures/raycast_cube_1.png",
-            bbox_inches ="tight",
-            pad_inches = 1,
-            transparent = True,
-            facecolor ="g",
-            edgecolor ='w',
-            orientation ='landscape')
-        print("raytracer", self.ray_hit.numpy().shape)
-        print("raytracer", self.ray_hit)
+        self.step += 1
+        # if self.step % 1000 == 0:
+        # plt.savefig("//home/aurmr/Pictures/raycast_cube_1.png",
+        #     bbox_inches ="tight",
+        #     pad_inches = 1,
+        #     transparent = True,
+        #     facecolor ="g",
+        #     edgecolor ='w',
+        #     orientation ='landscape')
+        # print("raytracer", self.ray_hit.numpy().shape)
+        # print("raytracer", self.ray_hit)
 
 def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
     mesh = wp.Mesh(

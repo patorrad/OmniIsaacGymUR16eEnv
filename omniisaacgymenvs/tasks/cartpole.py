@@ -38,6 +38,7 @@ from omniisaacgymenvs.robots.controller.osc import Controller_osc
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
+from omni.isaac.core.utils.rotations import quat_to_euler_angles
 
 import numpy as np
 import torch
@@ -71,7 +72,7 @@ class CartpoleTask(RLTask):
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
-        self._ur10_positions = torch.tensor([0.0, 0.0, 0.10])
+        self._ur10_positions = torch.tensor([0.0, 0.0, 0.50])
         self._target_object_positions = torch.tensor([0.0, 0.0, 0.0])
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
@@ -162,7 +163,7 @@ class CartpoleTask(RLTask):
         target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
                                name="target_object",
                                position=self._target_object_positions,
-                               size=.5,
+                               size=.1,
                                color=torch.tensor([0, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
@@ -203,7 +204,6 @@ class CartpoleTask(RLTask):
         # self.obs_buf[:, 1:8] = dof_pos_scaled[:, :7]
         # self.obs_buf[:, 8:15] = dof_vel_scaled[:, :7] * generalization_noise
         # self.obs_buf = target_pos - self._env_pos
-        print("$$$$$$$$$$$$$$$$$$$$$$ target_pos", target_pos)
         self.obs_buf = target_pos
         
         # self.obs_buf[:, 1] = self.hand_pos
@@ -214,6 +214,7 @@ class CartpoleTask(RLTask):
         # if self._control_space == "cartesian":
             # self.jacobians = self._robots.get_jacobians(clone=False)[:,6:,:,:]
         self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
+        print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
         print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
             # self.hand_pos -= self._env_pos
         print("################################ got observation")
@@ -252,12 +253,10 @@ class CartpoleTask(RLTask):
 
             # goal_position = self.hand_pos #+ actions / 100.0
             goal_position, _ = self._hands.get_world_poses(clone=False)
-            print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^", goal_position)
             if self._step < 200:
                 goal_position[:,0] += 0.001
             else:
                 goal_position[:,0] -= 0.001 
-            print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^", goal_position)
             # print("@@@@@@@@@@@@@@@@@@@@@@@@22", self.hand_pos)
             delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7 - 1, :, :7],  # ur10 hand index: 7?
                                                             current_position=self.hand_pos,
@@ -275,11 +274,28 @@ class CartpoleTask(RLTask):
 
         # print("##################", self._robots._gripper.get_world_pose())
         # test = self._robots._gripper.get_world_pose()
-        # PT
-
-        # Raytracer
         
-        self.raytracer.render()
+
+            # Raytracer
+            target_object_pose, target_object_rot = self._target_objects.get_world_poses(clone=False)
+            # get_relative_transform(self._target_objects)
+            ## Normalize quaternion into vector
+            # Step 1: Normalize the quaternion
+            q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
+            q_normalized = self.hand_rot.cpu()[1] / q_norm
+            # Step 2: Extract the vector part
+            v = q_normalized[1:]
+            
+            # Step 3: Convert to Cartesian coordinates
+            cartesian_vector = v
+            
+            # Step 4: Normalize the Cartesian vector
+            cartesian_norm = np.linalg.norm(cartesian_vector)
+            cartesian_normalized = cartesian_vector / cartesian_norm
+            print("cartesian_normalized", cartesian_normalized)
+            print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
+            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], cartesian_normalized)
+        # PT
 
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
@@ -316,9 +332,10 @@ class CartpoleTask(RLTask):
         self._targets.set_world_poses(self.hand_pos, indices=indices)
         
         # Raytracing
-        print(type(get_prim_at_path(self._target_objects.prim_paths[0])))
-        print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
-        print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
+        # print(type(get_prim_at_path(self._target_objects.prim_paths[0])))
+        # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
+        # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
+        # TODO Move this to raytracer?
         trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0])))
         warp_mesh = warp_from_trimesh(trimesh, self._device)
         self.raytracer.set_geom(warp_mesh)
