@@ -68,6 +68,7 @@ class Raycast:
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
+        self.result = np.zeros((self.height, self.width, 3))
 
     def set_geom(self, mesh):
         # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
@@ -95,7 +96,9 @@ class Raycast:
     def update(self):
         pass
 
-    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = (0, 0, -1), is_live=False):
+    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
+        cam_dir = get_forward_direction_vector(cam_dir)
+        print('cam_dir', cam_dir)
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
@@ -105,9 +108,11 @@ class Raycast:
 
             wp.synchronize_device()
 
-        plt.imshow(
-            self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-        )
+        # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
+        print('Object:', self.pixels.numpy().reshape((self.height, self.width, 3)).max())
+        # plt.imshow(
+        #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
+        # )
         # plt.show()
 
         # plt.imshow(
@@ -116,7 +121,7 @@ class Raycast:
         # plt.show()
         self.step += 1
         # if self.step % 1000 == 0:
-        # plt.savefig("//home/aurmr/Pictures/raycast_cube_1.png",
+        #     plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
         #     bbox_inches ="tight",
         #     pad_inches = 1,
         #     transparent = True,
@@ -125,6 +130,20 @@ class Raycast:
         #     orientation ='landscape')
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
+
+    def save(self):
+        for i in self.result.shape[0]:
+            plt.imshow(
+                self.result.shape[i].numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
+            )
+            plt.savefig("/home/aurmr/Pictures/raycast_cube_{}.png".format(i),
+                bbox_inches ="tight",
+                pad_inches = 1,
+                transparent = True,
+                facecolor ="g",
+                edgecolor ='w',
+                orientation ='landscape')
+
 
 def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
     mesh = wp.Mesh(
@@ -208,7 +227,21 @@ def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
 
+# Method to get direction vector from quaternion (forward direction)
+# Quaternion = w, x, y, z
+def get_forward_direction_vector(q: np.array) -> np.array:
+    return np.array([2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])])
 
+# TODO Code below
+    # up vector
+    # x = 2 * (x*y - w*z)
+    # y = 1 - 2 * (x*x + z*z)
+    # z = 2 * (y*z + w*x)
+
+    # left vector
+    # x = 1 - 2 * (y*y + z*z)
+    # y = 2 * (x*y + w*z)
+    # z = 2 * (x*z - w*y)
 
 if __name__ == "__main__":
     example = Raycast()

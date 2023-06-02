@@ -69,11 +69,16 @@ class CartpoleTask(RLTask):
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
 
+        self._device = self._cfg["rl_device"]
+
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
-        self._ur10_positions = torch.tensor([0.0, 0.0, 0.50])
-        self._target_object_positions = torch.tensor([0.0, 0.0, 0.0])
+        self._ur10_positions = torch.tensor([0.0, 0.0, 1.5])
+        self._ur10_rotations = torch.tensor([0.0, 0.0, 1.0, 0.0])
+        self._ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device = self._device) 
+        self._ur10_dof_targets = self._ur10_dof_target.repeat(self._num_envs, 1) 
+        self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
@@ -81,8 +86,6 @@ class CartpoleTask(RLTask):
 
         self._num_observations = 4
         self._num_actions = 1
-
-        self._device = self._cfg["rl_device"]
 
         self._end_effector_link = "ee_link"
 
@@ -147,8 +150,10 @@ class CartpoleTask(RLTask):
         self._sim_config.apply_articulation_settings("Cartpole", get_prim_at_path(cartpole.prim_path), self._sim_config.parse_actor_config("Cartpole"))
 
     def get_ur10(self):
-        self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10", name="ur10", position=self._ur10_positions, attach_gripper=True)
+        self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10", name="ur10", position=self._ur10_positions, orientation=self._ur10_rotations, attach_gripper=True)
         # applies articulation settings from the task configuration yaml file
+        self.ur10.set_joint_positions(self._ur10_dof_target)
+        self.ur10.set_joints_default_state(self._ur10_dof_target)
         self._sim_config.apply_articulation_settings("ur10", get_prim_at_path(self.ur10.prim_path), self._sim_config.parse_actor_config("ur10"))
 
     def get_target(self):
@@ -214,8 +219,8 @@ class CartpoleTask(RLTask):
         # if self._control_space == "cartesian":
             # self.jacobians = self._robots.get_jacobians(clone=False)[:,6:,:,:]
         self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
-        print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
-        print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
+        # print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
+        # print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
             # self.hand_pos -= self._env_pos
         print("################################ got observation")
 
@@ -242,7 +247,7 @@ class CartpoleTask(RLTask):
         # self._cartpoles.set_joint_efforts(forces, indices=indices)
         
         # PT
-        if self._step > 10:
+        if self._step > 100:
             indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
             # self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
             self._targets.set_world_poses(self.hand_pos, indices=indices)
@@ -253,16 +258,20 @@ class CartpoleTask(RLTask):
 
             # goal_position = self.hand_pos #+ actions / 100.0
             goal_position, _ = self._hands.get_world_poses(clone=False)
-            if self._step < 200:
-                goal_position[:,0] += 0.001
-            else:
-                goal_position[:,0] -= 0.001 
-            # print("@@@@@@@@@@@@@@@@@@@@@@@@22", self.hand_pos)
-            delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7 - 1, :, :7],  # ur10 hand index: 7?
+            # if self._step < 200:
+            #     goal_position[:,0] += 0.001
+            # else:
+            #     goal_position[:,0] -= 0.001 
+            goal_position[:,1] -= 0.001 
+            delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7 - 1, :, :],  # ur10 hand index: 7?
                                                             current_position=self.hand_pos,
                                                             current_orientation=self.hand_rot,
                                                             goal_position=goal_position,
                                                             goal_orientation=None)
+                                                            # torch.tensor([[0.0, 0, 1.0, 0],
+                                                            # [0.0, 0, 1.0, 0],
+                                                            # [0.0, 0, 1.0, 0],
+                                                            # [0.0, 0, 1.0, 0]], device=self._device)) #None)
             
             # print("~~~~~~~~~~~~~~~~~~~~~~~self.robot_dof_targets  ", self.robot_dof_targets.shape)
             # print("~~~~~~~~~~~~~~~~~~~~~~~delta_dof_pos  ", delta_dof_pos.shape)
@@ -270,6 +279,7 @@ class CartpoleTask(RLTask):
 
             self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
             self.robot_dof_targets[:, 7:] = 0
+
             self._robots.set_joint_position_targets(self.robot_dof_targets, indices=env_ids_int32)
 
         # print("##################", self._robots._gripper.get_world_pose())
@@ -292,36 +302,32 @@ class CartpoleTask(RLTask):
             # Step 4: Normalize the Cartesian vector
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
-            print("cartesian_normalized", cartesian_normalized)
-            print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], cartesian_normalized)
+            # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
+            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1])
+
+        # if self._step > 1500:
+        #     self.raytracer.save()
+        #     print("DDDDDDDDOOOOOOOOOOONNNNNNNNNNNNNEEEEEEEEEEEEEEEEE")
         # PT
 
     def reset_idx(self, env_ids):
         num_resets = len(env_ids)
 
-        # # randomize DOF positions
-        # dof_pos = torch.zeros((num_resets, self._cartpoles.num_dof), device=self._device)
-        # dof_pos[:, self._cart_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_pos[:, self._pole_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-
-        # # randomize DOF velocities
-        # dof_vel = torch.zeros((num_resets, self._cartpoles.num_dof), device=self._device)
-        # dof_vel[:, self._cart_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_vel[:, self._pole_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-
-        # # apply resets
         indices = env_ids.to(dtype=torch.int32)
-        # self._cartpoles.set_joint_positions(dof_pos, indices=indices)
-        # self._cartpoles.set_joint_velocities(dof_vel, indices=indices)
+
+        # reset robot
+        dof_vel = torch.zeros((len(indices), self._robots.num_dof), device=self._device)
+        self._robots.set_joint_position_targets(self.robot_dof_targets[env_ids], indices=indices)
+        self._robots.set_joint_positions(self._ur10_dof_target, indices=indices)
+        self._robots.set_joint_velocities(dof_vel, indices=indices)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
         # PT
-        # TODO -> set starting position in ur10.py
-        self._robots.set_joint_positions(torch.tensor(self._num_envs * [[0.06, -2.5, 2.03, 0.58, 1.67, 1.74]]))
-
+        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^', self.robot_dof_targets.shape)
+        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^', self.robot_dof_targets)
+        print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@', self._ur10_dof_targets)
         # reset target
         # pos = (torch.rand((len(env_ids), 3), device=self._device) - 0.5) * 2 \
         #     * torch.tensor([0.25, 0.25, 0.10], device=self._device) \
@@ -344,13 +350,14 @@ class CartpoleTask(RLTask):
     def post_reset(self):
 
         # PT
-        self.num_robot_dofs = self._robots.num_dof
-        self.robot_dof_pos = torch.zeros((self.num_envs, self.num_robot_dofs), device=self._device)
+        # self.num_robot_dofs = self._robots.num_dof
+        # self.robot_dof_pos = torch.zeros((self.num_envs, self.num_robot_dofs), device=self._device)
         dof_limits = self._robots.get_dof_limits()
         self.robot_dof_lower_limits = dof_limits[0, :, 0].to(device=self._device)
         self.robot_dof_upper_limits = dof_limits[0, :, 1].to(device=self._device)
         self.robot_dof_speed_scales = torch.ones_like(self.robot_dof_lower_limits)
-        self.robot_dof_targets = torch.zeros((self._num_envs, self.num_robot_dofs), dtype=torch.float, device=self._device)
+        self.robot_dof_targets = self._ur10_dof_targets
+        #torch.zeros((self._num_envs, self.num_robot_dofs), dtype=torch.float, device=self._device)
 
         # # randomize all envs
         # indices = torch.arange(self._num_envs, dtype=torch.int64, device=self._device)
