@@ -168,7 +168,7 @@ class CartpoleTask(RLTask):
         target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
                                name="target_object",
                                position=self._target_object_positions,
-                               size=.1,
+                               size=.2,
                                color=torch.tensor([0, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
@@ -193,7 +193,7 @@ class CartpoleTask(RLTask):
         # }
 
         # PT
-        print("################################ observation")
+        # print("################################ observation")
         # robot_dof_pos = self._robots.get_joint_positions(clone=False)
         # robot_dof_vel = self._robots.get_joint_velocities(clone=False)
         # end_effector_pos, end_effector_rot = self._end_effectors.get_world_poses(clone=False)
@@ -222,7 +222,7 @@ class CartpoleTask(RLTask):
         # print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
         # print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
             # self.hand_pos -= self._env_pos
-        print("################################ got observation")
+        # print("################################ got observation")
 
         return {self._robots.name: {"obs_buf": self.obs_buf}}
         # PT
@@ -272,9 +272,7 @@ class CartpoleTask(RLTask):
                                                             # [0.0, 0, 1.0, 0],
                                                             # [0.0, 0, 1.0, 0],
                                                             # [0.0, 0, 1.0, 0]], device=self._device)) #None)
-            
-            # print("~~~~~~~~~~~~~~~~~~~~~~~self.robot_dof_targets  ", self.robot_dof_targets.shape)
-            # print("~~~~~~~~~~~~~~~~~~~~~~~delta_dof_pos  ", delta_dof_pos.shape)
+
             targets = self.robot_dof_targets[:, :7] + delta_dof_pos
 
             self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
@@ -303,7 +301,7 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1])
+            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1]) # self.hand_rot = w, x, y, z
 
         # if self._step > 1500:
         #     self.raytracer.save()

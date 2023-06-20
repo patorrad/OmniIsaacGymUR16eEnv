@@ -30,7 +30,7 @@ params:
       regularizer:
         name: None
 
-  load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
+  load_checkpoint: False #${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
   load_path: ${...checkpoint} # path to the checkpoint to load
 
   config:
@@ -54,7 +54,7 @@ params:
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: ${resolve_default:100,${....max_iterations}}
+    max_epochs: ${resolve_default:300,${....max_iterations}}
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
