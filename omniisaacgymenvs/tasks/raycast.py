@@ -20,7 +20,7 @@ import warp as wp
 import numpy as np
 import sys
 #np.set_printoptions(threshold=sys.maxsize)
-
+import math
 import os
 
 import trimesh
@@ -29,34 +29,27 @@ wp.init()
 wp.config.mode = "debug"
 
 @wp.kernel
-def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
+def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    print('q2')
-    print(q2)
+
     q = wp.quat(0.0,-0.707,0.0,0.707)
     x_test=wp.vec3(1.0,0.0,0.0)
-    output = wp.quat_rotate(q, x_test)
-    print("output")
-    print(output)
+    #output = wp.quat_rotate(q2, x_test)
+
     tid = wp.tid()
-    print("tid")
-    print(tid)
-    x = tid % width
-    y = tid // width
-    # print('x')
-    # print(x)
-    # print('y')
-    # print(y)
-    sx = 2.0 * float(x) / float(height) - 1.0
-    # print('sx')
-    # print(sx)
+
+    y = tid % width
+    z = tid // width
+
     sy = 2.0 * float(y) / float(height) - 1.0
-    # print('sy')
-    # print(sy)
+    sz = 2.0 * float(z) / float(height) - 1.0
+
     # compute view ray
     ro = cam_pos
-    rd = wp.normalize(wp.vec3(sx, sy, -1.0))
+    # rd = wp.normalize(output)
+    grid_vec = wp.vec3(1.0, sy, sz)
+    rd = wp.normalize(wp.quat_rotate(q2, grid_vec))
     # rd = wp.normalize(wp.vec3(0., 0., -1.0))
     # print(rd)
     t = float(0.0)
@@ -110,34 +103,38 @@ class Raycast:
     def update(self):
         pass
 
-    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
-        cam_pos = (0.0, 1.5, 2.5)
+    def render(self, radius = 5, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
+        # cam_pos = (0.0, 1.5, 2.5)
+        # cam_dir = np.array([1, 0, 0, 0])
+
+        # cam_pos = (0.4599, 0.0626, -0.0283)
+        # cam_dir = (-0.0461, -0.0558, 0.9944, -0.0770)
         print('cam_pose', cam_pos)
         print('quaternion', cam_dir)
         # cam_dir = get_forward_direction_vector(cam_dir)
-        print('cam_dir', cam_dir)
+        # print('cam_dir', cam_dir)
         
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit],
+                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit],
             )
 
             wp.synchronize_device()
 
         # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
         print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
-        plt.imshow(
-            self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-        )
-        plt.savefig("/home/aurmr/Pictures/raycast_cube_2.png",
-            bbox_inches ="tight",
-            pad_inches = 1,
-            transparent = True,
-            facecolor ="g",
-            edgecolor ='w',
-            orientation ='landscape')
+        # plt.imshow(
+        #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
+        # )
+        # plt.savefig("/home/aurmr/Pictures/raycast_cube_2.png",
+        #     bbox_inches ="tight",
+        #     pad_inches = 1,
+        #     transparent = True,
+        #     facecolor ="g",
+        #     edgecolor ='w',
+        #     orientation ='landscape')
         # plt.show()
 
         # plt.imshow(
