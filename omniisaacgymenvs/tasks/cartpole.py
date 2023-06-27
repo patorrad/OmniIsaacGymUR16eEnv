@@ -301,7 +301,7 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1]) # self.hand_rot = w, x, y, z
+            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1])
 
         # if self._step > 1500:
         #     self.raytracer.save()

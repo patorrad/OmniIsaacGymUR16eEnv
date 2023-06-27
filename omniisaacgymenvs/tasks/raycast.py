@@ -20,7 +20,6 @@ import warp as wp
 import numpy as np
 import sys
 #np.set_printoptions(threshold=sys.maxsize)
-import math
 import os
 
 import trimesh
@@ -32,7 +31,7 @@ wp.config.mode = "debug"
 def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-
+    # q2 = wp.quat(0., 1., 0., 0.)
     q = wp.quat(0.0,-0.707,0.0,0.707)
     x_test=wp.vec3(1.0,0.0,0.0)
     #output = wp.quat_rotate(q2, x_test)
@@ -40,7 +39,7 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     tid = wp.tid()
 
     y = tid % width
-    z = tid // width
+    z = tid // height
 
     sy = 2.0 * float(y) / float(height) - 1.0
     sz = 2.0 * float(z) / float(height) - 1.0
@@ -62,16 +61,18 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     color = wp.vec3(0.0, 0.0, 0.0)
 
     if wp.mesh_query_ray(mesh, ro, rd, 1.0e6, t, u, v, sign, n, f):
-        color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
-
+        # if distance between [u,v] and ro is less than radius
+        if wp.abs(wp.sqrt(u * u + v * v)) < radius:
+            color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+    
     pixels[tid] = color
     t_out[tid] = t
 
 
 class Raycast:
     def __init__(self):
-        self.width = 4 #1024
-        self.height = 4 #1024
+        self.width = 8 #1024
+        self.height = 8 #1024
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
@@ -103,28 +104,23 @@ class Raycast:
     def update(self):
         pass
 
-    def render(self, radius = 5, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
-        # cam_pos = (0.0, 1.5, 2.5)
-        # cam_dir = np.array([1, 0, 0, 0])
-
-        # cam_pos = (0.4599, 0.0626, -0.0283)
-        # cam_dir = (-0.0461, -0.0558, 0.9944, -0.0770)
+    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
         print('cam_pose', cam_pos)
         print('quaternion', cam_dir)
         # cam_dir = get_forward_direction_vector(cam_dir)
         # print('cam_dir', cam_dir)
-        
+        radius = 1
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit],
+                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit]
             )
 
             wp.synchronize_device()
 
         # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
-        print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
+        # print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
         # plt.imshow(
         #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
         # )
@@ -136,20 +132,23 @@ class Raycast:
         #     edgecolor ='w',
         #     orientation ='landscape')
         # plt.show()
+        
+        plt.imshow(
+            self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
+        )
+        # plt.colorbar(label="Distance", orientation="horizontal")
+        plt.show()
+        if self.step % 200 == 0:
+            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
+            bbox_inches ="tight",
+            pad_inches = 1,
+            transparent = True,
+            facecolor ="g",
+            edgecolor ='w',
+            orientation ='landscape')
 
-        # plt.imshow(
-        #     self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
-        # )
-        # plt.show()
-        # self.step += 1
-        # if self.step % 1000 == 0:
-        #     plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
-        #     bbox_inches ="tight",
-        #     pad_inches = 1,
-        #     transparent = True,
-        #     facecolor ="g",
-        #     edgecolor ='w',
-        #     orientation ='landscape')
+        
+        self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
 
