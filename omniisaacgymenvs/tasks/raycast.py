@@ -59,11 +59,14 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     f = int(0)
 
     color = wp.vec3(0.0, 0.0, 0.0)
+    # line_color_rgba = wp.array([(1, 0, 0, 1)])
+    # sizes = wp.array([20])
 
     if wp.mesh_query_ray(mesh, ro, rd, 1.0e6, t, u, v, sign, n, f):
         # if distance between [u,v] and ro is less than radius
         if wp.abs(wp.sqrt(u * u + v * v)) < radius:
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+            
     
     pixels[tid] = color
     t_out[tid] = t
@@ -71,8 +74,8 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
 
 class Raycast:
     def __init__(self):
-        self.width = 8 #1024
-        self.height = 8 #1024
+        self.width = 10 #1024
+        self.height = 10 #1024
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
@@ -100,6 +103,8 @@ class Raycast:
 
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
+        # self.hit_coord_u = wp.zeros(self.width * self.height, dtype=wp.float32)
+        # self.hit_coord_v = wp.zeros(self.width * self.height, dtype=wp.float32)
 
     def update(self):
         pass
@@ -118,6 +123,8 @@ class Raycast:
             )
 
             wp.synchronize_device()
+        
+        # self.debug_draw.draw_lines([(0, 0, 0)], [(5000, 5000, 5000)], [(1, 0, 0)], [20])
 
         # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
         # print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
@@ -147,8 +154,9 @@ class Raycast:
             edgecolor ='w',
             orientation ='landscape')
 
-        
         self.step += 1
+
+        return self.ray_hit
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
 
@@ -205,7 +213,8 @@ def geom_to_trimesh(geom):
     elif isinstance(geom, UsdGeom.Sphere):
         trimesh = get_trimesh_for_sphere(geom)
     else:
-        raise Exception("No mesh representation for obj" + str(geom))
+        # raise Exception("No mesh representation for obj" + str(geom))
+        trimesh = get_trimesh_for_cube(geom)
     return trimesh
 
 

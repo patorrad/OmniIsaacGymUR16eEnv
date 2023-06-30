@@ -48,6 +48,7 @@ import math
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
+from omni.isaac.debug_draw import _debug_draw
 
 from skrl.utils import omniverse_isaacgym_utils
 
@@ -79,6 +80,7 @@ class CartpoleTask(RLTask):
         self._ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device = self._device) 
         self._ur10_dof_targets = self._ur10_dof_target.repeat(self._num_envs, 1) 
         self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
+        self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
@@ -248,6 +250,8 @@ class CartpoleTask(RLTask):
         
         # PT
         if self._step > 100:
+            self.debug_draw.clear_lines()
+            self.debug_draw.clear_points()
             indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
             # self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
             self._targets.set_world_poses(self.hand_pos, indices=indices)
@@ -291,7 +295,7 @@ class CartpoleTask(RLTask):
             # Step 1: Normalize the quaternion
             q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
             q_normalized = self.hand_rot.cpu()[1] / q_norm
-            # Step 2: Extract the vector part
+            # Step 2: Extract the vector part# w
             v = q_normalized[1:]
             
             # Step 3: Convert to Cartesian coordinates
@@ -301,7 +305,53 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            self.raytracer.render(self.hand_pos.cpu()[1] - target_object_pose.cpu()[1], self.hand_rot.cpu()[1])
+            cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
+            # cam_pos = self.hand_pos.cpu()[1]
+            ray_hits_t = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1]) # self.hand_rot = w, x, y, z
+
+            # Convert quaternion angle to rotation matrix
+            rotation_matrix = np.array([[1-2*(self.hand_rot.cpu()[1][2]**2 + self.hand_rot.cpu()[1][3]**2), 2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][2] - self.hand_rot.cpu()[1][3]*self.hand_rot.cpu()[1][0]), 2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][3] + self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][0])],
+                        [2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][2] + self.hand_rot.cpu()[1][3]*self.hand_rot.cpu()[1][0]), 1-2*(self.hand_rot.cpu()[1][1]**2 + self.hand_rot.cpu()[1][3]**2), 2*(self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][3] - self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][0])],
+                        [2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][3] - self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][0]), 2*(self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][3] + self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][0]), 1-2*(self.hand_rot.cpu()[1][1]**2 + self.hand_rot.cpu()[1][2]**2)]])
+            hits_len = 0
+            ray_hit_points_list = []
+
+            for t in ray_hits_t.numpy():
+                if t > 0:
+                    # Vector representing the length and direction of the ray
+                    v = np.array([0, 0, t])
+
+                    # Apply rotation to the vector
+                    rotated_vector = np.dot(rotation_matrix, v)
+
+                    # Calculate endpoint coordinates
+                    ray_hit_x = cam_pos.numpy()[0] + rotated_vector[0]
+                    ray_hit_y = cam_pos.numpy()[1] + rotated_vector[1]
+                    ray_hit_z = cam_pos.numpy()[2] + rotated_vector[2]
+
+                    ray_hit_points_list.append((ray_hit_x, ray_hit_y, ray_hit_z))
+                    hits_len += 1
+            
+            cam_pos_np = cam_pos.numpy()
+            cam_pos_tuple = (cam_pos_np[0], cam_pos_np[1], cam_pos_np[2])
+            cam_pos_list = [
+                cam_pos_tuple for _ in range(hits_len)
+            ]
+            # # point_list_2 = [
+                
+            # #     #(ray_hit_t.numpy().max(), ray_hit_u.numpy().max(), ray_hit_v.numpy().max())
+            # #     #self.hand_pos.cpu()[1]
+            # # ]
+
+            ray_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
+            ray_sizes = [2 for _ in range(hits_len)]
+            point_sizes = [7 for _ in range(hits_len)]
+            start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
+            end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
+            self.debug_draw.draw_lines(cam_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+            self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
+            self.debug_draw.draw_points(cam_pos_list, start_point_colors, point_sizes)
+            
 
         # if self._step > 1500:
         #     self.raytracer.save()
@@ -340,7 +390,10 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0])))
+        # TODO: Are we converting the prim into a mesh correctly? Does the forced cast to UsdGeom.Cube actually work or is there another way to do it?
+        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[1])))
+        # get_prim_at_path() call returns a Cube type
+        print(get_prim_at_path(self._target_objects.prim_paths[1]).GetTypeName())
         warp_mesh = warp_from_trimesh(trimesh, self._device)
         self.raytracer.set_geom(warp_mesh)
         # PT
