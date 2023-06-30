@@ -295,7 +295,7 @@ class CartpoleTask(RLTask):
             # Step 1: Normalize the quaternion
             q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
             q_normalized = self.hand_rot.cpu()[1] / q_norm
-            # Step 2: Extract the vector part# w
+            # Step 2: Extract the vector part
             v = q_normalized[1:]
             
             # Step 3: Convert to Cartesian coordinates
@@ -307,29 +307,14 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_hits_t = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1]) # self.hand_rot = w, x, y, z
-
-            # Convert quaternion angle to rotation matrix
-            rotation_matrix = np.array([[1-2*(self.hand_rot.cpu()[1][2]**2 + self.hand_rot.cpu()[1][3]**2), 2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][2] - self.hand_rot.cpu()[1][3]*self.hand_rot.cpu()[1][0]), 2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][3] + self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][0])],
-                        [2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][2] + self.hand_rot.cpu()[1][3]*self.hand_rot.cpu()[1][0]), 1-2*(self.hand_rot.cpu()[1][1]**2 + self.hand_rot.cpu()[1][3]**2), 2*(self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][3] - self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][0])],
-                        [2*(self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][3] - self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][0]), 2*(self.hand_rot.cpu()[1][2]*self.hand_rot.cpu()[1][3] + self.hand_rot.cpu()[1][1]*self.hand_rot.cpu()[1][0]), 1-2*(self.hand_rot.cpu()[1][1]**2 + self.hand_rot.cpu()[1][2]**2)]])
+            ray_hit_t, ray_hit_u, ray_hit_v = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
+            
             hits_len = 0
             ray_hit_points_list = []
-
-            for t in ray_hits_t.numpy():
-                if t > 0:
-                    # Vector representing the length and direction of the ray
-                    v = np.array([0, 0, t])
-
-                    # Apply rotation to the vector
-                    rotated_vector = np.dot(rotation_matrix, v)
-
-                    # Calculate endpoint coordinates
-                    ray_hit_x = cam_pos.numpy()[0] + rotated_vector[0]
-                    ray_hit_y = cam_pos.numpy()[1] + rotated_vector[1]
-                    ray_hit_z = cam_pos.numpy()[2] + rotated_vector[2]
-
-                    ray_hit_points_list.append((ray_hit_x, ray_hit_y, ray_hit_z))
+            for i in range(len(ray_hit_t)):
+                if ray_hit_t.numpy()[i] > 0:
+                    # ray hit point: (1, u, v)
+                    ray_hit_points_list.append((1., ray_hit_u.numpy()[i], ray_hit_v.numpy()[i]))
                     hits_len += 1
             
             cam_pos_np = cam_pos.numpy()
@@ -337,11 +322,11 @@ class CartpoleTask(RLTask):
             cam_pos_list = [
                 cam_pos_tuple for _ in range(hits_len)
             ]
-            # # point_list_2 = [
+            # point_list_2 = [
                 
-            # #     #(ray_hit_t.numpy().max(), ray_hit_u.numpy().max(), ray_hit_v.numpy().max())
-            # #     #self.hand_pos.cpu()[1]
-            # # ]
+            #     #(ray_hit_t.numpy().max(), ray_hit_u.numpy().max(), ray_hit_v.numpy().max())
+            #     #self.hand_pos.cpu()[1]
+            # ]
 
             ray_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
             ray_sizes = [2 for _ in range(hits_len)]
@@ -351,6 +336,8 @@ class CartpoleTask(RLTask):
             self.debug_draw.draw_lines(cam_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
             self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
             self.debug_draw.draw_points(cam_pos_list, start_point_colors, point_sizes)
+            
+            # self.debug_draw.draw_lines([(0, 0, 0)], [(3000, 3000, 3000)], [(1, 0, 0, 1)], [20]) # uncomment for sanity check line
             
 
         # if self._step > 1500:

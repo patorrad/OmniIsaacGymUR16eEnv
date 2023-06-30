@@ -1,18 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-#############################################################################
-# Example Ray Cast
-#
-# Shows how to use the built-in wp.Mesh data structure and wp.mesh_query_ray()
-# function to implement a basic ray-tracer.
-#
-##############################################################################
-
 import matplotlib.pyplot as plt
 from pxr import Usd, UsdGeom, UsdSkel, Gf
 
@@ -24,32 +9,52 @@ import os
 
 import trimesh
 
+DEVICE = 'cpu'
+# DEVICE = 'cuda:0'
 wp.init()
-wp.config.mode = "debug"
+# wp.config.mode = "debug"
+# wp.set_device(DEVICE)
+
 
 @wp.kernel
-def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
+def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
+         t_out: wp.array(dtype=wp.float32), u_out: wp.array(dtype=wp.float32), v_out: wp.array(dtype=wp.float32), 
+         cam_dir_array: wp.array(dtype=wp.vec3), x_out: wp.array(dtype=wp.int32), y_out: wp.array(dtype=wp.int32)):
+    pi = 3.141592653589793
+    EMITTER_DIAMETER = wp.tan(17.5*pi/180.)*2.
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    # q2 = wp.quat(0., 1., 0., 0.)
     q = wp.quat(0.0,-0.707,0.0,0.707)
     x_test=wp.vec3(1.0,0.0,0.0)
-    #output = wp.quat_rotate(q2, x_test)
+    # output = wp.quat_rotate(q2, x_test)
 
     tid = wp.tid()
-
-    y = tid % width
-    z = tid // height
-
-    sy = 2.0 * float(y) / float(height) - 1.0
-    sz = 2.0 * float(z) / float(height) - 1.0
-
+    # print('tid')
+    # print(tid)
+    z = tid % width
+    y = tid // height
+    # print('x')
+    # print(z)
+    # print('y')
+    # print(y)
+    # sz = 2.0 * float(z) / float(height) - 1. 
+    # sy = 2.0 * float(y) / float(height) - 1. 
+    sz = EMITTER_DIAMETER / (float(width) - 1.) * float(z) - float(EMITTER_DIAMETER) / 2.
+    sy = EMITTER_DIAMETER / (float(height) - 1.) * float(y) - float(EMITTER_DIAMETER) / 2.
+    # hypotenuse = wp.sqrt(wp.pow(sz, 2) + wp.pow(wp.pow(sy, 2)))
+    # print('sx')
+    # print(sz)
+    # print('sy')
+    # print(sy)
     # compute view ray
     ro = cam_pos
     # rd = wp.normalize(output)
     grid_vec = wp.vec3(1.0, sy, sz)
-    rd = wp.normalize(wp.quat_rotate(q2, grid_vec))
-    # rd = wp.normalize(wp.vec3(0., 0., -1.0))
+    # rd = wp.normalize(wp.quat_rotate(q2, grid_vec))
+    rd = wp.quat_rotate(q2, grid_vec)
+    # print('ro')
+    # print(ro)
+    # print('rd')
     # print(rd)
     t = float(0.0)
     u = float(0.0)
@@ -59,120 +64,60 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     f = int(0)
 
     color = wp.vec3(0.0, 0.0, 0.0)
-    # line_color_rgba = wp.array([(1, 0, 0, 1)])
-    # sizes = wp.array([20])
 
     if wp.mesh_query_ray(mesh, ro, rd, 1.0e6, t, u, v, sign, n, f):
         # if distance between [u,v] and ro is less than radius
         if wp.abs(wp.sqrt(u * u + v * v)) < radius:
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
-            
-    
+
     pixels[tid] = color
     t_out[tid] = t
+    u_out[tid] = u
+    v_out[tid] = v
+    if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
+        cam_dir_array[tid] = rd
+    x_out[tid] = z
+    y_out[tid] = y
 
 
 class Raycast:
-    def __init__(self):
-        self.width = 10 #1024
-        self.height = 10 #1024
+    def __init__(self, width = 1024, height = 1024, debug = False):
+        self.debug = debug
+        self.width = 10
+        self.height = 10
         self.cam_pos = (0.0, 1.5, 2.5)
-        # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
         self.result = np.zeros((self.height, self.width, 3))
 
     def set_geom(self, mesh):
-        # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
-        # # cube_geom = asset_stage.GetPrimAtPath("/World/Cube")
-        
-        # points = np.array(geom.GetPointsAttr().Get())
-        # indices = np.array(geom.GetFaceVertexIndicesAttr().Get())
-        # # print(points.shape)
-        # # print(indices)
-        # # print(mesh_geom.GetFaceVertexCountsAttr().Get())
-        # # print(mesh_geom.GetFaceVertexIndicesAttr())
-        # # indices_test = np.array([0, 1, 3, 1, 3, 2])
-        # indices_test = np.concatenate((np.delete(indices, np.arange(3, indices.size, 4)), np.delete(indices, np.arange(1, indices.size, 4))))
-        # points_test = np.array([[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=float)
         self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
-
-        # # create wp mesh
-        # self.mesh = wp.Mesh(
-        #     points=wp.array(points, dtype=wp.vec3), velocities=None, indices=wp.array(indices_test, dtype=int)
-        # )
-
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
-        # self.hit_coord_u = wp.zeros(self.width * self.height, dtype=wp.float32)
-        # self.hit_coord_v = wp.zeros(self.width * self.height, dtype=wp.float32)
+        # if self.debug:
+        self.u = wp.zeros(self.width * self.height, dtype=wp.float32)
+        self.v = wp.zeros(self.width * self.height, dtype=wp.float32)
+        self.cam_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.x = wp.zeros(self.width * self.height, dtype=wp.int32)
+        self.y = wp.zeros(self.width * self.height, dtype=wp.int32)
 
     def update(self):
         pass
 
     def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
-        print('cam_pose', cam_pos)
-        print('quaternion', cam_dir)
-        # cam_dir = get_forward_direction_vector(cam_dir)
-        # print('cam_dir', cam_dir)
         radius = 1
         with wp.ScopedTimer("render"):
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit]
+                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.u, self.v, self.cam_dir, self.x, self.y]
             )
 
             wp.synchronize_device()
         
-        # self.debug_draw.draw_lines([(0, 0, 0)], [(5000, 5000, 5000)], [(1, 0, 0)], [20])
-
-        # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
-        # print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
-        # plt.imshow(
-        #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-        # )
-        # plt.savefig("/home/aurmr/Pictures/raycast_cube_2.png",
-        #     bbox_inches ="tight",
-        #     pad_inches = 1,
-        #     transparent = True,
-        #     facecolor ="g",
-        #     edgecolor ='w',
-        #     orientation ='landscape')
-        # plt.show()
-        
-        plt.imshow(
-            self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
-        )
-        # plt.colorbar(label="Distance", orientation="horizontal")
-        plt.show()
-        if self.step % 200 == 0:
-            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
-            bbox_inches ="tight",
-            pad_inches = 1,
-            transparent = True,
-            facecolor ="g",
-            edgecolor ='w',
-            orientation ='landscape')
-
         self.step += 1
-
-        return self.ray_hit
         # print("raytracer", self.ray_hit.numpy().shape)
-        # print("raytracer", self.ray_hit)
-
-    def save(self):
-        for i in self.result.shape[0]:
-            plt.imshow(
-                self.result.shape[i].numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-            )
-            plt.savefig("/home/aurmr/Pictures/raycast_cube_{}.png".format(i),
-                bbox_inches ="tight",
-                pad_inches = 1,
-                transparent = True,
-                facecolor ="g",
-                edgecolor ='w',
-                orientation ='landscape')
-
+        print("raytracer", self.ray_hit)
+        return self.ray_hit, self.u, self.v
 
 def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
     mesh = wp.Mesh(
@@ -213,8 +158,7 @@ def geom_to_trimesh(geom):
     elif isinstance(geom, UsdGeom.Sphere):
         trimesh = get_trimesh_for_sphere(geom)
     else:
-        # raise Exception("No mesh representation for obj" + str(geom))
-        trimesh = get_trimesh_for_cube(geom)
+        raise Exception("No mesh representation for obj" + str(geom))
     return trimesh
 
 
@@ -257,24 +201,80 @@ def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
 
-# Method to get direction vector from quaternion (forward direction)
-# Quaternion = w, x, y, z
-def get_forward_direction_vector(q: np.array) -> np.array:
-    # return np.array([2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])])
-    # return np.array([1 - 2 * (q[1] * q[1] + q[2] * q[2]), 2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1])])
-    return np.array([-1,0,0])
-
-# TODO Code below
-    # up vector
-    # x = 2 * (x*y - w*z)
-    # y = 1 - 2 * (x*x + z*z)
-    # z = 2 * (y*z + w*x)
-
-    # left vector
-    # x = 1 - 2 * (y*y + z*z)
-    # y = 2 * (x*y + w*z)
-    # z = 2 * (x*z - w*y)
-
 if __name__ == "__main__":
-    example = Raycast()
-    example.render()
+    print("I AM IN MAIN!!!!!!!!")
+    # Dimensions of image plane
+    width = 64
+    height = 64
+    # Initialize Raycast for warp
+    raycast = Raycast(width, height, debug = True)
+    cam_pos = (0.0, 0.0, 0.0)
+    # quaternion w, x, y, z
+    # cam_dir = np.array([0.707, 0, -0.707, 0])
+    cam_dir = np.array([1, 0, 0, 0])
+    # Import usd into stage
+    stage = Usd.Stage.Open('./cube.usd')
+    prim = stage.GetPrimAtPath('/World/Cube')
+    print(prim.GetName()) # prints "Prim"
+    print(prim.GetPrimPath()) # prints "/Prim"
+    # Convert stage prim to trimesh
+    mesh = geom_to_trimesh(UsdGeom.Cube(prim))
+    assert mesh.is_watertight
+    mesh.vertices -= mesh.center_mass
+    mesh.split
+    # Run warp kernel for raycasting
+    raycast.set_geom(warp_from_trimesh(mesh, DEVICE))
+    raycast.render(cam_pos, cam_dir)
+
+    ## Back to trimesh
+    # Create axis for visualization
+    axis_origins = np.array([[0, 0, 0],
+                            [0, 0, 0],
+                            [0, 0, 0]])
+    axis_directions = np.array([[1, 0, 0],
+                               [0, 1, 0],
+                               [0, 0, 1]])
+    # stack axis rays into line segments for visualization as Path3D
+    axis_visualize = trimesh.load_path(np.hstack((
+        axis_origins,
+        axis_origins + axis_directions)).reshape(-1, 2, 3), colors=np.array([[0, 0, 255, 255], [0, 255, 0, 255], [255, 0, 0, 255]]))
+
+    # create rays for visualization
+    ray_origins = np.zeros((width * height, 3))
+    ray_directions = raycast.cam_dir.numpy()
+    print('ray_origins')
+    print(ray_origins)
+    print('ray_directions')
+    print(ray_directions)
+    print('x')
+    print(raycast.x)
+    print('y')
+    print(raycast.y)
+
+    # run the mesh- ray test
+    locations, index_ray, index_tri = mesh.ray.intersects_location(
+        ray_origins=ray_origins,
+        ray_directions=ray_directions)
+
+    # stack rays into line segments for visualization as Path3D
+    ray_visualize = trimesh.load_path(np.hstack((
+        ray_origins,
+        ray_origins + ray_directions)).reshape(-1, 2, 3))
+
+    # make mesh transparent- ish
+    mesh.visual.face_colors = [100, 100, 100, 100]
+    blue = [0, 0, 255, 255]
+    red = [255, 0, 0, 255]
+    print('locations')
+    print(locations)
+    # create a visualization scene with rays, hits, and mesh
+    scene = trimesh.Scene([
+        mesh,
+        ray_visualize,
+        axis_visualize,
+        trimesh.points.PointCloud(locations),
+        trimesh.points.PointCloud(ray_origins, colors=blue),
+        trimesh.points.PointCloud(ray_directions, colors=red)])
+
+    # display the scene
+    scene.show()
