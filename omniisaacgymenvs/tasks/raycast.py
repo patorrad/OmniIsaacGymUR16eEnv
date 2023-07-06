@@ -140,8 +140,8 @@ class Raycast:
         )
         # plt.colorbar(label="Distance", orientation="horizontal")
         plt.show()
-        if self.step % 200 == 0:
-            plt.savefig("/home/heisenberg/Pictures/raycast_cube_1.png",
+        if self.step % 100 == 0:
+            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
             bbox_inches ="tight",
             pad_inches = 1,
             transparent = True,
