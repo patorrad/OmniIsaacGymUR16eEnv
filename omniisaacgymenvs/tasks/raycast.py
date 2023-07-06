@@ -24,31 +24,33 @@ import os
 
 import trimesh
 
+DEVICE = 'cpu'
+# DEVICE = 'cuda:0'
 wp.init()
-wp.config.mode = "debug"
+# wp.config.mode = "debug"
+wp.set_device(DEVICE)
 
 @wp.kernel
 def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), t_out: wp.array(dtype=wp.float32)):
     # Warp quaternion is x, y, z, w
-    q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    # q2 = wp.quat(0., 1., 0., 0.)
-    q = wp.quat(0.0,-0.707,0.0,0.707)
-    x_test=wp.vec3(1.0,0.0,0.0)
-    #output = wp.quat_rotate(q2, x_test)
-
+    # q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
+    q2 = wp.quat(0., 1., 0., 0.)
     tid = wp.tid()
 
-    y = tid % width
-    z = tid // height
+    pi = 3.14159265359
+    y = tid // height
+    z = tid % width
 
-    sy = 2.0 * float(y) / float(height) - 1.0
-    sz = 2.0 * float(z) / float(height) - 1.0
+    EMITTER_DIAMETER = wp.tan(17.5 * pi / 180.) * 2.
+
+    sy = EMITTER_DIAMETER / (float(height) - 1.) * float(y) - float(EMITTER_DIAMETER) / 2.
+    sz = EMITTER_DIAMETER / (float(width) - 1.) * float(z) - float(EMITTER_DIAMETER) / 2.
 
     # compute view ray
     ro = cam_pos
     # rd = wp.normalize(output)
     grid_vec = wp.vec3(1.0, sy, sz)
-    rd = wp.normalize(wp.quat_rotate(q2, grid_vec))
+    rd = wp.quat_rotate(q2, grid_vec)
     # rd = wp.normalize(wp.vec3(0., 0., -1.0))
     # print(rd)
     t = float(0.0)
@@ -139,7 +141,7 @@ class Raycast:
         # plt.colorbar(label="Distance", orientation="horizontal")
         plt.show()
         if self.step % 200 == 0:
-            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
+            plt.savefig("/home/heisenberg/Pictures/raycast_cube_1.png",
             bbox_inches ="tight",
             pad_inches = 1,
             transparent = True,
@@ -150,7 +152,7 @@ class Raycast:
         
         self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
-        # print("raytracer", self.ray_hit)
+        print("raytracer", self.ray_hit)
 
     def save(self):
         for i in self.result.shape[0]:

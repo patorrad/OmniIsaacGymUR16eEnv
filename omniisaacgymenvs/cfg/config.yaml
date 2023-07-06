@@ -18,13 +18,13 @@ max_iterations: ''
 ## Device config
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'gpu'
+pipeline: 'cpu' #'gpu'
 # whether to use cpu or gpu physx
-sim_device: 'gpu'
+sim_device: 'cpu' #'gpu'
 # used for gpu simulation only - device id for running sim and task if pipeline=gpu
 device_id: 0
 # device to run RL
-rl_device: 'cuda:0'
+rl_device: 'cpu' #'cuda:0'
 # multi-GPU training
 multi_gpu: False
 
