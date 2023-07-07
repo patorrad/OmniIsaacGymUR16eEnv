@@ -307,24 +307,25 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_hit_t, ray_hit_u, ray_hit_v, ray_hit_x, ray_hit_y = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
+            ray_t, ray_dir, ray_hit = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
             
             hits_len = 0
             ray_hit_points_list = []
-            
-            target_object_pos_np = self._target_object_positions.numpy()
-            for i in range(len(ray_hit_t)):
-                if ray_hit_t.numpy()[i] > 0:
-                    # ray hit point (w, u, v)
-                    ray_hit_points_list.append((0. + target_object_pos_np[0], ray_hit_u.numpy()[i] + target_object_pos_np[1], ray_hit_v.numpy()[i] + target_object_pos_np[2]))
-                    hits_len += 1
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
+            for i in range(len(ray_t)):
+                if ray_hit.numpy()[i]:
+                    # ray hit point (w, u, v)
+                    display_hit_pos = ray_dir.numpy()[i] * ray_t.numpy()[i] + sensor_ray_pos_tuple
+                    ray_hit_points_list.append(display_hit_pos)
+                    hits_len += 1
+
             sensor_ray_pos_list = [
                 sensor_ray_pos_tuple for _ in range(hits_len)
             ]
+
             # point_list_2 = [
                 
             #     #(ray_hit_t.numpy().max(), ray_hit_u.numpy().max(), ray_hit_v.numpy().max())

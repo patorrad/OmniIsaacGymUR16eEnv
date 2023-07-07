@@ -32,7 +32,7 @@ wp.set_device(DEVICE)
 
 @wp.kernel
 def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
-         t_out: wp.array(dtype=wp.float32), u_out: wp.array(dtype=wp.float32), v_out: wp.array(dtype=wp.float32), x_out: wp.array(dtype=wp.int32), y_out: wp.array(dtype=wp.int32)):
+         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), hit: wp.array(dtype=wp.int32)):
     # Warp quaternion is x, y, z, w
     # q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
     q2 = wp.quat(0., 1., 0., 0.)
@@ -67,13 +67,11 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
         # if distance between [u,v] and ro is less than radius
         if wp.abs(wp.sqrt(u * u + v * v)) < radius:
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+            hit[tid] = 1
     
     pixels[tid] = color
     t_out[tid] = t
-    u_out[tid] = u
-    v_out[tid] = v
-    x_out[tid] = z
-    y_out[tid] = y
+    ray_dir[tid] = rd
 
 
 class Raycast:
@@ -107,10 +105,8 @@ class Raycast:
 
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
-        self.u = wp.zeros(self.width * self.height, dtype=wp.float32)
-        self.v = wp.zeros(self.width * self.height, dtype=wp.float32)
-        self.x = wp.zeros(self.width * self.height, dtype=wp.int32)
-        self.y = wp.zeros(self.width * self.height, dtype=wp.int32)
+        self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.hit = wp.zeros(self.width * self.height, dtype=wp.int32)
 
 
     def update(self):
@@ -126,44 +122,29 @@ class Raycast:
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.u, self.v, self.x, self.y]
+                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, self.hit]
             )
 
             wp.synchronize_device()
-
-        # np.stack(self.result, self.pixels.numpy().reshape((self.height, self.width, 3)))
-        # print('Object:', self.ray_hit.numpy().reshape((self.height, self.width)).max())
-        # plt.imshow(
-        #     self.pixels.numpy().reshape((self.height, self.width, 3)), origin="lower", interpolation="antialiased"
-        # )
-        # plt.savefig("/home/aurmr/Pictures/raycast_cube_2.png",
-        #     bbox_inches ="tight",
-        #     pad_inches = 1,
-        #     transparent = True,
-        #     facecolor ="g",
-        #     edgecolor ='w',
-        #     orientation ='landscape')
-        # plt.show()
         
-        # plt.imshow(
-        #     self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
-        # )
-        # # plt.colorbar(label="Distance", orientation="horizontal")
-        # plt.show()
-        # if self.step % 100 == 0:
-        #     plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
-        #     bbox_inches ="tight",
-        #     pad_inches = 1,
-        #     transparent = True,
-        #     facecolor ="g",
-        #     edgecolor ='w',
-        #     orientation ='landscape')
-
+        plt.imshow(
+            self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
+        )
+        # plt.colorbar(label="Distance", orientation="horizontal")
+        plt.show()
+        if self.step % 100 == 0:
+            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
+            bbox_inches ="tight",
+            pad_inches = 1,
+            transparent = True,
+            facecolor ="g",
+            edgecolor ='w',
+            orientation ='landscape')
         
         self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         print("raytracer", self.ray_hit)
-        return self.ray_hit, self.u, self.v, self.x, self.y
+        return self.ray_hit, self.ray_dir, self.hit
 
     def save(self):
         for i in self.result.shape[0]:
@@ -267,17 +248,6 @@ def get_forward_direction_vector(q: np.array) -> np.array:
     # return np.array([2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])])
     # return np.array([1 - 2 * (q[1] * q[1] + q[2] * q[2]), 2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1])])
     return np.array([-1,0,0])
-
-# TODO Code below
-    # up vector
-    # x = 2 * (x*y - w*z)
-    # y = 1 - 2 * (x*x + z*z)
-    # z = 2 * (y*z + w*x)
-
-    # left vector
-    # x = 1 - 2 * (y*y + z*z)
-    # y = 2 * (x*y + w*z)
-    # z = 2 * (x*z - w*y)
 
 if __name__ == "__main__":
     example = Raycast()
