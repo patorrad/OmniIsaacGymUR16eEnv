@@ -307,20 +307,23 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_hit_t, ray_hit_u, ray_hit_v = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
+            ray_hit_t, ray_hit_u, ray_hit_v, ray_hit_x, ray_hit_y = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
             
             hits_len = 0
             ray_hit_points_list = []
+            
+            target_object_pos_np = self._target_object_positions.numpy()
             for i in range(len(ray_hit_t)):
                 if ray_hit_t.numpy()[i] > 0:
-                    # ray hit point: (1, u, v)
-                    ray_hit_points_list.append((1., ray_hit_u.numpy()[i], ray_hit_v.numpy()[i]))
+                    # ray hit point (w, u, v)
+                    ray_hit_points_list.append((0. + target_object_pos_np[0], ray_hit_u.numpy()[i] + target_object_pos_np[1], ray_hit_v.numpy()[i] + target_object_pos_np[2]))
                     hits_len += 1
-            
-            cam_pos_np = cam_pos.numpy()
-            cam_pos_tuple = (cam_pos_np[0], cam_pos_np[1], cam_pos_np[2])
-            cam_pos_list = [
-                cam_pos_tuple for _ in range(hits_len)
+
+            sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
+            sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
+
+            sensor_ray_pos_list = [
+                sensor_ray_pos_tuple for _ in range(hits_len)
             ]
             # point_list_2 = [
                 
@@ -333,9 +336,9 @@ class CartpoleTask(RLTask):
             point_sizes = [7 for _ in range(hits_len)]
             start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
             end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
-            self.debug_draw.draw_lines(cam_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+            self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
             self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
-            self.debug_draw.draw_points(cam_pos_list, start_point_colors, point_sizes)
+            self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
             
             # self.debug_draw.draw_lines([(0, 0, 0)], [(3000, 3000, 3000)], [(1, 0, 0, 1)], [20]) # uncomment for sanity check line
             
@@ -377,7 +380,6 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        # TODO: Are we converting the prim into a mesh correctly? Does the forced cast to UsdGeom.Cube actually work or is there another way to do it?
         trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[1])))
         # get_prim_at_path() call returns a Cube type
         print(get_prim_at_path(self._target_objects.prim_paths[1]).GetTypeName())
