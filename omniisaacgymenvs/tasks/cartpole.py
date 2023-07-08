@@ -315,12 +315,21 @@ class CartpoleTask(RLTask):
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
+            hits_len = np.count_nonzero(ray_hit)
+            
             for i in range(len(ray_t)):
                 if ray_hit.numpy()[i]:
                     # ray hit point (w, u, v)
                     display_hit_pos = ray_dir.numpy()[i] * ray_t.numpy()[i] + sensor_ray_pos_tuple
                     ray_hit_points_list.append(display_hit_pos)
-                    hits_len += 1
+
+            # print(ray_dir.numpy())
+            # print(ray_t.numpy())            
+            # sensor_ray_pos_arr = [sensor_ray_pos_tuple for _ in range(len(ray_dir))]
+            # ray_hit_pos_arr = np.sum(np.multiply(ray_dir.numpy(), ray_t.numpy()), sensor_ray_pos_arr)
+            # ray_hit_points_list = np.where(ray_hit, ray_hit_pos_arr, np.zeros(hits_len))
+            # ray_hit_points_list = np.nonzero(ray_hit_points_list)
+           
 
             sensor_ray_pos_list = [
                 sensor_ray_pos_tuple for _ in range(hits_len)
