@@ -308,9 +308,6 @@ class CartpoleTask(RLTask):
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
             ray_t, ray_dir, ray_hit = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
-            
-            hits_len = 0
-            ray_hit_points_list = []
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
@@ -318,15 +315,21 @@ class CartpoleTask(RLTask):
             hits_len = np.count_nonzero(ray_hit)
 
             ray_dir = np.array(ray_dir)
-            line_vec = np.multiply(np.transpose(ray_dir), ray_t.numpy())
-            
+            line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t.numpy()))
+
+            print("ray_hit", ray_hit.numpy())
+            print("ray_t", ray_t.numpy())
+            print("ray_dir", ray_dir)
+            # print(ray_dir[0] * ray_t.numpy()[0])
             print(np.array(sensor_ray_pos_tuple))
-            print(line_vec.shape) # (3, 64)
-            print(np.array(sensor_ray_pos_tuple).shape) # (3,)
-            ray_hit_pos_arr = np.sum(np.transpose(line_vec), np.array(sensor_ray_pos_tuple))
-            # ray_hit_points_list = np.where(ray_hit, ray_hit_pos_arr, np.zeros(hits_len))
-            # ray_hit_points_list = np.nonzero(ray_hit_points_list)
-           
+            print("line_vec original",line_vec)
+
+            # Get rid of ray misses (0 values)
+            line_vec = line_vec[np.any(line_vec, axis=1)]
+            print("line_vec nonzero", line_vec)
+
+            ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+            print("ray_hit_points_list", ray_hit_points_list)
 
             sensor_ray_pos_list = [
                 sensor_ray_pos_tuple for _ in range(hits_len)
