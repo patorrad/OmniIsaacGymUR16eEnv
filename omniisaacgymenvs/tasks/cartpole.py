@@ -313,13 +313,19 @@ class CartpoleTask(RLTask):
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
             ray_dir = np.array(ray_dir)
-            line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t.numpy()))
+            ray_t = ray_t.numpy()
+            line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
-            print("ray_t", ray_t.numpy())
+            print("ray_t", ray_t)
+            ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+            print("ray_t nonzero", ray_t)
+            
+            average_distance = np.average(ray_t_nonzero)
+            print("average distance", average_distance)
+
             print("ray_dir", ray_dir)
-            # print(ray_dir[0] * ray_t.numpy()[0])
             print(np.array(sensor_ray_pos_tuple))
-            print("line_vec original",line_vec)
+            print("line_vec original", line_vec)
 
             # Get rid of ray misses (0 values)
             line_vec = line_vec[np.any(line_vec, axis=1)]
