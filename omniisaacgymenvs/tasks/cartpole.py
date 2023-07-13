@@ -307,17 +307,14 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_t, ray_dir, ray_hit = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
+            ray_t, ray_dir = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
-            hits_len = np.count_nonzero(ray_hit)
-
             ray_dir = np.array(ray_dir)
             line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t.numpy()))
 
-            print("ray_hit", ray_hit.numpy())
             print("ray_t", ray_t.numpy())
             print("ray_dir", ray_dir)
             # print(ray_dir[0] * ray_t.numpy()[0])
@@ -330,6 +327,8 @@ class CartpoleTask(RLTask):
 
             ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
             print("ray_hit_points_list", ray_hit_points_list)
+
+            hits_len = len(ray_hit_points_list)
 
             sensor_ray_pos_list = [
                 sensor_ray_pos_tuple for _ in range(hits_len)

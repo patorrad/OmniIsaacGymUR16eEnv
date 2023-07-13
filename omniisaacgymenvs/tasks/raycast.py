@@ -32,7 +32,7 @@ wp.set_device(DEVICE)
 
 @wp.kernel
 def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
-         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), hit: wp.array(dtype=wp.int32)):
+         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3)):
     # Warp quaternion is x, y, z, w
     # q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
     q2 = wp.quat(0., 1., 0., 0.)
@@ -63,11 +63,10 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
 
     color = wp.vec3(0.0, 0.0, 0.0)
 
-    if wp.mesh_query_ray(mesh, ro, rd, 1.0e6, t, u, v, sign, n, f):
+    if wp.mesh_query_ray(mesh, ro, rd, 1.2, t, u, v, sign, n, f):
         # if distance between [u,v] and ro is less than radius
         if wp.abs(wp.sqrt(u * u + v * v)) < radius:
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
-            hit[tid] = 1
     
     pixels[tid] = color
     t_out[tid] = t
@@ -106,8 +105,6 @@ class Raycast:
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
-        self.hit = wp.zeros(self.width * self.height, dtype=wp.int32)
-
 
     def update(self):
         pass
@@ -122,7 +119,7 @@ class Raycast:
             wp.launch(
                 kernel=draw,
                 dim=self.width * self.height,
-                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, self.hit]
+                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir]
             )
 
             wp.synchronize_device()
@@ -144,7 +141,7 @@ class Raycast:
         self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         print("raytracer", self.ray_hit)
-        return self.ray_hit, self.ray_dir, self.hit
+        return self.ray_hit, self.ray_dir
 
     def save(self):
         for i in self.result.shape[0]:
