@@ -249,7 +249,8 @@ class CartpoleTask(RLTask):
         # self._cartpoles.set_joint_efforts(forces, indices=indices)
         
         # PT
-        if self._step > 100:
+        # 0.599
+        if self._step % 2 == 0:
             self.debug_draw.clear_lines()
             self.debug_draw.clear_points()
             indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
@@ -316,23 +317,23 @@ class CartpoleTask(RLTask):
             ray_t = ray_t.numpy()
             line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
-            print("ray_t", ray_t)
+            # print("ray_t", ray_t)
             ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-            print("ray_t nonzero", ray_t)
+            # print("ray_t nonzero", ray_t)
             
             average_distance = np.average(ray_t_nonzero)
             print("average distance", average_distance)
 
-            print("ray_dir", ray_dir)
+            # print("ray_dir", ray_dir)
             print(np.array(sensor_ray_pos_tuple))
-            print("line_vec original", line_vec)
+            # print("line_vec original", line_vec)
 
             # Get rid of ray misses (0 values)
             line_vec = line_vec[np.any(line_vec, axis=1)]
-            print("line_vec nonzero", line_vec)
+            # print("line_vec nonzero", line_vec)
 
             ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
-            print("ray_hit_points_list", ray_hit_points_list)
+            # print("ray_hit_points_list", ray_hit_points_list)
 
             hits_len = len(ray_hit_points_list)
 
