@@ -319,8 +319,13 @@ class CartpoleTask(RLTask):
 
             # print("ray_t", ray_t)
             ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-            # print("ray_t nonzero", ray_t)
+            print("ray_t nonzero", ray_t)
             
+            ray_histogram, histogram_edges = np.histogram(ray_t_nonzero)
+            print("histogram", ray_histogram)
+            print("bin edges", histogram_edges)
+
+
             average_distance = np.average(ray_t_nonzero)
             print("average distance", average_distance)
 
