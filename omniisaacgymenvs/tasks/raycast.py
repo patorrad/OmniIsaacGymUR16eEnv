@@ -42,7 +42,7 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     y = tid // height
     z = tid % width
 
-    EMITTER_DIAMETER = wp.tan(17.5 * pi / 180.) * 2.
+    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 2.
 
     sy = EMITTER_DIAMETER / (float(height) - 1.) * float(y) - float(EMITTER_DIAMETER) / 2.
     sz = EMITTER_DIAMETER / (float(width) - 1.) * float(z) - float(EMITTER_DIAMETER) / 2.
@@ -110,19 +110,20 @@ class Raycast:
         pass
 
     def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
-        print('cam_pose', cam_pos)
-        print('quaternion', cam_dir)
+        # print('cam_pose', cam_pos)
+        # print('quaternion', cam_dir)
         # cam_dir = get_forward_direction_vector(cam_dir)
         # print('cam_dir', cam_dir)
         radius = 1
-        with wp.ScopedTimer("render"):
-            wp.launch(
-                kernel=draw,
-                dim=self.width * self.height,
-                inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir]
-            )
+        # with wp.ScopedTimer("render"):
+        wp.launch(
+            kernel=draw,
+            dim=self.width * self.height,
+            inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir]
+        )
 
-            wp.synchronize_device()
+
+        wp.synchronize_device()
         
         plt.imshow(
             self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
@@ -140,7 +141,7 @@ class Raycast:
         
         self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
-        print("raytracer", self.ray_hit)
+        # print("raytracer", self.ray_hit)
         return self.ray_hit, self.ray_dir
 
     def save(self):

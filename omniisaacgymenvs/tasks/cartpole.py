@@ -319,18 +319,18 @@ class CartpoleTask(RLTask):
 
             # print("ray_t", ray_t)
             ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-            print("ray_t nonzero", ray_t)
-            
-            ray_histogram, histogram_edges = np.histogram(ray_t_nonzero)
-            print("histogram", ray_histogram)
-            print("bin edges", histogram_edges)
-
+            # print("ray_t nonzero", ray_t)
 
             average_distance = np.average(ray_t_nonzero)
-            print("average distance", average_distance)
+            variance = max(average_distance * 100 * 0.4795 - 3.2018, 0)
+            # print(variance)
+            print("standard t", np.random.default_rng().standard_t(5)) # try to get t-distribution instead of normal and see if it works better
+            noise_distance = np.random.normal(average_distance * 1000, variance)
+            # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
+            print("distance with noise", noise_distance) # apply noise to average distance
 
             # print("ray_dir", ray_dir)
-            print(np.array(sensor_ray_pos_tuple))
+            # print(np.array(sensor_ray_pos_tuple))
             # print("line_vec original", line_vec)
 
             # Get rid of ray misses (0 values)
