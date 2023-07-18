@@ -322,10 +322,8 @@ class CartpoleTask(RLTask):
             # print("ray_t nonzero", ray_t)
 
             average_distance = np.average(ray_t_nonzero)
-            variance = max(average_distance * 100 * 0.4795 - 3.2018, 0)
-            # print(variance)
-            print("standard t", np.random.default_rng().standard_t(5)) # try to get t-distribution instead of normal and see if it works better
-            noise_distance = np.random.normal(average_distance * 1000, variance)
+            standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
+            noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
             # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
             print("distance with noise", noise_distance) # apply noise to average distance
 
