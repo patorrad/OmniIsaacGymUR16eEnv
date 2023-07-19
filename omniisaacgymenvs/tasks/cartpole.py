@@ -32,6 +32,7 @@ from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 from omniisaacgymenvs.robots.articulations.ur10 import UR10
 from omni.isaac.core.objects import DynamicSphere
 from omni.isaac.core.objects import DynamicCuboid
+from omni.isaac.core.objects import DynamicCylinder
 from omniisaacgymenvs.robots.controller.ocs2 import Controller_ocs2
 from omniisaacgymenvs.robots.controller.osc import Controller_osc
 
@@ -79,7 +80,8 @@ class CartpoleTask(RLTask):
         self._ur10_rotations = torch.tensor([0.0, 0.0, 1.0, 0.0])
         self._ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device = self._device) 
         self._ur10_dof_targets = self._ur10_dof_target.repeat(self._num_envs, 1) 
-        self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
+        # self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
+        self._target_object_positions = torch.tensor([-0.6, 0.0, 0.9])
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
@@ -167,10 +169,16 @@ class CartpoleTask(RLTask):
         target.set_collision_enabled(False)
 
     def get_target_object(self):
-        target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
+        # target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
+        #                        name="target_object",
+        #                        position=self._target_object_positions,
+        #                        size=.2,
+        #                        color=torch.tensor([0, 0, 1]))
+        target_object = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object",
                                name="target_object",
                                position=self._target_object_positions,
-                               size=.2,
+                               radius=.1,
+                               height=.5,
                                color=torch.tensor([0, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
@@ -399,8 +407,8 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[1])))
-        # get_prim_at_path() call returns a Cube type
+        trimesh = geom_to_trimesh(UsdGeom.Cylinder(get_prim_at_path(self._target_objects.prim_paths[1])))
+        
         print(get_prim_at_path(self._target_objects.prim_paths[1]).GetTypeName())
         warp_mesh = warp_from_trimesh(trimesh, self._device)
         self.raytracer.set_geom(warp_mesh)
