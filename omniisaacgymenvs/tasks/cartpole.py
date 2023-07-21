@@ -316,7 +316,7 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_t, ray_dir = self.raytracer.render(cam_pos, self.hand_rot.cpu()[1])
+            ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
@@ -352,20 +352,26 @@ class CartpoleTask(RLTask):
                 sensor_ray_pos_tuple for _ in range(hits_len)
             ]
 
-            # point_list_2 = [
-                
-            #     #(ray_hit_t.numpy().max(), ray_hit_u.numpy().max(), ray_hit_v.numpy().max())
-            #     #self.hand_pos.cpu()[1]
-            # ]
-
             ray_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
+
             ray_sizes = [2 for _ in range(hits_len)]
             point_sizes = [7 for _ in range(hits_len)]
             start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
             end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
             self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+
             self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
             self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
+
+
+            # To view distinguished cone edge rays: uncomment these lines, and in raycast.py, change t in the bottom if branch to 1. instead of 0.
+            # outside_rays = ray_hit_points_list[np.where(ray_t_nonzero == 1.)]
+            # outside_ray_colors = [(0, 1, 0, 1) for _ in range(len(outside_rays))]
+            # sensor_ray_pos_list_outside_only = [
+            #     sensor_ray_pos_tuple for _ in range(len(outside_rays))
+            # ]
+            # self.debug_draw.draw_lines(sensor_ray_pos_list_outside_only, outside_rays, outside_ray_colors, [2 for _ in range(len(outside_rays))])
+
             
             # self.debug_draw.draw_lines([(0, 0, 0)], [(3000, 3000, 3000)], [(1, 0, 0, 1)], [20]) # uncomment for sanity check line
             

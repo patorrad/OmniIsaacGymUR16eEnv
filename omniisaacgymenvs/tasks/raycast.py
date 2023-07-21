@@ -31,8 +31,8 @@ wp.init()
 wp.set_device(DEVICE)
 
 @wp.kernel
-def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
-         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3)):
+def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
+         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), rng_seed: wp.int32):
     # Warp quaternion is x, y, z, w
     # q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
     q2 = wp.quat(0., 1., 0., 0.)
@@ -42,7 +42,11 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
     y = tid // height
     z = tid % width
 
+    # For 25 degree cone
     EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 2.
+
+    # For inner edge of noise cone
+    NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
 
     sy = EMITTER_DIAMETER / (float(height) - 1.) * float(y) - float(EMITTER_DIAMETER) / 2.
     sz = EMITTER_DIAMETER / (float(width) - 1.) * float(z) - float(EMITTER_DIAMETER) / 2.
@@ -63,10 +67,17 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
 
     color = wp.vec3(0.0, 0.0, 0.0)
 
-    if wp.mesh_query_ray(mesh, ro, rd, 1.2, t, u, v, sign, n, f):
-        # if distance between [u,v] and ro is less than radius
-        if wp.abs(wp.sqrt(u * u + v * v)) < radius:
+    if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
+        if wp.mesh_query_ray(mesh, ro, rd, 1.2, t, u, v, sign, n, f):
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+            # if distance between [u,v] and ro is in the noise part of the cone
+            if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
+                # use random function to determine whether we should give the reading t or 0
+                # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
+                rng_state = wp.rand_init(rng_seed, tid)
+                if wp.randf(rng_state) <= 9./34.:
+                    t = float(0.)
+                    # t = float(1.)
     
     pixels[tid] = color
     t_out[tid] = t
@@ -75,8 +86,8 @@ def draw(mesh: wp.uint64, radius: wp.float32, cam_pos: wp.vec3, cam_dir: wp.vec4
 
 class Raycast:
     def __init__(self):
-        self.width = 8 #1024
-        self.height = 8 #1024
+        self.width = 16 #1024
+        self.height = 16 #1024
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
@@ -109,17 +120,16 @@ class Raycast:
     def update(self):
         pass
 
-    def render(self, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
+    def render(self, rng_seed = 42, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
         # print('cam_pose', cam_pos)
         # print('quaternion', cam_dir)
         # cam_dir = get_forward_direction_vector(cam_dir)
         # print('cam_dir', cam_dir)
-        radius = 1
         # with wp.ScopedTimer("render"):
         wp.launch(
             kernel=draw,
             dim=self.width * self.height,
-            inputs=[self.mesh.id, radius, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir]
+            inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, rng_seed]
         )
 
 
@@ -129,17 +139,17 @@ class Raycast:
             self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
         )
         # plt.colorbar(label="Distance", orientation="horizontal")
-        plt.show()
-        if self.step % 100 == 0:
-            plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
-            bbox_inches ="tight",
-            pad_inches = 1,
-            transparent = True,
-            facecolor ="g",
-            edgecolor ='w',
-            orientation ='landscape')
+        # plt.show()
+        # if self.step % 100 == 0:
+        #     plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
+        #     bbox_inches ="tight",
+        #     pad_inches = 1,
+        #     transparent = True,
+        #     facecolor ="g",
+        #     edgecolor ='w',
+        #     orientation ='landscape')
         
-        self.step += 1
+        # self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
         return self.ray_hit, self.ray_dir
