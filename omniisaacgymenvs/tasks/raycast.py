@@ -32,10 +32,10 @@ wp.set_device(DEVICE)
 
 @wp.kernel
 def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
-         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), rng_seed: wp.int32):
+         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), rng_seed: wp.int32, normal: wp.array(dtype=wp.vec3)):
     # Warp quaternion is x, y, z, w
-    # q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    q2 = wp.quat(0., 1., 0., 0.)
+    q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
+    # q2 = wp.quat(0., 1., 0., 0.)
     tid = wp.tid()
 
     pi = 3.14159265359
@@ -81,6 +81,7 @@ def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height
     
     pixels[tid] = color
     t_out[tid] = t
+    normal[tid] = n
     ray_dir[tid] = rd
 
 
@@ -116,6 +117,7 @@ class Raycast:
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.normal = wp.zeros(self.width * self.height, dtype=wp.vec3)
 
     def update(self):
         pass
@@ -129,7 +131,7 @@ class Raycast:
         wp.launch(
             kernel=draw,
             dim=self.width * self.height,
-            inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, rng_seed]
+            inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, rng_seed, self.normal]
         )
 
 
@@ -152,7 +154,7 @@ class Raycast:
         # self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
-        return self.ray_hit, self.ray_dir
+        return self.ray_hit, self.ray_dir, self.normal
 
     def save(self):
         for i in self.result.shape[0]:

@@ -316,10 +316,15 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])
+            ray_t, ray_dir, normal = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])
+         
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
+
+            normal = np.array(normal)
+            normal = normal[np.nonzero(ray_t)] + np.array(sensor_ray_pos_tuple)
+            print(normal)
 
             ray_dir = np.array(ray_dir)
             ray_t = ray_t.numpy()
@@ -353,12 +358,15 @@ class CartpoleTask(RLTask):
             ]
 
             ray_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
+            normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
 
             ray_sizes = [2 for _ in range(hits_len)]
             point_sizes = [7 for _ in range(hits_len)]
             start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
             end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
             self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+
+            self.debug_draw.draw_lines(normal, ray_hit_points_list, normal_ray_colors, ray_sizes)
 
             self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
             self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
