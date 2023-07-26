@@ -169,17 +169,17 @@ class CartpoleTask(RLTask):
         target.set_collision_enabled(False)
 
     def get_target_object(self):
-        # target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
-        #                        name="target_object",
-        #                        position=self._target_object_positions,
-        #                        size=.2,
-        #                        color=torch.tensor([0, 0, 1]))
-        target_object = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object",
+        target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
                                name="target_object",
                                position=self._target_object_positions,
-                               radius=.1,
-                               height=.5,
+                               size=.2,
                                color=torch.tensor([0, 0, 1]))
+        # target_object = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object",
+        #                        name="target_object",
+        #                        position=self._target_object_positions,
+        #                        radius=.1,
+        #                        height=.5,
+        #                        color=torch.tensor([0, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
 
     def get_observations(self) -> dict:
@@ -316,15 +316,10 @@ class CartpoleTask(RLTask):
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
             # cam_pos = self.hand_pos.cpu()[1]
-            ray_t, ray_dir, normal = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])
-         
+            ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
 
             sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
-
-            normal = np.array(normal)
-            normal = normal[np.nonzero(ray_t)] + np.array(sensor_ray_pos_tuple)
-            print(normal)
 
             ray_dir = np.array(ray_dir)
             ray_t = ray_t.numpy()
@@ -333,7 +328,6 @@ class CartpoleTask(RLTask):
             # print("ray_t", ray_t)
             ray_t_nonzero = ray_t[np.nonzero(ray_t)]
             # print("ray_t nonzero", ray_t)
-
             average_distance = np.average(ray_t_nonzero)
             standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
             noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
@@ -365,8 +359,6 @@ class CartpoleTask(RLTask):
             start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
             end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
             self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
-
-            self.debug_draw.draw_lines(normal, ray_hit_points_list, normal_ray_colors, ray_sizes)
 
             self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
             self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
@@ -421,7 +413,7 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh = geom_to_trimesh(UsdGeom.Cylinder(get_prim_at_path(self._target_objects.prim_paths[1])))
+        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[1])))
         
         print(get_prim_at_path(self._target_objects.prim_paths[1]).GetTypeName())
         warp_mesh = warp_from_trimesh(trimesh, self._device)
