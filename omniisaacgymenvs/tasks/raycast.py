@@ -75,8 +75,8 @@ def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height
             ray_dot_product = wp.dot(rd, n)
             if ray_dot_product < -0.996 or ray_dot_product > -0.866:
                 t = 0.
-            else:
-                print(ray_dot_product)
+            # else:
+            #     print(ray_dot_product)
             # if distance between [u,v] and ro is in the noise part of the cone
             if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
                 # use random function to determine whether we should give the reading t or 0

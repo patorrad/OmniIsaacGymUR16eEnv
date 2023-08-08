@@ -44,6 +44,7 @@ from omni.isaac.core.utils.rotations import quat_to_euler_angles
 import numpy as np
 import torch
 import math
+import trimesh
 
 # from omni.isaac.universal_robots import UR10
 from omni.isaac.core.utils.prims import create_prim
@@ -81,7 +82,7 @@ class CartpoleTask(RLTask):
         self._ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device = self._device) 
         self._ur10_dof_targets = self._ur10_dof_target.repeat(self._num_envs, 1) 
         # self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
-        self._target_object_positions = torch.tensor([-0.6, 0.0, 0.9])
+        self._target_object_positions = [torch.tensor([-0.6, 0.0, 0.9]), torch.tensor([-0.6, -0.25, 0.9])]
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
@@ -118,8 +119,10 @@ class CartpoleTask(RLTask):
         scene.add(self._targets)
 
         # target object
-        self._target_objects = RigidPrimView(prim_paths_expr="/World/envs/.*/target_object", name="target__object_view", reset_xform_properties=False)
-        scene.add(self._target_objects)
+        self._target_objects = [RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_1", name="target__object_view_1", reset_xform_properties=False),
+                                    RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_2", name="target__object_view_2", reset_xform_properties=False)]
+        scene.add(self._target_objects[0])
+        scene.add(self._target_objects[1])
 
         
         # Raytracing
@@ -169,18 +172,25 @@ class CartpoleTask(RLTask):
         target.set_collision_enabled(False)
 
     def get_target_object(self):
-        target_object = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object",
-                               name="target_object",
-                               position=self._target_object_positions,
+        target_object_1 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_1",
+                               name="target_object_1",
+                               position=self._target_object_positions[0],
                                size=.2,
                                color=torch.tensor([0, 0, 1]))
+        
+        target_object_2 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_2",
+                               name="target_object_2",
+                               position=self._target_object_positions[1],
+                               size=.2,
+                               color=torch.tensor([1, 0, 1]))
         # target_object = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object",
         #                        name="target_object",
         #                        position=self._target_object_positions,
         #                        radius=.1,
         #                        height=.5,
         #                        color=torch.tensor([0, 0, 1]))
-        self._sim_config.apply_articulation_settings("target_object", get_prim_at_path(target_object.prim_path), self._sim_config.parse_actor_config("target_object"))
+        self._sim_config.apply_articulation_settings("target_object_1", get_prim_at_path(target_object_1.prim_path), self._sim_config.parse_actor_config("target_object_1"))
+        self._sim_config.apply_articulation_settings("target_object_2", get_prim_at_path(target_object_2.prim_path), self._sim_config.parse_actor_config("target_object_2"))
 
     def get_observations(self) -> dict:
         # dof_pos = self._cartpoles.get_joint_positions(clone=False)
@@ -298,7 +308,7 @@ class CartpoleTask(RLTask):
         
 
             # Raytracer
-            target_object_pose, target_object_rot = self._target_objects.get_world_poses(clone=False)
+            target_object_pose, target_object_rot = self._target_objects[0].get_world_poses(clone=False)
             # get_relative_transform(self._target_objects)
             ## Normalize quaternion into vector
             # Step 1: Normalize the quaternion
@@ -413,10 +423,11 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[1])))
-        
-        print(get_prim_at_path(self._target_objects.prim_paths[1]).GetTypeName())
-        warp_mesh = warp_from_trimesh(trimesh, self._device)
+        trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])))
+        trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])))
+        trimeshes = trimesh.util.concatenate(trimesh_1, trimesh_2)
+        print(trimeshes)
+        warp_mesh = warp_from_trimesh(trimeshes, self._device)
         self.raytracer.set_geom(warp_mesh)
         # PT
 
