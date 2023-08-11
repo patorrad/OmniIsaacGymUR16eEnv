@@ -124,7 +124,6 @@ class CartpoleTask(RLTask):
         scene.add(self._target_objects[0])
         scene.add(self._target_objects[1])
 
-        
         # Raytracing
         self.raytracer = Raycast()
 
@@ -324,54 +323,62 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            cam_pos = self.hand_pos.cpu()[1] - target_object_pose.cpu()[1]
-            # cam_pos = self.hand_pos.cpu()[1]
-            ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
 
-            sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
-            sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
+            for i in range(2):
+                hand_pos = self.hand_pos.cpu()[1]
+                if i:
+                    hand_pos[1] += 0.06
+                else:
+                    hand_pos[1] -= 0.03
 
-            ray_dir = np.array(ray_dir)
-            ray_t = ray_t.numpy()
-            line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
+                cam_pos = hand_pos - target_object_pose.cpu()[1]
+            
+                ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
 
-            # print("ray_t", ray_t)
-            ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-            # print("ray_t nonzero", ray_t)
-            average_distance = np.average(ray_t_nonzero)
-            standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
-            noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
-            # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
-            print("distance with noise", noise_distance) # apply noise to average distance
+                sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
+                sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
-            # print("ray_dir", ray_dir)
-            # print(np.array(sensor_ray_pos_tuple))
-            # print("line_vec original", line_vec)
+                ray_dir = np.array(ray_dir)
+                ray_t = ray_t.numpy()
+                line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
-            # Get rid of ray misses (0 values)
-            line_vec = line_vec[np.any(line_vec, axis=1)]
-            # print("line_vec nonzero", line_vec)
+                # print("ray_t", ray_t)
+                ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+                # print("ray_t nonzero", ray_t)
+                average_distance = np.average(ray_t_nonzero)
+                standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
+                noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
+                # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
+                print("distance with noise sensor ", i + 1, ":", noise_distance) # apply noise to average distance
 
-            ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
-            # print("ray_hit_points_list", ray_hit_points_list)
+                # print("ray_dir", ray_dir)
+                # print(np.array(sensor_ray_pos_tuple))
+                # print("line_vec original", line_vec)
 
-            hits_len = len(ray_hit_points_list)
+                # Get rid of ray misses (0 values)
+                line_vec = line_vec[np.any(line_vec, axis=1)]
+                # print("line_vec nonzero", line_vec)
 
-            sensor_ray_pos_list = [
-                sensor_ray_pos_tuple for _ in range(hits_len)
-            ]
+                ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+                # print("ray_hit_points_list", ray_hit_points_list)
 
-            ray_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
-            normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
+                hits_len = len(ray_hit_points_list)
 
-            ray_sizes = [2 for _ in range(hits_len)]
-            point_sizes = [7 for _ in range(hits_len)]
-            start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
-            end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
-            self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+                sensor_ray_pos_list = [
+                    sensor_ray_pos_tuple for _ in range(hits_len)
+                ]
 
-            self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
-            self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
+                ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+                normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
+
+                ray_sizes = [2 for _ in range(hits_len)]
+                point_sizes = [7 for _ in range(hits_len)]
+                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
+                end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
+                self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+
+                self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
+                self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
 
 
             # To view distinguished cone edge rays: uncomment these lines, and in raycast.py, change t in the bottom if branch to 1. instead of 0.
@@ -425,10 +432,13 @@ class CartpoleTask(RLTask):
         # TODO Move this to raytracer?
         trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])))
         trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])))
-        trimeshes = trimesh.util.concatenate(trimesh_1, trimesh_2)
+        trimeshes = trimesh.util.concatenate(trimesh_2, trimesh_1)
         print(trimeshes)
         warp_mesh = warp_from_trimesh(trimeshes, self._device)
         self.raytracer.set_geom(warp_mesh)
+
+        # scene = trimesh.Scene([trimeshes])
+        # scene.show()
         # PT
 
     def post_reset(self):
