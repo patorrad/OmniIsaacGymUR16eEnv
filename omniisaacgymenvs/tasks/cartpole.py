@@ -323,8 +323,10 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-
+            
+            # For 2 sensors
             for i in range(2):
+                # Make the sensors in different positions
                 hand_pos = self.hand_pos.cpu()[1]
                 if i:
                     hand_pos[1] += 0.06
@@ -368,6 +370,7 @@ class CartpoleTask(RLTask):
                     sensor_ray_pos_tuple for _ in range(hits_len)
                 ]
 
+                # Sensor 1: red, sensor 2: yellow 
                 ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
                 normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
 
