@@ -377,7 +377,7 @@ class CartpoleTask(RLTask):
                 ray_sizes = [2 for _ in range(hits_len)]
                 point_sizes = [7 for _ in range(hits_len)]
                 start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
-                end_point_colors = [(1, 0, 1, 1) for _ in range(hits_len)] # end (ray hit) points: purple
+                end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)] # end (ray hit) points: sensor 1 purple, sensor 2 white
                 self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
 
                 self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
