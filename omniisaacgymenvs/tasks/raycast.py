@@ -31,8 +31,8 @@ wp.init()
 wp.set_device(DEVICE)
 
 @wp.kernel
-def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
-         t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), rng_seed: wp.int32):
+def draw(mesh_ids: wp.array(dtype=wp.uint64), num_meshes: wp.int32, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
+         t_out: wp.array(dtype=wp.array(dtype=wp.float32)), ray_dir: wp.array(dtype=wp.array(dtype=wp.vec3)), rng_seed: wp.int32):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
     # q2 = wp.quat(0., 1., 0., 0.)
@@ -68,27 +68,29 @@ def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height
     color = wp.vec3(0.0, 0.0, 0.0)
 
     if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
-        if wp.mesh_query_ray(mesh, ro, rd, 1.2, t, u, v, sign, n, f):
-            color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
-            
-            # ignore this ray if it wouldn't reflect back to the receiver
-            ray_dot_product = wp.dot(rd, n)
-            if ray_dot_product < -0.996 or ray_dot_product > -0.866:
-                t = 0.
-            # else:
-            #     print(ray_dot_product)
-            # if distance between [u,v] and ro is in the noise part of the cone
-            if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
-                # use random function to determine whether we should give the reading t or 0
-                # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
-                rng_state = wp.rand_init(rng_seed, tid)
-                if wp.randf(rng_state) <= 9./34.:
-                    t = float(0.)
-                    # t = float(1.)
+        for i in range(num_meshes):
+            if wp.mesh_query_ray(mesh_ids[i], ro, rd, 1.2, t, u, v, sign, n, f):
+                # color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+                
+                # ignore this ray if it wouldn't reflect back to the receiver
+                ray_dot_product = wp.dot(rd, n)
+                if ray_dot_product < -0.996 or ray_dot_product > -0.866:
+                    t = 0.
+                # else:
+                #     print(ray_dot_product)
+                # if distance between [u,v] and ro is in the noise part of the cone
+                if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
+                    # use random function to determine whether we should give the reading t or 0
+                    # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
+                    rng_state = wp.rand_init(rng_seed, tid)
+                    if wp.randf(rng_state) <= 9./34.:
+                        t = float(0.)
+                        # t = float(1.)
     
-    pixels[tid] = color
-    t_out[tid] = t
-    ray_dir[tid] = rd
+            # pixels[tid] = color
+            # second dimension is the mesh number
+            t_out[tid][i] = t
+            ray_dir[tid][i] = rd
 
 
 class Raycast:
@@ -100,7 +102,7 @@ class Raycast:
         self.step = 0
         self.result = np.zeros((self.height, self.width, 3))
 
-    def set_geom(self, mesh):
+    def set_geom(self, meshes, num_meshes):
         # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
         # # cube_geom = asset_stage.GetPrimAtPath("/World/Cube")
         
@@ -120,7 +122,10 @@ class Raycast:
         #     points=wp.array(points, dtype=wp.vec3), velocities=None, indices=wp.array(indices_test, dtype=int)
         # )
 
-        self.mesh = mesh
+        self.mesh = meshes
+        self.mesh_ids = wp.array([mesh.id for mesh in meshes])
+        self.num_meshes = num_meshes
+        # TODO: how to initialize these as 2d arrays
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
 
@@ -136,7 +141,7 @@ class Raycast:
         wp.launch(
             kernel=draw,
             dim=self.width * self.height,
-            inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, rng_seed]
+            inputs=[self.mesh_ids, self.num_meshes, cam_pos, cam_dir, self.width, self.height, self.pixels, self.ray_hit, self.ray_dir, rng_seed]
         )
 
 
@@ -159,6 +164,9 @@ class Raycast:
         # self.step += 1
         # print("raytracer", self.ray_hit.numpy().shape)
         # print("raytracer", self.ray_hit)
+        # self.mesh.visual.face_colors = [255, 100, 100, 255]
+        # create a visualization scene with rays, hits, and mesh
+        
         return self.ray_hit, self.ray_dir
 
     def save(self):
@@ -226,6 +234,7 @@ def get_trimesh_for_cube(cube: UsdGeom.Cube):
     size = cube.GetSizeAttr().Get()
     baked_trimesh = trimesh.creation.box(extents=(size, size, size))
     baked_trimesh.apply_transform(transform)
+    print(transform)
     return baked_trimesh
 
 

@@ -323,7 +323,7 @@ class CartpoleTask(RLTask):
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            
+            # print(self.hand_pos.cpu())
             # For 2 sensors
             for i in range(2):
                 # Make the sensors in different positions
@@ -341,11 +341,14 @@ class CartpoleTask(RLTask):
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
                 ray_dir = np.array(ray_dir)
+                print("test 1")
                 ray_t = ray_t.numpy()
+                print("test 2")
                 line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
                 # print("ray_t", ray_t)
                 ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+                print(ray_t_nonzero)
                 # print("ray_t nonzero", ray_t)
                 average_distance = np.average(ray_t_nonzero)
                 standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
@@ -435,10 +438,11 @@ class CartpoleTask(RLTask):
         # TODO Move this to raytracer?
         trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])))
         trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])))
-        trimeshes = trimesh.util.concatenate(trimesh_2, trimesh_1)
-        print(trimeshes)
-        warp_mesh = warp_from_trimesh(trimeshes, self._device)
-        self.raytracer.set_geom(warp_mesh)
+        # trimeshes = trimesh.util.concatenate(trimesh_2, trimesh_1)
+        # print(trimeshes)
+        warp_mesh_1 = warp_from_trimesh(trimesh_1, self._device)
+        warp_mesh_2 = warp_from_trimesh(trimesh_2, self._device)
+        self.raytracer.set_geom([warp_mesh_1, warp_mesh_2], 2)
 
         # scene = trimesh.Scene([trimeshes])
         # scene.show()
