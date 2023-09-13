@@ -221,8 +221,11 @@ def geom_to_trimesh(geom):
 def get_trimesh_for_cube(cube: UsdGeom.Cube):
     transform = cube.GetLocalTransformation()
     translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
-    transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
-    #transform = UsdSkel.MakeTransform(translate, Gf.Quatf(1, 0, 0, 0), scale)
+    # maybe we need to incorporate translate into the transform matrix
+    # transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
+    # transform = trimesh.transformations.rotation_matrix(3.14/2, [1, 0, 0], translate)
+    transform = trimesh.transformations.translation_matrix(translate)
+    # transform = UsdSkel.MakeTransform(translate, Gf.Quatf(1, 0, 0, 0), scale)
     size = cube.GetSizeAttr().Get()
     baked_trimesh = trimesh.creation.box(extents=(size, size, size))
     baked_trimesh.apply_transform(transform)
@@ -232,7 +235,8 @@ def get_trimesh_for_cube(cube: UsdGeom.Cube):
 def get_trimesh_for_cylinder(cylinder: UsdGeom.Cylinder):
     transform = cylinder.GetLocalTransformation()
     translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
-    transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
+    # transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
+    transform = trimesh.transformations.translation_matrix(translate)
     baked_trimesh = trimesh.creation.cylinder(radius=cylinder.GetRadiusAttr().Get(), height=cylinder.GetHeightAttr().Get())
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
