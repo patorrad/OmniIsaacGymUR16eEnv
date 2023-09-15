@@ -201,14 +201,15 @@ def get_support_surfaces_trimesh(mesh: trimesh.Trimesh, for_normal=None, thresho
         facet_centroids.append(weighted_centroid / total_area)
     return facets, mesh.facets_area[support_mask], np.array(facet_centroids), mesh.facets_normal[support_mask]
 
-
-def geom_to_trimesh(geom):
+# relative_pos is the position of the object that this object's position should be relative to. 
+# For example, this can be the position of the first object added to the Isaac Sim environment
+def geom_to_trimesh(geom, relative_pos):
     if isinstance(geom, UsdGeom.Mesh):
         trimesh = load_trimesh_from_usdgeom(geom)
     elif isinstance(geom, UsdGeom.Cube):
-        trimesh = get_trimesh_for_cube(geom)
+        trimesh = get_trimesh_for_cube(geom, relative_pos)
     elif isinstance(geom, UsdGeom.Cylinder):
-        trimesh = get_trimesh_for_cylinder(geom)
+        trimesh = get_trimesh_for_cylinder(geom, relative_pos)
     elif isinstance(geom, UsdGeom.Cone):
         trimesh = get_trimesh_for_cone(geom)
     elif isinstance(geom, UsdGeom.Sphere):
@@ -217,26 +218,27 @@ def geom_to_trimesh(geom):
         raise Exception("No mesh representation for obj" + str(geom))
     return trimesh
 
-
-def get_trimesh_for_cube(cube: UsdGeom.Cube):
+# relative_pos is the position of the object that this object's position should be relative to. 
+# For example, this can be the position of the first object added to the Isaac Sim environment
+def get_trimesh_for_cube(cube: UsdGeom.Cube, relative_pos):
     transform = cube.GetLocalTransformation()
     translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
     # maybe we need to incorporate translate into the transform matrix
     # transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
-    # transform = trimesh.transformations.rotation_matrix(3.14/2, [1, 0, 0], translate)
-    transform = trimesh.transformations.translation_matrix(translate)
+    transform = trimesh.transformations.translation_matrix([translate[0] - relative_pos[0], translate[1] - relative_pos[1], translate[2] - relative_pos[2]])
     # transform = UsdSkel.MakeTransform(translate, Gf.Quatf(1, 0, 0, 0), scale)
     size = cube.GetSizeAttr().Get()
     baked_trimesh = trimesh.creation.box(extents=(size, size, size))
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
 
-
-def get_trimesh_for_cylinder(cylinder: UsdGeom.Cylinder):
+# relative_pos is the position of the object that this object's position should be relative to. 
+# For example, this can be the position of the first object added to the Isaac Sim environment
+def get_trimesh_for_cylinder(cylinder: UsdGeom.Cylinder, relative_pos):
     transform = cylinder.GetLocalTransformation()
     translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
     # transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
-    transform = trimesh.transformations.translation_matrix(translate)
+    transform = trimesh.transformations.translation_matrix([translate[0] - relative_pos[0], translate[1] - relative_pos[1], translate[2] - relative_pos[2]])
     baked_trimesh = trimesh.creation.cylinder(radius=cylinder.GetRadiusAttr().Get(), height=cylinder.GetHeightAttr().Get())
     baked_trimesh.apply_transform(transform)
     return baked_trimesh

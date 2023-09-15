@@ -182,12 +182,12 @@ class CartpoleTask(RLTask):
                                position=self._target_object_positions[1],
                                size=.2,
                                color=torch.tensor([1, 0, 1]))
-        # target_object = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object",
+        # target_object_2 = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object_2",
         #                        name="target_object",
-        #                        position=self._target_object_positions,
+        #                        position=self._target_object_positions[1],
         #                        radius=.1,
         #                        height=.5,
-        #                        color=torch.tensor([0, 0, 1]))
+        #                        color=torch.tensor([1, 0, 1]))
         self._sim_config.apply_articulation_settings("target_object_1", get_prim_at_path(target_object_1.prim_path), self._sim_config.parse_actor_config("target_object_1"))
         self._sim_config.apply_articulation_settings("target_object_2", get_prim_at_path(target_object_2.prim_path), self._sim_config.parse_actor_config("target_object_2"))
 
@@ -433,15 +433,15 @@ class CartpoleTask(RLTask):
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])))
-        trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])))
+        trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])), self._target_object_positions[0])
+        trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])), self._target_object_positions[0])
         trimeshes = trimesh.util.concatenate(trimesh_2, trimesh_1)
-        print(trimeshes)
+        # print(trimeshes)
         warp_mesh = warp_from_trimesh(trimeshes, self._device)
         self.raytracer.set_geom(warp_mesh)
 
-        # scene = trimesh.Scene([trimeshes])
-        # scene.show()
+        scene = trimesh.Scene([trimeshes])
+        scene.show()
         # PT
 
     def post_reset(self):
