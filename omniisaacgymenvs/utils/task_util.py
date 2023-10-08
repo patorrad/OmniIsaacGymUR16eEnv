@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+import pdb
 
 def initialize_task(config, env, init_sim=True):
     from .config_utils.sim_config import SimConfig
@@ -45,8 +45,10 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
     from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     from omniisaacgymenvs.tasks.ur10e import UR10e
+    from omniisaacgymenvs.tasks.ToF_sensor import TofSensorTask
     
     # Mappings from strings to environments
+   
     task_map = {
         "AllegroHand": AllegroHandTask,
         "Ant": AntLocomotionTask,
@@ -63,10 +65,14 @@ def initialize_task(config, env, init_sim=True):
         "ShadowHand": ShadowHandTask,
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
-        "UR10e": UR10e
+        "UR10e": UR10e,
+        "TofSensor":TofSensorTask,
     }
+    
 
     cfg = sim_config.config
+    
+    
     task = task_map[cfg["task_name"]](
         name=cfg["task_name"], sim_config=sim_config, env=env
     )

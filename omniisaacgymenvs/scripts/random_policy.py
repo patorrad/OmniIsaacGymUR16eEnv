@@ -30,7 +30,10 @@
 import numpy as np
 import torch
 import hydra
+import pdb
 from omegaconf import DictConfig
+
+
 
 from omniisaacgymenvs.utils.hydra_cfg.hydra_utils import *
 from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_dict
@@ -38,11 +41,17 @@ from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_d
 from omniisaacgymenvs.utils.task_util import initialize_task
 from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
 
+
+
+
 @hydra.main(config_name="config", config_path="../cfg")
 def parse_hydra_configs(cfg: DictConfig):
+    
+    
 
     cfg_dict = omegaconf_to_dict(cfg)
     print_dict(cfg_dict)
+   
 
     headless = cfg.headless
     render = not headless
