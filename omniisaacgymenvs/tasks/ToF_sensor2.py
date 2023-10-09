@@ -57,11 +57,9 @@ from skrl.utils import omniverse_isaacgym_utils
 from pxr import Usd, UsdGeom
 from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
-import pdb
-
 # import warp as wp
 
-class TofSensorTask(RLTask):
+class CartpoleTask(RLTask):
     def __init__(
         self,
         name,
@@ -75,7 +73,6 @@ class TofSensorTask(RLTask):
         self._task_cfg = sim_config.task_config
 
         self._device = self._cfg["rl_device"]
-       
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
@@ -159,11 +156,8 @@ class TofSensorTask(RLTask):
         self._sim_config.apply_articulation_settings("Cartpole", get_prim_at_path(cartpole.prim_path), self._sim_config.parse_actor_config("Cartpole"))
 
     def get_ur10(self):
-       
-        # self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10", name="ur10", position=self._ur10_positions, orientation=self._ur10_rotations, attach_gripper=True)
-        # self.ur10 = UR10(prim_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16",usd_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16/ur16e.urdf",name="ur10", position=self._ur10_positions, orientation=self._ur10_rotations, attach_gripper=True)
-        # applies articulation settings from the task configuration yaml file
         self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10", name="ur10", position=self._ur10_positions, orientation=self._ur10_rotations, attach_gripper=True)
+        # applies articulation settings from the task configuration yaml file
         self.ur10.set_joint_positions(self._ur10_dof_target)
         self.ur10.set_joints_default_state(self._ur10_dof_target)
         self._sim_config.apply_articulation_settings("ur10", get_prim_at_path(self.ur10.prim_path), self._sim_config.parse_actor_config("ur10"))
@@ -507,5 +501,3 @@ class TofSensorTask(RLTask):
         # # max episode length
         # self.reset_buf = torch.where(self.progress_buf >= self._max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
         # PT
-
-

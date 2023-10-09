@@ -72,7 +72,7 @@ def parse_hydra_configs(cfg: DictConfig):
             env._task.pre_physics_step(actions)
             env._world.step(render=render)
             env.sim_frame_count += 1
-            # env._task.post_physics_step()
+            env._task.post_physics_step()
         else:
             env._world.step(render=render)
 
