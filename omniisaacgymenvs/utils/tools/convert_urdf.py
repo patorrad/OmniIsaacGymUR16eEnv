@@ -52,7 +52,7 @@ parser.add_argument(
     help="Consolidate links that are connected by fixed joints.",
 )
 parser.add_argument(
-    "--fix_base", "-f", action="store_true", default=False, help="Fix the base to where it is imported."
+    "--fix_base", "-f", action="store_true", default=True, help="Fix the base to where it is imported."
 )
 parser.add_argument(
     "--gym", "-g", action="store_true", default=False, help="Make the asset instanceable for efficient cloning."
