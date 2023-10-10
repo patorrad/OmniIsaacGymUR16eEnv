@@ -63,7 +63,8 @@ import omni.kit.commands
 from pxr import Sdf
 import omni.usd
 # import warp as wp
-
+import omni.isaac.core.utils.nucleus as nucleus_utils
+ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
 class TofSensorTask(RLTask):
     def __init__(
         self,
@@ -113,8 +114,9 @@ class TofSensorTask(RLTask):
         super().set_up_scene(scene)
        
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/ur16", name="ur16_view", reset_xform_properties=False)
-        # scene.add(self._cartpoles)
+
         scene.add(self._robots)
+      
        
         
 
@@ -127,28 +129,23 @@ class TofSensorTask(RLTask):
         scene.add(self._targets)
 
         # target object
+        # self._target_objects = [RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_1", name="target__object_view_1", reset_xform_properties=False),
+        #                             RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_2", name="target__object_view_2", reset_xform_properties=False)]
+
+        
         self._target_objects = [RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_1", name="target__object_view_1", reset_xform_properties=False),
                                     RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_2", name="target__object_view_2", reset_xform_properties=False)]
+        
         scene.add(self._target_objects[0])
         scene.add(self._target_objects[1])
 
         # Raytracing
         self.raytracer = Raycast()
 
-        # self.controller = Controller_osc(self._robots, self._device)
-
-        
-        # # retrieve file path for the Cartpole USD file
-        # assets_root_path = get_assets_root_path()
-        # usd_path = assets_root_path + "/Isaac/Robots/UR10/ur10.usd"
-        # # add the Cartpole USD to our stage
-        # self._cartpole_position = [0.0, 0.0, 2.0]
-        # create_prim(prim_path="/World/ur10", prim_type="Xform", position=self._cartpole_position)
-        # add_reference_to_stage(usd_path, "/World/ur10")
-        # super().set_up_scene(scene) # pass scene to parent class - this method in RLTask also uses GridCloner to clone the robot and adds a ground plane if desired
-        # self._my_robots = ArticulationView(prim_paths_expr="/World/ur10", name="cartpole_view") # create a view of robots
-        # scene.add(self._my_robots) # add view to scene for initialization
+    
         self.init_data()
+       
+       
 
         return
     
@@ -169,17 +166,21 @@ class TofSensorTask(RLTask):
         #     path_to=Sdf.Path(self.default_zero_env_path + "/ur16"),
         #     asset_path='/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd',
         #     usd_context=omni.usd.get_context())
-        self.ur10 = UR(prim_path=self.default_zero_env_path + "/ur16"
+        self.robot = UR(prim_path=self.default_zero_env_path + "/ur16"
                     ,usd_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd", 
                     name="robot", position=self._robot_positions, orientation=self._robot_rotations, attach_gripper=False)
        
-        self.ur10.set_joint_positions(self._robot_dof_target)
-        self.ur10.set_joints_default_state(self._robot_dof_target)
-        
-        self._sim_config.apply_articulation_settings("robot", get_prim_at_path(self.ur10.prim_path), self._sim_config.parse_actor_config("robot"))
+        self.robot.set_joint_positions(self._robot_dof_target)
+        self.robot.set_joints_default_state(self._robot_dof_target)
+       
+        self._sim_config.apply_articulation_settings("robot", get_prim_at_path(self.robot.prim_path), self._sim_config.parse_actor_config("robot"))
+       
       
+        
 
     def get_target(self):
+
+      
         target = DynamicSphere(prim_path=self.default_zero_env_path + "/target",
                                name="target",
                                radius=0.025,
@@ -188,27 +189,26 @@ class TofSensorTask(RLTask):
         target.set_collision_enabled(False)
 
     def get_target_object(self):
-        target_object_1 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_1",
-                               name="target_object_1",
-                               position=self._target_object_positions[0],
-                               size=.2,
-                               color=torch.tensor([0, 0, 1]))
+
+        import omni.isaac.core.utils.prims as prim_utils
+        ycb_usd_paths = {
+        "crackerBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned_Physics/003_cracker_box.usd",
+        "sugarBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned_Physics/004_sugar_box.usd",
+        "tomatoSoupCan": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned_Physics/005_tomato_soup_can.usd",
+        "mustardBottle": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned_Physics/006_mustard_bottle.usd",
+    }   
         
-        target_object_2 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_2",
-                               name="target_object_2",
-                               position=self._target_object_positions[1],
-                               size=.2,
-                               color=torch.tensor([1, 0, 1]))
-        # target_object_2 = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object_2",
-        #                        name="target_object",
-        #                        position=self._target_object_positions[1],
-        #                        radius=.1,
-        #                        height=.5,
-        #                        color=torch.tensor([1, 0, 1]))
-        self._sim_config.apply_articulation_settings("target_object_1", get_prim_at_path(target_object_1.prim_path), self._sim_config.parse_actor_config("target_object_1"))
-        self._sim_config.apply_articulation_settings("target_object_2", get_prim_at_path(target_object_2.prim_path), self._sim_config.parse_actor_config("target_object_2"))
+        target_object_name = np.random.choice(["crackerBox","sugarBox","tomatoSoupCan","mustardBottle"])
+        translation = torch.rand(3).tolist()
+        target_object1 = prim_utils.create_prim(self.default_zero_env_path + "/target_object_1", usd_path=ycb_usd_paths[target_object_name], translation=translation)
+
+        target_object_name = np.random.choice(["crackerBox","sugarBox","tomatoSoupCan","mustardBottle"])
+        translation = torch.rand(3).tolist()
+        target_object2 = prim_utils.create_prim(self.default_zero_env_path + "/target_object_2", usd_path=ycb_usd_paths[target_object_name], translation=translation)
+        
 
     def get_observations(self) -> dict:
+       
         # dof_pos = self._cartpoles.get_joint_positions(clone=False)
         # dof_vel = self._cartpoles.get_joint_velocities(clone=False)
 
@@ -266,6 +266,8 @@ class TofSensorTask(RLTask):
         # return observations
 
     def pre_physics_step(self, actions) -> None:
+
+        
         self._step += 1
         if not self._env._world.is_playing():
             return
@@ -419,6 +421,7 @@ class TofSensorTask(RLTask):
         # PT
 
     def reset_idx(self, env_ids):
+      
         num_resets = len(env_ids)
 
         indices = env_ids.to(dtype=torch.int32)
@@ -466,6 +469,9 @@ class TofSensorTask(RLTask):
         # PT
         # self.num_robot_dofs = self._robots.num_dof
         # self.robot_dof_pos = torch.zeros((self.num_envs, self.num_robot_dofs), device=self._device)
+       
+        self.robot.initialize()
+        self.robot.disable_gravity()
         dof_limits = self._robots.get_dof_limits()
         self.robot_dof_lower_limits = dof_limits[0, :, 0].to(device=self._device)
         self.robot_dof_upper_limits = dof_limits[0, :, 1].to(device=self._device)

@@ -76,7 +76,9 @@ def initialize_task(config, env, init_sim=True):
     task = task_map[cfg["task_name"]](
         name=cfg["task_name"], sim_config=sim_config, env=env
     )
+ 
 
     env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim)
+    
 
     return task

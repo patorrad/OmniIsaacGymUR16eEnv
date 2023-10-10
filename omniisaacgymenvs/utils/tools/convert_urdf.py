@@ -92,8 +92,9 @@ from omni.isaac.core.simulation_context import SimulationContext
 
 from assets import check_file_path
 
+from omni.isaac.urdf import _urdf
 
-
+# ./orbit.sh -p omniisaacgymenvs/utils/tools/convert_urdf.py --input="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf" --output="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
 def main():
     # check valid file path
     urdf_path = args_cli.input
@@ -115,27 +116,22 @@ def main():
 
     # Set URDF config
     # -- stage settings -- dont need to change these.
-    urdf_config.set_distance_scale(1.0)
-    urdf_config.set_up_vector(0, 0, 1)
-    urdf_config.set_create_physics_scene(False)
-    urdf_config.set_make_default_prim(True)
-    # -- instancing settings
-    urdf_config.set_make_instanceable(args_cli.gym)
-    urdf_config.set_instanceable_usd_path("Props/instanceable_meshes.usd")
-    # -- asset settings
-    urdf_config.set_density(0.0)
-    urdf_config.set_import_inertia_tensor(True)
-    urdf_config.set_convex_decomp(False)
-    urdf_config.set_subdivision_scheme(_NORMALS_DIVISION["bilinear"])
-    # -- physics settings
-    urdf_config.set_fix_base(args_cli.fix_base)
-    urdf_config.set_self_collision(False)
-    urdf_config.set_merge_fixed_joints(args_cli.merge_joints)
-    # -- drive settings
-    # note: we set these to none because we want to use the default drive settings.
-    urdf_config.set_default_drive_type(_DRIVE_TYPE["none"])
-    # urdf_config.set_default_drive_strength(1e7)
-    # urdf_config.set_default_position_drive_damping(1e5)
+    urdf_interface = _urdf.acquire_urdf_interface()
+        # Set the settings in the import config
+    import_config = _urdf.ImportConfig()
+    import_config.merge_fixed_joints = False
+    import_config.convex_decomp = False
+    import_config.import_inertia_tensor = True
+    import_config.fix_base = True
+    import_config.make_default_prim = True
+    import_config.self_collision = False
+    import_config.create_physics_scene = True
+    import_config.import_inertia_tensor = False
+    import_config.default_drive_strength = 1047.19751
+    import_config.default_position_drive_damping = 52.35988
+    import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+    import_config.distance_scale = 1
+    import_config.density = 0.0
 
     # Print info
     print("-" * 80)
@@ -161,7 +157,7 @@ def main():
 
     # Import URDF file
     omni.kit.commands.execute(
-        "URDFParseAndImportFile", urdf_path=urdf_path, import_config=urdf_config, dest_path=dest_path
+        "URDFParseAndImportFile", urdf_path=urdf_path, import_config=import_config, dest_path=dest_path
     )
     print('==================================================================')
 

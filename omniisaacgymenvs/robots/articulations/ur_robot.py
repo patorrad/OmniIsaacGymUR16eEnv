@@ -128,6 +128,7 @@ class UR(Robot):
             else:
                 raise NotImplementedError
         self._attach_gripper = attach_gripper
+        
         return
 
     @property
