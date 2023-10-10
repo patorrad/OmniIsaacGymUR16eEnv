@@ -286,121 +286,121 @@ class TofSensorTask(RLTask):
         
         # PT
         # 0.599
-        if self._step % 2 == 0:
-            self.debug_draw.clear_lines()
-            self.debug_draw.clear_points()
-            indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
-            # self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
-            self._targets.set_world_poses(self.hand_pos, indices=indices)
-            self.jacobians = self._robots.get_jacobians(clone=False)
-            # print("~~~~~~~~~~~~~~~~~~~~~~~self.jacobians  ", self.jacobians.shape)
-            # self.actions = actions.clone().to(self._device)
-            env_ids_int32 = torch.arange(self._robots.count, dtype=torch.int32, device=self._device)
+        # if self._step % 2 == 0:
+        #     self.debug_draw.clear_lines()
+        #     self.debug_draw.clear_points()
+        #     indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
+        #     # self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
+        #     self._targets.set_world_poses(self.hand_pos, indices=indices)
+        #     self.jacobians = self._robots.get_jacobians(clone=False)
+        #     # print("~~~~~~~~~~~~~~~~~~~~~~~self.jacobians  ", self.jacobians.shape)
+        #     # self.actions = actions.clone().to(self._device)
+        #     env_ids_int32 = torch.arange(self._robots.count, dtype=torch.int32, device=self._device)
 
-            # goal_position = self.hand_pos #+ actions / 100.0
-            goal_position, _ = self._hands.get_world_poses(clone=False)
-            # if self._step < 200:
-            #     goal_position[:,0] += 0.001
-            # else:
-            #     goal_position[:,0] -= 0.001 
-            goal_position[:,1] -= 0.001 
-            delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7, :, :],  # ur10 hand index: 7?
-                                                            current_position=self.hand_pos,
-                                                            current_orientation=self.hand_rot,
-                                                            goal_position=goal_position,
-                                                            goal_orientation=None)
-                                                            # torch.tensor([[0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0]], device=self._device)) #None)
+        #     # goal_position = self.hand_pos #+ actions / 100.0
+        #     goal_position, _ = self._hands.get_world_poses(clone=False)
+        #     # if self._step < 200:
+        #     #     goal_position[:,0] += 0.001
+        #     # else:
+        #     #     goal_position[:,0] -= 0.001 
+        #     goal_position[:,1] -= 0.001 
+        #     delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7, :, :],  # ur10 hand index: 7?
+        #                                                     current_position=self.hand_pos,
+        #                                                     current_orientation=self.hand_rot,
+        #                                                     goal_position=goal_position,
+        #                                                     goal_orientation=None)
+        #                                                     # torch.tensor([[0.0, 0, 1.0, 0],
+        #                                                     # [0.0, 0, 1.0, 0],
+        #                                                     # [0.0, 0, 1.0, 0],
+        #                                                     # [0.0, 0, 1.0, 0]], device=self._device)) #None)
 
-            targets = self.robot_dof_targets[:, :7] + delta_dof_pos[:,:7]
+        #     targets = self.robot_dof_targets[:, :7] + delta_dof_pos[:,:7]
 
-            self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
-            self.robot_dof_targets[:, 7:] = 0
+        #     self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
+        #     self.robot_dof_targets[:, 7:] = 0
 
-            self._robots.set_joint_position_targets(self.robot_dof_targets, indices=env_ids_int32)
+        #     self._robots.set_joint_position_targets(self.robot_dof_targets, indices=env_ids_int32)
 
-        # print("##################", self._robots._gripper.get_world_pose())
-        # test = self._robots._gripper.get_world_pose()
+        # # print("##################", self._robots._gripper.get_world_pose())
+        # # test = self._robots._gripper.get_world_pose()
         
 
-            # Raytracer
-            target_object_pose, target_object_rot = self._target_objects[0].get_world_poses(clone=False)
-            # get_relative_transform(self._target_objects)
-            ## Normalize quaternion into vector
-            # Step 1: Normalize the quaternion
-            q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
-            q_normalized = self.hand_rot.cpu()[1] / q_norm
-            # Step 2: Extract the vector part
-            v = q_normalized[1:]
+        #     # Raytracer
+        #     target_object_pose, target_object_rot = self._target_objects[0].get_world_poses(clone=False)
+        #     # get_relative_transform(self._target_objects)
+        #     ## Normalize quaternion into vector
+        #     # Step 1: Normalize the quaternion
+        #     q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
+        #     q_normalized = self.hand_rot.cpu()[1] / q_norm
+        #     # Step 2: Extract the vector part
+        #     v = q_normalized[1:]
             
-            # Step 3: Convert to Cartesian coordinates
-            cartesian_vector = v
+        #     # Step 3: Convert to Cartesian coordinates
+        #     cartesian_vector = v
             
-            # Step 4: Normalize the Cartesian vector
-            cartesian_norm = np.linalg.norm(cartesian_vector)
-            cartesian_normalized = cartesian_vector / cartesian_norm
-            # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
+        #     # Step 4: Normalize the Cartesian vector
+        #     cartesian_norm = np.linalg.norm(cartesian_vector)
+        #     cartesian_normalized = cartesian_vector / cartesian_norm
+        #     # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
             
-            # For 2 sensors
-            for i in range(2):
-                # Make the sensors in different positions
-                hand_pos = self.hand_pos.cpu()[1]
-                if i:
-                    hand_pos[1] += 0.06
-                else:
-                    hand_pos[1] -= 0.03
+        #     # For 2 sensors
+        #     for i in range(2):
+        #         # Make the sensors in different positions
+        #         hand_pos = self.hand_pos.cpu()[1]
+        #         if i:
+        #             hand_pos[1] += 0.06
+        #         else:
+        #             hand_pos[1] -= 0.03
 
-                cam_pos = hand_pos - target_object_pose.cpu()[1]
+        #         cam_pos = hand_pos - target_object_pose.cpu()[1]
             
-                ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
+        #         ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
 
-                sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
-                sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
+        #         sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
+        #         sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
 
-                ray_dir = np.array(ray_dir)
-                ray_t = ray_t.numpy()
-                line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
+        #         ray_dir = np.array(ray_dir)
+        #         ray_t = ray_t.numpy()
+        #         line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
-                # print("ray_t", ray_t)
-                ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-                # print("ray_t nonzero", ray_t)
-                average_distance = np.average(ray_t_nonzero)
-                standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
-                noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
-                # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
-                print("distance with noise sensor ", i + 1, ":", noise_distance) # apply noise to average distance
+        #         # print("ray_t", ray_t)
+        #         ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+        #         # print("ray_t nonzero", ray_t)
+        #         average_distance = np.average(ray_t_nonzero)
+        #         standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
+        #         noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
+        #         # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
+        #         print("distance with noise sensor ", i + 1, ":", noise_distance) # apply noise to average distance
 
-                # print("ray_dir", ray_dir)
-                # print(np.array(sensor_ray_pos_tuple))
-                # print("line_vec original", line_vec)
+        #         # print("ray_dir", ray_dir)
+        #         # print(np.array(sensor_ray_pos_tuple))
+        #         # print("line_vec original", line_vec)
 
-                # Get rid of ray misses (0 values)
-                line_vec = line_vec[np.any(line_vec, axis=1)]
-                # print("line_vec nonzero", line_vec)
+        #         # Get rid of ray misses (0 values)
+        #         line_vec = line_vec[np.any(line_vec, axis=1)]
+        #         # print("line_vec nonzero", line_vec)
 
-                ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
-                # print("ray_hit_points_list", ray_hit_points_list)
+        #         ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+        #         # print("ray_hit_points_list", ray_hit_points_list)
 
-                hits_len = len(ray_hit_points_list)
+        #         hits_len = len(ray_hit_points_list)
 
-                sensor_ray_pos_list = [
-                    sensor_ray_pos_tuple for _ in range(hits_len)
-                ]
+        #         sensor_ray_pos_list = [
+        #             sensor_ray_pos_tuple for _ in range(hits_len)
+        #         ]
 
-                # Sensor 1: red, sensor 2: yellow 
-                ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
+        #         # Sensor 1: red, sensor 2: yellow 
+        #         ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+        #         normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
 
-                ray_sizes = [2 for _ in range(hits_len)]
-                point_sizes = [7 for _ in range(hits_len)]
-                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
-                end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)] # end (ray hit) points: sensor 1 purple, sensor 2 white
-                self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+        #         ray_sizes = [2 for _ in range(hits_len)]
+        #         point_sizes = [7 for _ in range(hits_len)]
+        #         start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
+        #         end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)] # end (ray hit) points: sensor 1 purple, sensor 2 white
+        #         self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
 
-                self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
-                self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
+        #         self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
+        #         self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
 
 
             # To view distinguished cone edge rays: uncomment these lines, and in raycast.py, change t in the bottom if branch to 1. instead of 0.

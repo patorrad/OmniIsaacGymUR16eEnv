@@ -127,8 +127,8 @@ def main():
     import_config.self_collision = False
     import_config.create_physics_scene = True
     import_config.import_inertia_tensor = False
-    import_config.default_drive_strength = 1047.19751
-    import_config.default_position_drive_damping = 52.35988
+    # import_config.default_drive_strength = 1047.19751
+    # import_config.default_position_drive_damping = 52.35988
     import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
     import_config.distance_scale = 1
     import_config.density = 0.0
