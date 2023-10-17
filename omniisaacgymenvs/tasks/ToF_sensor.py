@@ -191,7 +191,7 @@ class TofSensorTask(RLTask):
         target.set_collision_enabled(False)
     
 
-    def load_object(self,usd_path,env_index,object_index,translaton=[0,0,1],scale=[1,1,1]):
+    def load_object(self,usd_path,env_index,object_index,translaton=[0,0,1],scale=[0.4,0.4,0.4]):
        
 
        # ================================= load object ========================================
@@ -206,7 +206,7 @@ class TofSensorTask(RLTask):
         
         # ================================= set property ========================================
         # Make it a rigid body
-        utils.setRigidBody(object_prim, "convexHull", True)
+        utils.setRigidBody(object_prim, "convexHull", False)
         mass_api = UsdPhysics.MassAPI.Apply(object_prim)
         mass_api.CreateMassAttr(10)
         # Alternatively set the density
@@ -249,11 +249,24 @@ class TofSensorTask(RLTask):
             #         prim_path=f"/World/envs/env_{i}" + "/pod", 
             #         usd_path = "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/pod/pod.usd", 
             # )
+
+            # initila toe orientation
+            from scipy.spatial.transform import Rotation
+            # Define the Euler angles in the format (roll, pitch, yaw)
+            euler_angles = [np.pi/2, np.pi/2, np.pi/2]
+
+            # Create a Rotation object from the Euler angles
+            r = Rotation.from_euler('xyz', euler_angles, degrees=False)
+
+            # Get the corresponding quaternion
+            quaternion = r.as_quat()
+
             prim_utils.create_prim(
                  prim_path=f"/World/envs/env_{i}" + "/pod", 
                 usd_path = self.current_directory + "/omniisaacgymenvs/assests/robots/pod/pod.usd", 
                 translation=[-0.463, 0.95, 0], 
-                # scale=scale
+                # orientation=quaternion,
+               
                 )
             stage = omni.usd.get_context().get_stage()
             cube_prim = stage.GetPrimAtPath(
@@ -261,7 +274,7 @@ class TofSensorTask(RLTask):
 
             # ================================= set property ========================================
             # Make it a rigid body with kinematic
-            utils.setRigidBody(cube_prim, "convexHull", True)
+            utils.setRigidBody(cube_prim, "convexMeshSimplification", True)
 
             mass_api = UsdPhysics.MassAPI.Apply(cube_prim)
             mass_api.CreateMassAttr(10)
