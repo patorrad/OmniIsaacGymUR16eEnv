@@ -52,7 +52,7 @@ parser.add_argument(
     help="Consolidate links that are connected by fixed joints.",
 )
 parser.add_argument(
-    "--fix_base", "-f", action="store_true", default=True, help="Fix the base to where it is imported."
+    "--fix_base", "-f", action="store_true", default=False, help="Fix the base to where it is imported."
 )
 parser.add_argument(
     "--gym", "-g", action="store_true", default=False, help="Make the asset instanceable for efficient cloning."
@@ -129,9 +129,9 @@ def main():
     import_config.import_inertia_tensor = False
     # import_config.default_drive_strength = 1047.19751
     # import_config.default_position_drive_damping = 52.35988
-    import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+    # import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
     import_config.distance_scale = 1
-    import_config.density = 0.0
+    import_config.density = 10.0
 
     # Print info
     print("-" * 80)

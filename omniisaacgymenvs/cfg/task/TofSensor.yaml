@@ -79,6 +79,7 @@ sim:
 
   URRobot:
     # -1 to use default values
+    robot_path: "/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -93,7 +94,10 @@ sim:
     max_depenetration_velocity: 1000.0
     position: [0, 0.0, 2.02]
     quaternion: [0, 0, 1, 0]
-    dof_target: [1.57, 0, 0, 0, 0, 0, 0]
+    dof_target: [0.0, 0, 0, 0, 0, 0]
+  Object:
+   category: "02876657"
+   
     
   
     

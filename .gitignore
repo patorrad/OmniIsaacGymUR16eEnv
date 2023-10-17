@@ -4,3 +4,7 @@ runs
 omniisaacgymenvs.egg-info/
 checkpoints
 omniisaacgymenvs/wandb
+/isaac_sim-2022.2.1
+models
+omniisaacgymenvs/assests/objects/shapenet
+.vscode

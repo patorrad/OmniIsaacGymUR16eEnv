@@ -99,7 +99,9 @@ class UR10(Robot):
                     carb.log_error("Could not find Isaac Sim assets folder")
                     return
                 usd_path = assets_root_path + "/Isaac/Robots/UR10/ur10.usd"
+                #usd_path = assets_root_path + "/Isaac/Robots/UR10/ur10.usd"
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
+        
             if self._end_effector_prim_name is None:
                 self._end_effector_prim_path = prim_path + "/ee_link"
             else:
@@ -121,10 +123,12 @@ class UR10(Robot):
                     carb.log_error("Could not find Isaac Sim assets folder")
                     return
                 gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
+               
                 add_reference_to_stage(usd_path=gripper_usd, prim_path=self._end_effector_prim_path)
                 self._gripper = SurfaceGripper(
-                    end_effector_prim_path=self._end_effector_prim_path, translate=0.1611, direction="x"
+                    end_effector_prim_path=self._end_effector_prim_path, translate=0.1611, direction="z"
                 )
+              
             elif gripper_usd is None:
                 carb.log_warn("Not adding a gripper usd, the gripper already exists in the ur10 asset")
                 self._gripper = SurfaceGripper(
@@ -133,6 +137,7 @@ class UR10(Robot):
             else:
                 raise NotImplementedError
         self._attach_gripper = attach_gripper
+        
         return
 
     @property

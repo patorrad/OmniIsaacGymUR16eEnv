@@ -45,20 +45,22 @@ def parse_cli_args():
         "Run blender in background mode with this script:\n"
         "\tblender --background --python " + __file__ + " -- [options]"
     )
-    parser = argparse.ArgumentParser(description=usage_text)
-    # Add arguments
-    parser.add_argument("-i", "--in_file", metavar="FILE", type=str, required=True, help="Path to input OBJ file.")
-    parser.add_argument("-o", "--out_file", metavar="FILE", type=str, required=True, help="Path to output OBJ file.")
-    args = parser.parse_args(argv)
-    # Check if any arguments provided
-    if not argv or not args.in_file or not args.out_file:
-        parser.print_help()
-        return None
-    # return arguments
-    return args
+    # parser = argparse.ArgumentParser(description=usage_text)
+    # # Add arguments
+    # # parser.add_argument( "--in_file", metavar="FILE", type=str, help="Path to input OBJ file."
+    # #                     ,default="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/models/ycb/003_cracker_box/poisson/textured.obj")
+    # # parser.add_argument("--out_file", metavar="FILE", type=str, help="Path to output OBJ file."
+    # #                     ,default="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/models/ycb/003_cracker_box/poisson/textured.obj")
+    # args = parser.parse_args(argv)
+    # # Check if any arguments provided
+    # if not argv or not args.in_file or not args.out_file:
+    #     parser.print_help()
+    #     return None
+    # # return arguments
+    # return args
 
 
-def convert_to_obj(in_file: str, out_file: str, save_usd: bool = False):
+def convert_to_obj(in_file: str, out_file: str, save_usd: bool = True):
     """Convert a mesh file to `.obj` using blender.
 
     Args:
@@ -102,4 +104,5 @@ if __name__ == "__main__":
     if cli_args is None:
         sys.exit()
     # process via blender
-    convert_to_obj(cli_args.in_file, cli_args.out_file)
+    convert_to_obj("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/models/ycb/003_cracker_box/poisson/textured.obj", 
+                   "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/models/ycb/003_cracker_box/poisson/textured2.obj")

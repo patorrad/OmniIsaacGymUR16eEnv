@@ -47,11 +47,15 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 #
+
+import sys
+sys.path.append("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/isaac_sim-2022.2.1")
 from typing import Optional
 import numpy as np
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.prims.rigid_prim import RigidPrim
-from omni.isaac.manipulators.grippers.surface_gripper import SurfaceGripper
+from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper_Properties
+from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.nucleus import get_assets_root_path
@@ -105,6 +109,7 @@ class UR(Robot):
                 self._end_effector_prim_path = prim_path + "/ee_link"
             else:
                 self._end_effector_prim_path = prim_path + "/" + end_effector_prim_name
+        
         super().__init__(
             prim_path=prim_path, name=name, position=position, orientation=orientation, articulation_controller=None
         )
@@ -128,6 +133,7 @@ class UR(Robot):
             else:
                 raise NotImplementedError
         self._attach_gripper = attach_gripper
+        return
         
         return
 
