@@ -4,7 +4,6 @@ runs
 omniisaacgymenvs.egg-info/
 checkpoints
 omniisaacgymenvs/wandb
-/isaac_sim-2022.2.1
-models
-omniisaacgymenvs/assests/objects/shapenet
-.vscode
+isaac_sim-2022.2.1
+omniisaacgymenvs/assests/objects/
+omniisaacgymenvs/assests/robots/ur16e/ur16e.usd
