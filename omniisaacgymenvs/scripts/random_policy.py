@@ -70,7 +70,9 @@ def parse_hydra_configs(cfg: DictConfig):
             if env._task._step %200 == 0:
                 env._task.reset()
                 # env._world.reset(soft=True)
-            actions = torch.tensor(np.array([env.action_space.sample() for _ in range(env.num_envs)]), device=task.rl_device)
+            
+            actions = torch.tensor(np.array([env.action_space().sample() for _ in range(env.num_envs)]), device=task.rl_device)
+            
             
             env._task.pre_physics_step(actions)
             env._world.step(render=render)

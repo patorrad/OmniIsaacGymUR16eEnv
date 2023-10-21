@@ -72,11 +72,18 @@ from pxr import Sdf
 
 import carb
 
+import gym
+
 # import warp as wp
 import omni.isaac.core.utils.nucleus as nucleus_utils
 ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
 from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
 from omni.isaac.core.simulation_context import SimulationContext
+
+from omniisaacgymenvs.utils.tools import rotation_conversions
+from omni.isaac.core.simulation_context import SimulationContext
+
+
 class TofSensorTask(RLTask):
     def __init__(
         self,
@@ -117,9 +124,19 @@ class TofSensorTask(RLTask):
 
         self._step = 0
 
+        # control parameter
+        velocity_limit = torch.Tensor([1.0] * 6)  #slow down
+
+        self.velocity_limit = np.stack([-velocity_limit, velocity_limit],
+                                       axis=1)
+        RLTask.__init__(self, name, env)
+        
+        self.frame_skip = 10
+    
+
+
       
 
-        RLTask.__init__(self, name, env)
         return
 
     def set_up_scene(self, scene) -> None:
@@ -141,6 +158,7 @@ class TofSensorTask(RLTask):
             prim_paths_expr="/World/envs/.*/robot/ee_link", name="hand_view", reset_xform_properties=False)
         scene.add(self._end_effector)
         # pdb.set_trace()
+        
         
        
 
@@ -474,6 +492,33 @@ class TofSensorTask(RLTask):
                          -self._ur16e_effort_limits[:6].unsqueeze(0), self._ur16e_effort_limits[:6].unsqueeze(0))
 
         return u
+    
+
+    def action_space(self):
+        return  gym.spaces.Box(np.ones(self._robots.num_dof) * -1.0, np.ones(self._robots.num_dof) * 1.0)
+
+    def recover_action(self, action, limit):
+        self.control_time = self._env._world.get_physics_dt()*self.frame_skip
+        
+        
+        # delta pose
+        action = torch.clip(action, -1, 1)
+        current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
+        target_root_velocity = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
+        delat_pose = target_root_velocity*self.control_time
+        
+
+
+        # target postion and orientation
+        target_position = current_position - delat_pose[:,:3]
+        current_euler_angles = rotation_conversions.quaternion_to_axis_angle(current_orientation)
+        target_euler_angles = current_euler_angles - delat_pose[:,3:]
+        target_orientation = rotation_conversions.axis_angle_to_quaternion(target_euler_angles)
+        
+
+
+        return target_position, target_orientation
+    
 
     def pre_physics_step(self, actions) -> None:
 
@@ -484,47 +529,40 @@ class TofSensorTask(RLTask):
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
-
+        
         actions = actions.to(self._device)
+        target_position, target_orientation = self.recover_action(actions,self.velocity_limit)
+        
+
+        
+        
        
         from skrl.utils import omniverse_isaacgym_utils
     
-        if self._step % 2 == 0:
-            # result = self._compute_osc_torques(dpose=torch.tensor([-0.0,0,0,0,0,0]).repeat(self.num_envs,1))
+        
             
-           
-           
-            self.jacobians = self._robots.get_jacobians(clone=False)
-            # print("~~~~~~~~~~~~~~~~~~~~~~~self.jacobians  ", self.jacobians.shape)
-            # self.actions = actions.clone().to(self._device)
-            env_ids_int32 = torch.arange(self._robots.count, dtype=torch.int32, device=self._device)
-
-         
-            current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
-            current_dof = self._robots.get_joint_positions()
-            self.target_position[:,0] -= 0.005
+        
+        
+        self.jacobians = self._robots.get_jacobians(clone=False)
+        
+        current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
+        current_dof = self._robots.get_joint_positions()
+        # self.target_position[:,0] -= 0.005
+        
+        delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 6, :, :], 
+                                                        current_position=current_position,
+                                                        current_orientation=current_orientation,
+                                                        goal_position=target_position,
+                                                        goal_orientation=target_orientation)
+        
+                                                    
+        targets = current_dof + delta_dof_pos[:,:7] 
+        
+        self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
+        self._robots.set_joint_position_targets(self.robot_dof_targets)
+        self._robots.set_joint_velocity_targets(delta_dof_pos)
             
-            delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 6, :, :], 
-                                                            current_position=current_position,
-                                                            current_orientation=current_orientation,
-                                                            goal_position=self.target_position,
-                                                            goal_orientation=self.target_orientation)
-            
-                                                      
-
-            targets = current_dof + delta_dof_pos[:,:7] 
-            
-
-            self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
-            self._robots.set_joint_position_targets(self.robot_dof_targets)
-            self._robots.set_joint_velocity_targets(delta_dof_pos)
-            
-            # self.robot_dof_targets[:, 7:] = 0
-
-            # self._robots.set_joint_position_targets(self.robot_dof_targets, indices=env_ids_int32)
-            # from omni.isaac.core.utils.types import ArticulationActions
-            # control_action = ArticulationActions(joint_efforts=result[0])
-            # self._robots.apply_action(control_action)
+        
 
            
 
