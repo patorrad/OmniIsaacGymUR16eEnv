@@ -125,7 +125,7 @@ class TofSensorTask(RLTask):
         self._step = 0
 
         # control parameter
-        velocity_limit = torch.Tensor([1.0] * 6)  #slow down
+        velocity_limit = torch.Tensor([1.0] * 3 + [1]*3)  #slow down
 
         self.velocity_limit = np.stack([-velocity_limit, velocity_limit],
                                        axis=1)
@@ -384,62 +384,17 @@ class TofSensorTask(RLTask):
            
 
     def get_observations(self) -> dict:
+        _, current_orientation = self._end_effector.get_local_poses()
 
-        # dof_pos = self._cartpoles.get_joint_positions(clone=False)
-        # dof_vel = self._cartpoles.get_joint_velocities(clone=False)
-
-        # cart_pos = dof_pos[:, self._cart_dof_idx]
-        # cart_vel = dof_vel[:, self._cart_dof_idx]
-        # pole_pos = dof_pos[:, self._pole_dof_idx]
-        # pole_vel = dof_vel[:, self._pole_dof_idx]
-
-        # self.obs_buf[:, 0] = cart_pos
-        # self.obs_buf[:, 1] = cart_vel
-        # self.obs_buf[:, 2] = pole_pos
-        # self.obs_buf[:, 3] = pole_vel
-
-        # observations = {
-        #     self._cartpoles.name: {
-        #         "obs_buf": self.obs_buf
-        #     },
-        # }
-
-        # PT
-        # print("################################ observation")
-        # robot_dof_pos = self._robots.get_joint_positions(clone=False)
-        # robot_dof_vel = self._robots.get_joint_velocities(clone=False)
-        # end_effector_pos, end_effector_rot = self._end_effectors.get_world_poses(clone=False)
-        # target_pos, target_rot = self._targets.get_world_poses(clone=False)
-
-        # dof_pos_scaled = 2.0 * (robot_dof_pos - self.robot_dof_lower_limits) \
-        #     / (self.robot_dof_upper_limits - self.robot_dof_lower_limits) - 1.0
-        # dof_vel_scaled = robot_dof_vel * self._dof_vel_scale
-
-        # generalization_noise = torch.rand((dof_vel_scaled.shape[0], 7), device=self._device) + 0.5
-
-        # self.obs_buf[:, 0] = self.progress_buf / self._max_episode_length
-        # self.obs_buf[:, 1:8] = dof_pos_scaled[:, :7]
-        # self.obs_buf[:, 8:15] = dof_vel_scaled[:, :7] * generalization_noise
-        # self.obs_buf = target_pos - self._env_pos
+        current_euler_angles = rotation_conversions.quaternion_to_axis_angle(current_orientation)
+    
         self.obs_buf = None #target_pos
 
-        # self.obs_buf[:, 1] = self.hand_pos
-
-        # # compute distance for calculate_metrics() and is_done()
-        # self._computed_distance = torch.norm(end_effector_pos - target_pos, dim=-1)
-
-        # if self._control_space == "cartesian":
-        # self.jacobians = self._robots.get_jacobians(clone=False)[:,6:,:,:]
-        self.hand_pos, self.hand_rot = self._end_effector.get_world_poses(clone=False)
-        # print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
-        # print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
-        # self.hand_pos -= self._env_pos
-        # print("################################ got observation")
 
         return {self._robots.name: {"obs_buf": self.obs_buf}}
-        # PT
+     
 
-        # return observations
+      
 
 
     def update_cache_state(self):
@@ -500,25 +455,37 @@ class TofSensorTask(RLTask):
     def recover_action(self, action, limit):
         self.control_time = self._env._world.get_physics_dt()*self.frame_skip
         
-        
         # delta pose
         action = torch.clip(action, -1, 1)
-        current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
-        target_root_velocity = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
-        delat_pose = target_root_velocity*self.control_time
+        action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
         
+        delta_pose = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
 
-
-        # target postion and orientation
-        target_position = current_position - delat_pose[:,:3]
-        current_euler_angles = rotation_conversions.quaternion_to_axis_angle(current_orientation)
-        target_euler_angles = current_euler_angles - delat_pose[:,3:]
-        target_orientation = rotation_conversions.axis_angle_to_quaternion(target_euler_angles)
-        
-
-
-        return target_position, target_orientation
+        self.jacobians = self._robots.get_jacobians(clone=False)
+        delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:, 6, :, :], 
+                                delta_pose=delta_pose)
+        delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
     
+        return delta_dof_pos,delta_pose
+    
+    
+
+    def ik(self,jacobian_end_effector,
+       delta_pose,
+       damping_factor=0.05):
+            
+            """
+            Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
+            """
+
+            # compute position and orientation error
+            delta_pose = delta_pose[:,:,None]
+
+            # solve damped least squares (dO = J.T * V)
+            transpose = torch.transpose(jacobian_end_effector, 1, 2)
+            lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor ** 2)
+            return (transpose @ torch.inverse(jacobian_end_effector @ transpose + lmbda) @ delta_pose).squeeze(dim=2)
+                
 
     def pre_physics_step(self, actions) -> None:
 
@@ -531,36 +498,30 @@ class TofSensorTask(RLTask):
             self.reset_idx(reset_env_ids)
         
         actions = actions.to(self._device)
-        target_position, target_orientation = self.recover_action(actions,self.velocity_limit)
-        
-
+        delta_dof_pos, delta_pose = self.recover_action(actions,self.velocity_limit)
         
         
-       
-        from skrl.utils import omniverse_isaacgym_utils
-    
+        # current dof and current joint velocity
+        current_dof = self._robots.get_joint_positions()                                            
+        targets_dof = current_dof + delta_dof_pos[:,:6]*self.control_time
         
-            
-        
-        
-        self.jacobians = self._robots.get_jacobians(clone=False)
-        
-        current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
-        current_dof = self._robots.get_joint_positions()
-        # self.target_position[:,0] -= 0.005
-        
-        delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 6, :, :], 
-                                                        current_position=current_position,
-                                                        current_orientation=current_orientation,
-                                                        goal_position=target_position,
-                                                        goal_orientation=target_orientation)
-        
-                                                    
-        targets = current_dof + delta_dof_pos[:,:7] 
-        
-        self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
-        self._robots.set_joint_position_targets(self.robot_dof_targets)
+        targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
+        self._robots.set_joint_position_targets(targets_dof)
         self._robots.set_joint_velocity_targets(delta_dof_pos)
+
+
+        pre_position, pre_orientation = self._end_effector.get_world_poses(clone=False)
+        target_position = pre_position+delta_pose[:,:3]
+        
+        # frame skip
+        for i in range(self.frame_skip):
+            self._env._world.step(render=True)
+
+        current_position, current_orientation = self._end_effector.get_world_poses(clone=False)
+        
+        cartesian_error = torch.linalg.norm(target_position-current_position,dim=1)
+        print(cartesian_error)
+        
             
         
 
@@ -687,7 +648,8 @@ class TofSensorTask(RLTask):
 
     def reset(self):
       
-        # result, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0,0,0.707]))
+        target_joint_positions, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0.,0,0.707]))
+        target_joint_positions = target_joint_positions.joint_positions.astype(np.float)
         # initial robot
         target_joint_positions = np.zeros(6)
         target_joint_positions[0] = 1.57
@@ -695,7 +657,9 @@ class TofSensorTask(RLTask):
         target_joint_positions[2] = 1.57
         target_joint_positions[3] = 0
         target_joint_positions[4] = 1.57
-        target_joint_positions[5] = -1.57
+        # [-1.29522039  3.66315136 -0.13982686  5.29926468 -0.22134689 -0.44278792] # 
+        # print(target_joint_positions)
+        # target_joint_positions[5] = -1.57
         self._robots.set_joint_positions(torch.tensor(target_joint_positions,dtype=torch.float).repeat(self.num_envs,1))
 
 
@@ -705,7 +669,7 @@ class TofSensorTask(RLTask):
       
 
         object_target_position = self.target_position.clone()
-        object_target_position[:,1] += 0.3
+        object_target_position[:,1] += 0.6
         self._target_object.set_world_poses(object_target_position)
         self.default_dof = torch.tensor(target_joint_positions,dtype=torch.float).repeat(self.num_envs,1).clone()
 
