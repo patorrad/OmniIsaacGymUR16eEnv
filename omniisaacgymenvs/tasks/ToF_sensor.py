@@ -138,6 +138,9 @@ class TofSensorTask(RLTask):
 
         self.object_prim_path = []
 
+        self.rew_buf = torch.zeros(self.num_envs,device=self.rl_device)
+        self.pre_action = torch.zeros((self.num_envs,6),device=self.rl_device)
+
 
         
 
@@ -419,15 +422,17 @@ class TofSensorTask(RLTask):
         current_euler_angles = quaternion_to_axis_angle(current_orientation)
         quaternion = quaternion_multiply(quaternion_invert(self.init_ee_link_orientation),
                                          current_orientation)
-        current_euler_angles = quaternion_to_axis_angle(quaternion)
+        self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
+        robot_joint = self._robots.get_joint_positions()
+
+        self.angle_dev = self.current_euler_angles[:,1] -self.target_angle
        
-     
-        self._robots.get_joint_positions()
        
-       
+        
     
-        self.obs_buf = None #target_pos
+        self.obs_buf = torch.cat([robot_joint, current_euler_angles[:,1][:,None], self.target_angle[:,None],self.angle_dev[:,None]],dim=1)
+        
 
 
         return {self._robots.name: {"obs_buf": self.obs_buf}}
@@ -496,7 +501,8 @@ class TofSensorTask(RLTask):
             device=self._device)
         self.robot_dof_upper_limits = dof_limits[0, :, 1].to(
             device=self._device)
-        return  gym.spaces.Box(np.ones(self._robots.num_dof) * -1.0, np.ones(self._robots.num_dof) * 1.0)
+        # return  gym.spaces.Box(np.ones(self._robots.num_dof) * -1.0, np.ones(self._robots.num_dof) * 1.0)
+        return  gym.spaces.Box(np.ones(1) * -1.0, np.ones(1) * 1.0)
 
     def recover_action(self, action, limit):
 
@@ -504,10 +510,11 @@ class TofSensorTask(RLTask):
         self.control_time = self._env._world.get_physics_dt()*self.frame_skip
         
         # delta pose
-        action = torch.clip(action, -1, 1)*0+1
-        action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
+        action = torch.clip(action,-1,1)
+        self.pre_action[:,5] = action.reshape(-1)
+        # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
         
-        delta_pose = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
+        delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:, 6, :, :], 
@@ -577,6 +584,16 @@ class TofSensorTask(RLTask):
         self.robot.disable_gravity()
         self.reset()
 
+        # reset goal orientation
+
+        self.target_angle = torch.zeros(self.num_envs)
+        self.target_angle[:int(self.num_envs/2)] = torch.Tensor(np.random.uniform(low=0.1,high=0.5,size=int(self.num_envs/2)) * np.pi,device=self.rl_device)
+        self.target_angle[int(self.num_envs/2):] = torch.Tensor(np.random.uniform(low=-0.5,high=-0.1,size=int(self.num_envs/2)) * np.pi,device=self.rl_device)                                                       
+        self.init_angle_dev = -self.target_angle.clone()
+
+
+
+
         # self.reset_internal()
 
       
@@ -586,22 +603,27 @@ class TofSensorTask(RLTask):
      
 
     def calculate_metrics(self) -> None:
-        # cart_pos = self.obs_buf[:, 0]
-        # cart_vel = self.obs_buf[:, 1]
-        # pole_angle = self.obs_buf[:, 2]
-        # pole_vel = self.obs_buf[:, 3]
 
-        # reward = 1.0 - pole_angle * pole_angle - 0.01 * torch.abs(cart_vel) - 0.005 * torch.abs(pole_vel)
-        # reward = torch.where(torch.abs(cart_pos) > self._reset_dist, torch.ones_like(reward) * -2.0, reward)
-        # reward = torch.where(torch.abs(pole_angle) > np.pi / 2, torch.ones_like(reward) * -2.0, reward)
+        dev_percentage = self.angle_dev/self.init_angle_dev
+        
+        index_list = []
+        
 
-        # self.rew_buf[:] = reward
-        pass
+        # exceed the target
+        negative_index = torch.where(dev_percentage<0)[0]
+        if not negative_index.size()[0]==0:
+            dev_percentage[negative_index] = abs(dev_percentage[negative_index])+1
+
+         
+        
+        self.rew_buf = (1-dev_percentage)*5
+    
 
     def is_done(self) -> None:
+
         
-        # PT
-        self.reset_buf.fill_(0)
+        
+        return False
 
 
     def reset_internal(self):
