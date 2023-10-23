@@ -80,7 +80,7 @@ ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
 from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
 from omni.isaac.core.simulation_context import SimulationContext
 
-from omniisaacgymenvs.utils.tools import rotation_conversions
+from omniisaacgymenvs.utils.tools.rotation_conversions import *
 from omni.isaac.core.simulation_context import SimulationContext
 from omni.isaac.core.utils.stage import get_current_stage
 
@@ -410,18 +410,19 @@ class TofSensorTask(RLTask):
     def get_observations(self) -> dict:
         
         self._robots.num_bodies
-        _, current_orientation = self._robots.get_body_coms()
+       
         _, current_orientation = self._end_effector.get_world_poses()
         
         
        
 
-        current_euler_angles = rotation_conversions.quaternion_to_axis_angle(current_orientation)
+        current_euler_angles = quaternion_to_axis_angle(current_orientation)
+        quaternion = quaternion_multiply(quaternion_invert(self.init_ee_link_orientation),
+                                         current_orientation)
+        current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        # current_transformation_inv =  rotation_conversions.quaternion_invert(current_orientation)
-        # rotation_conversions.quaternion_invert(current_orientation,)
-        print(current_euler_angles/np.pi*180)
        
+     
         self._robots.get_joint_positions()
        
        
@@ -503,7 +504,7 @@ class TofSensorTask(RLTask):
         self.control_time = self._env._world.get_physics_dt()*self.frame_skip
         
         # delta pose
-        action = torch.clip(action, -1, 1)*0
+        action = torch.clip(action, -1, 1)*0+1
         action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
         
         delta_pose = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
