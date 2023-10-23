@@ -66,9 +66,10 @@ def parse_hydra_configs(cfg: DictConfig):
     task = initialize_task(cfg_dict, env)
 
     while env._simulation_app.is_running():
+       
         if env._world.is_playing():
             if env._task._step %200 == 0:
-                env._task.reset()
+                env._task.post_reset()
                 # env._world.reset(soft=True)
             
             actions = torch.tensor(np.array([env.action_space().sample() for _ in range(env.num_envs)]), device=task.rl_device)

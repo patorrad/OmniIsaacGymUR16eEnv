@@ -27,12 +27,19 @@ def demo(fix_root_link, balance_passive_force):
     
 
     # Set initial joint positions
+
+    target_joint_positions = np.zeros(6)
+    target_joint_positions[0] = 1.57
+    target_joint_positions[1] = -1.57
+    target_joint_positions[2] = 1.57
+    target_joint_positions[3] = 0
+    target_joint_positions[4] = 1.57
     
-    arm_init_qpos = np.zeros(7)
-    gripper_init_qpos = np.zeros(7)
-    arm_init_qpos[0] = 1.57
-    init_qpos = arm_init_qpos + gripper_init_qpos
-    robot.set_qpos(init_qpos)
+    arm_init_qpos = np.zeros(6)
+   
+    # arm_init_qpos[0] = 1.57
+   
+    robot.set_qpos(arm_init_qpos)
 
     pinocchio_model = robot.create_pinocchio_model()
 
@@ -52,7 +59,7 @@ def demo(fix_root_link, balance_passive_force):
                     coriolis_and_centrifugal=True, 
                 )
                 robot.set_qf(qf)
-            robot.set_qpos(init_qpos)
+            robot.set_qpos(arm_init_qpos)
             scene.step()
         scene.update_render()
         viewer.render()
