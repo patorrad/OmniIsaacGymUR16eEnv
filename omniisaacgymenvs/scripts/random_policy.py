@@ -57,11 +57,15 @@ def parse_hydra_configs(cfg: DictConfig):
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
 
-    env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
+    # env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
+    from omni.isaac.gym.vec_env import VecEnvBase
+    env = VecEnvBase(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
     cfg_dict['seed'] = cfg.seed
+   
+    
     
     task = initialize_task(cfg_dict, env)
 

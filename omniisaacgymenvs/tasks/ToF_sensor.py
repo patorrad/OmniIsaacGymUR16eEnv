@@ -95,15 +95,20 @@ class TofSensorTask(RLTask):
         env,
         offset=None
     ) -> None:
-
+        
         self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
         self._device = self._cfg["rl_device"]
+        
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
+        self._num_observations = 4
+        self._num_actions = 1
+
+        RLTask.__init__(self, name, env)
+     
         self._robot_positions = self._task_cfg['sim']["URRobot"]["position"]
         self._robot_rotations = self._task_cfg['sim']["URRobot"]["quaternion"]
         self._robot_dof_target = torch.tensor(
@@ -119,28 +124,26 @@ class TofSensorTask(RLTask):
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
         self._max_episode_length = 500
 
-        self._num_observations = 4
-        self._num_actions = 1
-
+     
         self._end_effector_link = "ee_link"
         self.current_directory = os.getcwd()
 
         self._step = 0
 
         # control parameter
-        velocity_limit = torch.Tensor([1.0] * 3 + [2]*3)  #slow down
-
-        self.velocity_limit = np.stack([-velocity_limit, velocity_limit],
-                                       axis=1)
-        RLTask.__init__(self, name, env)
+        
+        
         
         self.frame_skip = 1
 
         self.object_prim_path = []
 
-        self.rew_buf = torch.zeros(self.num_envs,device=self.rl_device)
-        self.pre_action = torch.zeros((self.num_envs,6),device=self.rl_device)
-        
+        self.rew_buf = torch.zeros(self.num_envs,device=self.device)
+        self.pre_action = torch.zeros((self.num_envs,6),device=self.device)
+        velocity_limit = torch.as_tensor([1.0] * 3 + [2]*3,device=self.device)  #slow down
+
+        self.velocity_limit = torch.as_tensor(torch.stack([-velocity_limit, velocity_limit], dim=1),device=self.device)
+      
 
 
         
@@ -252,8 +255,8 @@ class TofSensorTask(RLTask):
         self.robot = UR10(prim_path=self.default_zero_env_path + "/robot", name="robot", position=self._robot_positions, orientation=self._robot_rotations, 
                           attach_gripper=True, usd_path=self.current_directory + self._task_cfg['sim']["URRobot"]['robot_path'])
         
-        # self.robot.set_joint_positions(self._robot_dof_target)
-        # self.robot.set_joints_default_state(self._robot_dof_target)
+        self.robot.set_joint_positions(self._robot_dof_target)
+        self.robot.set_joints_default_state(self._robot_dof_target)
         
 
         self._sim_config.apply_articulation_settings("robot", get_prim_at_path(
@@ -510,6 +513,7 @@ class TofSensorTask(RLTask):
 
         self.control_time = self._env._world.get_physics_dt()*self.frame_skip
         
+        
         # delta pose
         action = torch.clip(action,-1,1)*0+1
         self.pre_action[:,5] = action.reshape(-1)
@@ -517,6 +521,7 @@ class TofSensorTask(RLTask):
        
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
+      
         
         delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
 
@@ -529,9 +534,7 @@ class TofSensorTask(RLTask):
     
     
 
-    def ik(self,jacobian_end_effector,
-       delta_pose,
-       damping_factor=0.05):
+    def ik(self,jacobian_end_effector, delta_pose, damping_factor=0.05):
             
             """
             Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
@@ -565,6 +568,7 @@ class TofSensorTask(RLTask):
         targets_dof[:,-2] = torch.clamp(targets_dof[:,-2], 0, torch.pi)
         # set target dof and target velocity
         self._robots.set_joint_position_targets(targets_dof)
+        #self._robots.set_joint_position_targets(self.target_joint_positions)
         #self._robots.set_joint_velocity_targets(delta_dof_pos)
         
 
@@ -594,11 +598,15 @@ class TofSensorTask(RLTask):
 
         # reset goal orientation
 
-        self.target_angle = torch.zeros(self.num_envs)
-        self.target_angle[:int(self.num_envs/2)] = torch.Tensor(np.random.uniform(low=0.1,high=0.5,size=int(self.num_envs/2)) * np.pi,device=self.rl_device)
-        self.target_angle[int(self.num_envs/2):] = torch.Tensor(np.random.uniform(low=-0.5,high=-0.1,size=int(self.num_envs/2)) * np.pi,device=self.rl_device)                                                       
+        self.target_angle = torch.zeros(self.num_envs,device=self.device)
+      
+        self.target_angle[:int(self.num_envs/2)] = torch.as_tensor(np.random.uniform(low=0.1,high=0.5,size=int(self.num_envs/2)) * np.pi,device=self.device)
+        self.target_angle[int(self.num_envs/2):] = torch.as_tensor(np.random.uniform(low=-0.5,high=-0.1,size=int(self.num_envs/2)) * np.pi,device=self.device)                                                       
         self.init_angle_dev = -self.target_angle.clone()
         self.stop_index = None
+          # frame skip
+        
+        
 
 
 
@@ -672,18 +680,19 @@ class TofSensorTask(RLTask):
     def reset(self):
       
         
-        self._end_effector.get_world_poses()
+        # self._end_effector.get_world_poses()
         
       
-        target_joint_positions, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0.,0,0.707]))
-        target_joint_positions = target_joint_positions.joint_positions.astype(np.float)
-        # initial robot
-        target_joint_positions = np.zeros(6)
+        # target_joint_positions, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0.,0,0.707]))
+        # target_joint_positions = target_joint_positions.joint_positions.astype(np.float)
+        # # initial robot
+        target_joint_positions = torch.zeros(6,device=self.device)
         target_joint_positions[0] = 1.57
         target_joint_positions[1] = -1.57
         target_joint_positions[2] = 1.57
         target_joint_positions[3] = 0
         target_joint_positions[4] = 1.57
+        self.target_joint_positions = torch.tensor(target_joint_positions,dtype=torch.float).repeat(self.num_envs,1)
         # [-1.29522039  3.66315136 -0.13982686  5.29926468 -0.22134689 -0.44278792] # 
         # print(target_joint_positions)
         # target_joint_positions[5] = -1.57
@@ -696,12 +705,16 @@ class TofSensorTask(RLTask):
         
       
 
-        object_target_position = self.target_position.clone()
-        object_target_position[:,1] += 0.6
-        self._manipulated_object.set_world_poses(object_target_position)
+        # object_target_position = self.target_position.clone()
+        # object_target_position[:,1] += 0.6
+        # self._manipulated_object.set_world_poses(object_target_position)
         self.default_dof = torch.tensor(target_joint_positions,dtype=torch.float).repeat(self.num_envs,1).clone()
 
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
+
+        for i in range(self.frame_skip):
+            self._env._world.step(render=True)
+     
         
 
         

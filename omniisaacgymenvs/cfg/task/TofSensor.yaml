@@ -16,7 +16,7 @@ env:
 
 sim:
   dt: 0.0083 # 1/120 s
-  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  use_gpu_pipeline: True
   gravity: [0.0, 0.0, -9.81]
   add_ground_plane: True
   add_distant_light: True
@@ -94,7 +94,7 @@ sim:
     max_depenetration_velocity: 1000.0
     position: [0, 0.0, 2.02]
     quaternion: [0, 0, 1, 0]
-    dof_target: [0.0, 0, 0, 0, 0, 0]
+    dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
   Object:
    category: "02876657"
    
