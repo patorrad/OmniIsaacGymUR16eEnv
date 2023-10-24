@@ -206,6 +206,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
             
+            
     
 
             self.num_timesteps += env.num_envs
@@ -237,9 +238,12 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     rewards[idx] += self.gamma * terminal_value[0]
                     
                     
-                num_rollouts += 1
+                    num_rollouts += 1
             
             self.last_rollout_reward += rewards.sum()
+            
+        
+        
 
             rollout_buffer.add(
                 self._last_obs,  # type: ignore[arg-type]
@@ -264,6 +268,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                                      dones=dones)
         
         self.last_rollout_reward /= num_rollouts
+       
 
         callback.update_locals(locals())
 
@@ -300,13 +305,14 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_training_start(locals(), globals())
 
         assert self.env is not None
-
+        x = time.time()
         while self.num_timesteps < total_timesteps:
             continue_training = self.collect_rollouts(
                 self.env,
                 callback,
                 self.rollout_buffer,
                 n_rollout_steps=self.n_steps)
+            print("Rollout time:", time.time() - x)
 
             if not continue_training:
                 break

@@ -61,6 +61,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     # env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
     from omni.isaac.gym.vec_env import VecEnvBase
+   
     env = VecEnvBase(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
@@ -91,22 +92,36 @@ def parse_hydra_configs(cfg: DictConfig):
 
     # create agent from stable baselines
    
+    # model = PPO(
+    #     "MlpPolicy",
+    #     env,
+    #     n_steps=1000,
+    #     batch_size=1000,
+    #     n_epochs=20,
+    #     learning_rate=0.001,
+    #     gamma=0.99,
+    #     device="cuda:0",
+    #     ent_coef=0.0,
+    #     vf_coef=0.5,
+    #     max_grad_norm=1.0,
+    #     verbose=1,
+    #     tensorboard_log="./TofSensor"
+    # )
+    
+    
     model = PPO(
         "MlpPolicy",
         env,
-        n_steps=200,
-        batch_size=200,
-        n_epochs=20,
-        learning_rate=0.001,
-        gamma=0.99,
-        device="cuda:0",
-        ent_coef=0.0,
-        vf_coef=0.5,
-        max_grad_norm=1.0,
-        verbose=1,
-        tensorboard_log="./TofSensor"
-    )
-    model.learn(total_timesteps=100000)
+        n_epochs=10,
+        n_steps=2000,
+        learning_rate=3e-4,
+        batch_size=500,
+        seed=500,
+        tensorboard_log="./TofSensor",  #str(result_path / "log"),
+        verbose=1
+        )
+    
+    model.learn(total_timesteps=12000000)
     model.save("ppo_cartpole")
 
     env.close()

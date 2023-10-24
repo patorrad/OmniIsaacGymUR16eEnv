@@ -98,7 +98,7 @@ class TofSensorTask(RLTask):
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._num_observations = 9
+        self._num_observations = 3
         self._num_actions = 1
 
         RLTask.__init__(self, name, env)
@@ -125,6 +125,8 @@ class TofSensorTask(RLTask):
         self.current_directory = os.getcwd()
 
         self._step = 0
+        self.angle_dev = None
+        self.current_euler_angles = torch.zeros((self.num_envs,3))
 
         # control parameter
 
@@ -134,7 +136,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([1.0] * 3 + [2] * 3,
+        velocity_limit = torch.as_tensor([1.0] * 3 + [1.0] * 3,
                                          device=self.device)  #slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -428,9 +430,9 @@ class TofSensorTask(RLTask):
         robot_joint = self._robots.get_joint_positions()
 
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
-
+    
         self.obs_buf = torch.cat([
-            robot_joint, current_euler_angles[:, 1][:, None],
+             current_euler_angles[:, 1][:, None],
             self.target_angle[:, None], self.angle_dev[:, None]
         ],
                                  dim=1)
@@ -495,7 +497,7 @@ class TofSensorTask(RLTask):
         self.control_time = self._env._world.get_physics_dt() * self.frame_skip
 
         # delta pose
-        action = torch.clip(action, -1, 1) 
+        action = torch.clip(action, -1, 1)
         self.pre_action[:, 5] = action.reshape(-1)
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
@@ -544,16 +546,16 @@ class TofSensorTask(RLTask):
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time
+        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time*10
 
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
 
-        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi)
+        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi/2)
         # set target dof and target velocity
         self._robots.set_joint_position_targets(targets_dof)
         #self._robots.set_joint_position_targets(self.target_joint_positions)
-        #self._robots.set_joint_velocity_targets(delta_dof_pos)
+        # self._robots.set_joint_velocity_targets(delta_dof_pos)
 
         pre_position, pre_orientation = self._end_effector.get_world_poses(
             clone=False)
@@ -561,7 +563,7 @@ class TofSensorTask(RLTask):
 
         # frame skip
         for i in range(self.frame_skip):
-            self._env._world.step(render=True)
+            self._env._world.step(render=False)
 
         current_position, current_orientation = self._end_effector.get_world_poses(
             clone=False)
@@ -580,16 +582,22 @@ class TofSensorTask(RLTask):
 
         self.target_angle = torch.zeros(self.num_envs, device=self.device)
 
-        self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
-            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
+        self.target_angle[:int(self.num_envs / 1)] = torch.as_tensor(
+            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 1)) *
             np.pi,
-            device=self.device)
-        self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
-            np.random.uniform(low=-0.5, high=-0.1, size=int(
-                self.num_envs / 2)) * np.pi,
-            device=self.device)
+            device=self.device) *0 + 0.5*torch.pi
+        # self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
+        #     np.random.uniform(low=-0.5, high=-0.1, size=int(
+        #         self.num_envs / 2)) * np.pi,
+        #     device=self.device)
         self.init_angle_dev = -self.target_angle.clone()
         self.stop_index = None
+        # print("curr:",self.current_euler_angles[:,1])
+        # print("dev:",self.angle_dev,"rew:",self.rew_buf)
+    
+        # print("rew:",self.rew_buf)
+        # print('=====================')
+        # print("target angle:",-self.target_angle)
         # frame skip
 
         # self.reset_internal()
@@ -610,15 +618,18 @@ class TofSensorTask(RLTask):
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
                                    dim=1) * -0.0
-
-        self.rew_buf = (1 - dev_percentage) * 5 + (self.cartesian_error**
-                                                   2) * -1e2 + action_penalty
+       
+        self.rew_buf = (1 - torch.clamp(dev_percentage, 0 , 1.0)) * 50
+      
+        
+        
         
         return self.rew_buf
 
     def is_done(self) -> None:
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
+     
         
         if (self._step+1) %200 ==0:
             self._step = 0 
@@ -677,7 +688,8 @@ class TofSensorTask(RLTask):
                                         dtype=torch.float).repeat(
                                             self.num_envs, 1).clone()
 
-        _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
+        
 
         for i in range(self.frame_skip):
-            self._env._world.step(render=True)
+            self._env._world.step(render=False)
+        _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
