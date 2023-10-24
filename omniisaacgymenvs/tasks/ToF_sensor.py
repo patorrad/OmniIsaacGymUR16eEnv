@@ -437,10 +437,8 @@ class TofSensorTask(RLTask):
     
         self.obs_buf = torch.cat([robot_joint, current_euler_angles[:,1][:,None], self.target_angle[:,None],self.angle_dev[:,None]],dim=1)
         
+        
 
-
-        return {self._robots.name: {"obs_buf": self.obs_buf}}
-     
 
       
 
@@ -499,15 +497,7 @@ class TofSensorTask(RLTask):
         return u
     
 
-    def action_space(self):
-        dof_limits = self._robots.get_dof_limits()
-        self.robot_dof_lower_limits = dof_limits[0, :, 0].to(
-            device=self._device)
-        self.robot_dof_upper_limits = dof_limits[0, :, 1].to(
-            device=self._device)
-        # return  gym.spaces.Box(np.ones(self._robots.num_dof) * -1.0, np.ones(self._robots.num_dof) * 1.0)
-        return  gym.spaces.Box(np.ones(1) * -1.0, np.ones(1) * 1.0)
-
+    
     def recover_action(self, action, limit):
 
 
@@ -705,9 +695,9 @@ class TofSensorTask(RLTask):
         
       
 
-        # object_target_position = self.target_position.clone()
-        # object_target_position[:,1] += 0.6
-        # self._manipulated_object.set_world_poses(object_target_position)
+        object_target_position = self.target_position.clone()
+        object_target_position[:,1] += 0.6
+        self._manipulated_object.set_world_poses(object_target_position)
         self.default_dof = torch.tensor(target_joint_positions,dtype=torch.float).repeat(self.num_envs,1).clone()
 
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()

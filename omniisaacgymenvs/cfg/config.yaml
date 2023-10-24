@@ -18,13 +18,13 @@ max_iterations: ''
 ## Device config
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'cpu' #'gpu'
+pipeline: 'cuda' #'gpu'
 # whether to use cpu or gpu physx
-sim_device: 'cpu' #'gpu'
+sim_device: 'cuda' #'gpu'
 # used for gpu simulation only - device id for running sim and task if pipeline=gpu
 device_id: 0
 # device to run RL
-rl_device: 'cpu' #'cuda:0'
+rl_device: 'cuda' #'cuda:0'
 # multi-GPU training
 multi_gpu: False
 
@@ -48,7 +48,7 @@ mt_timeout: 30
 wandb_activate: True
 wandb_group: ''
 wandb_name: '${train.params.config.name}_joint'
-wandb_entity: 'patorrad'
+wandb_entity: 'Entong'
 wandb_project: 'omniisaacgymenvs_ur10e'
 
 # set default task and default training config based on task

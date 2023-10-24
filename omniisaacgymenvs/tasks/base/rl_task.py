@@ -75,7 +75,7 @@ class RLTask(BaseTask):
         self.clip_obs = self._cfg["task"]["env"].get("clipObservations", np.Inf)
         self.clip_actions = self._cfg["task"]["env"].get("clipActions", np.Inf)
         self.rl_device = self._cfg.get("rl_device", "cuda:0")
-
+        
         self.control_frequency_inv = self._cfg["task"]["env"].get("controlFrequencyInv", 1)
 
         print("RL device: ", self.rl_device)
