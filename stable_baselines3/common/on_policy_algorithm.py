@@ -305,8 +305,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_training_start(locals(), globals())
 
         assert self.env is not None
-        x = time.time()
+       
         while self.num_timesteps < total_timesteps:
+            x = time.time()
             continue_training = self.collect_rollouts(
                 self.env,
                 callback,

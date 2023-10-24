@@ -546,7 +546,7 @@ class TofSensorTask(RLTask):
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time*10
+        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time*2
 
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
@@ -582,14 +582,14 @@ class TofSensorTask(RLTask):
 
         self.target_angle = torch.zeros(self.num_envs, device=self.device)
 
-        self.target_angle[:int(self.num_envs / 1)] = torch.as_tensor(
-            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 1)) *
+        self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
+            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
             np.pi,
-            device=self.device) *0 + 0.5*torch.pi
-        # self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
-        #     np.random.uniform(low=-0.5, high=-0.1, size=int(
-        #         self.num_envs / 2)) * np.pi,
-        #     device=self.device)
+            device=self.device) 
+        self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
+            np.random.uniform(low=-0.5, high=-0.1, size=int(
+                self.num_envs / 2)) * np.pi,
+            device=self.device)
         self.init_angle_dev = -self.target_angle.clone()
         self.stop_index = None
         # print("curr:",self.current_euler_angles[:,1])
@@ -619,7 +619,7 @@ class TofSensorTask(RLTask):
             self._robots.get_joint_velocities() - 1, 1),
                                    dim=1) * -0.0
        
-        self.rew_buf = (1 - torch.clamp(dev_percentage, 0 , 1.0)) * 50
+        self.rew_buf = (1 - torch.clamp(dev_percentage, 0 , 1.2)) * 5
       
         
         
