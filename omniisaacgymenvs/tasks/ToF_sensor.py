@@ -495,7 +495,7 @@ class TofSensorTask(RLTask):
         self.control_time = self._env._world.get_physics_dt() * self.frame_skip
 
         # delta pose
-        action = torch.clip(action, -1, 1) * 0 + 1
+        action = torch.clip(action, -1, 1) 
         self.pre_action[:, 5] = action.reshape(-1)
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
@@ -622,6 +622,7 @@ class TofSensorTask(RLTask):
         
         if (self._step+1) %200 ==0:
             self._step = 0 
+            self.post_reset()
             return [True for i in range(self.num_envs)]
         
             

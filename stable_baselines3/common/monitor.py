@@ -92,10 +92,7 @@ class Monitor(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         if self.needs_reset:
             raise RuntimeError("Tried to step environment that needs reset")
         observation, reward, terminated, truncated, info = self.env.step(action)
-        
-        # change save method
-        import torch
-        self.rewards.append(reward.to(torch.float32))
+        self.rewards.append(float(reward))
         if terminated or truncated:
             self.needs_reset = True
             ep_rew = sum(self.rewards)

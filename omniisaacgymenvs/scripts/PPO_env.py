@@ -94,8 +94,8 @@ def parse_hydra_configs(cfg: DictConfig):
     model = PPO(
         "MlpPolicy",
         env,
-        n_steps=1000,
-        batch_size=1000,
+        n_steps=200,
+        batch_size=200,
         n_epochs=20,
         learning_rate=0.001,
         gamma=0.99,

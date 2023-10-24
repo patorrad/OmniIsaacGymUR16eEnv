@@ -157,14 +157,18 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         n_steps = 0
         rollout_buffer.reset()
-        # Sample new weights for the state dependent exploration
-
+        # Sample new weights for the state dependent explora   
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
 
         callback.on_rollout_start()
+        num_rollouts = 0
+        
+        self.last_rollout_reward = 0
+        
 
         while n_steps < n_rollout_steps:
+            
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
@@ -201,6 +205,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                         device=self.device))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
+            
     
 
             self.num_timesteps += env.num_envs
@@ -230,6 +235,11 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
                    
                     rewards[idx] += self.gamma * terminal_value[0]
+                    
+                    
+                num_rollouts += 1
+            
+            self.last_rollout_reward += rewards.sum()
 
             rollout_buffer.add(
                 self._last_obs,  # type: ignore[arg-type]
@@ -247,11 +257,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             # values = self.policy.predict_values(
             #     obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
             values = self.policy.predict_values(
-               new_obs, self.device)  # type: ignore[arg-type]
+               new_obs)  # type: ignore[arg-type]
 
 
         rollout_buffer.compute_returns_and_advantage(last_values=values,
                                                      dones=dones)
+        
+        self.last_rollout_reward /= num_rollouts
 
         callback.update_locals(locals())
 
@@ -304,15 +316,21 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                                     total_timesteps)
 
             # Display training infos
+            
             if log_interval is not None and iteration % log_interval == 0:
                 assert self.ep_info_buffer is not None
                 time_elapsed = max((time.time_ns() - self.start_time) / 1e9,
                                    sys.float_info.epsilon)
-                fps = int((self.num_timesteps - self._num_timesteps_at_start) /
-                          time_elapsed)
+                fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+                # fps = int((self.num_timesteps - self._num_timesteps_at_start) /
+                #           (time.time() - self.start_time))
+                
                 self.logger.record("time/iterations",
                                    iteration,
                                    exclude="tensorboard")
+               
+                self.logger.record("rollout/rollout_rew_mean",
+                                   self.last_rollout_reward.cpu().item())
                 if len(self.ep_info_buffer) > 0 and len(
                         self.ep_info_buffer[0]) > 0:
                     self.logger.record(
@@ -324,9 +342,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         safe_mean(
                             [ep_info["l"] for ep_info in self.ep_info_buffer]))
                 self.logger.record("time/fps", fps)
-                self.logger.record("time/time_elapsed",
-                                   int(time_elapsed),
-                                   exclude="tensorboard")
+                # self.logger.record("time/time_elapsed",
+                #                    int(time_elapsed),
+                #                    exclude="tensorboard")
                 self.logger.record("time/total_timesteps",
                                    self.num_timesteps,
                                    exclude="tensorboard")

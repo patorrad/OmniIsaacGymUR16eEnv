@@ -61,8 +61,10 @@ def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
     :return: explained variance of ypred and y
     """
     assert y_true.ndim == 1 and y_pred.ndim == 1
-    var_y = np.var(y_true)
-    return np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+   
+    import torch
+    var_y = torch.var(y_true)
+    return torch.nan if var_y == 0 else 1 - torch.var(y_true - y_pred) / var_y
 
 
 def update_learning_rate(optimizer: th.optim.Optimizer, learning_rate: float) -> None:

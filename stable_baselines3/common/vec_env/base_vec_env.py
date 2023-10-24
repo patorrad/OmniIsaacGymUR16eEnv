@@ -61,7 +61,6 @@ class VecEnv(ABC):
         observation_space: spaces.Space,
         action_space: spaces.Space,
     ):
-        
         self.num_envs = num_envs
         self.observation_space = observation_space
         self.action_space = action_space
@@ -71,28 +70,27 @@ class VecEnv(ABC):
         self._seeds: List[Optional[int]] = [None for _ in range(num_envs)]
         # options to be used in the next call to env.reset()
         self._options: List[Dict[str, Any]] = [{} for _ in range(num_envs)]
-        
 
-        # try:
-        #     render_modes = self.get_attr("render_mode")
-        # except AttributeError:
-        #     warnings.warn("The `render_mode` attribute is not defined in your environment. It will be set to None.")
-        #     render_modes = [None for _ in range(num_envs)]
+        try:
+            render_modes = self.get_attr("render_mode")
+        except AttributeError:
+            warnings.warn("The `render_mode` attribute is not defined in your environment. It will be set to None.")
+            render_modes = [None for _ in range(num_envs)]
 
-        # assert all(
-        #     render_mode == render_modes[0] for render_mode in render_modes
-        # ), "render_mode mode should be the same for all environments"
-        # self.render_mode = render_modes[0]
+        assert all(
+            render_mode == render_modes[0] for render_mode in render_modes
+        ), "render_mode mode should be the same for all environments"
+        self.render_mode = render_modes[0]
 
-        # render_modes = []
-        # if self.render_mode is not None:
-        #     if self.render_mode == "rgb_array":
-        #         # SB3 uses OpenCV for the "human" mode
-        #         render_modes = ["human", "rgb_array"]
-        #     else:
-        #         render_modes = [self.render_mode]
+        render_modes = []
+        if self.render_mode is not None:
+            if self.render_mode == "rgb_array":
+                # SB3 uses OpenCV for the "human" mode
+                render_modes = ["human", "rgb_array"]
+            else:
+                render_modes = [self.render_mode]
 
-        self.metadata = {"render_modes": None} #render_modes
+        self.metadata = {"render_modes": render_modes}
 
     def _reset_seeds(self) -> None:
         """

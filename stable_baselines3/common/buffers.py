@@ -481,18 +481,20 @@ class RolloutBuffer(BaseBuffer):
         """
         # Convert to numpy
         last_values = last_values.clone().cpu().numpy().flatten()
+        import torch
 
         last_gae_lam = 0
         for step in reversed(range(self.buffer_size)):
             if step == self.buffer_size - 1:
-                next_non_terminal = 1.0 - dones
-                next_values = last_values
+                next_non_terminal = torch.as_tensor(1.0 - np.array(dones).astype(int),device=self.device)
+                next_values =  torch.as_tensor(last_values,device=self.device)
             else:
-                next_non_terminal = 1.0 - self.episode_starts[step + 1]
-                next_values = self.values[step + 1]
-            delta = self.rewards[
-                step] + self.gamma * next_values * next_non_terminal - self.values[
-                    step]
+                next_non_terminal = torch.as_tensor(1.0 - self.episode_starts[step + 1],device=self.device)
+                next_values = torch.as_tensor(self.values[step + 1],device=self.device)
+            
+            
+            
+            delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
             last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             self.advantages[step] = last_gae_lam
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
