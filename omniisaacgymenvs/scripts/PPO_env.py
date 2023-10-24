@@ -104,7 +104,7 @@ def parse_hydra_configs(cfg: DictConfig):
         vf_coef=0.5,
         max_grad_norm=1.0,
         verbose=1,
-        tensorboard_log="./cartpole_tensorboard"
+        tensorboard_log="./TofSensor"
     )
     model.learn(total_timesteps=100000)
     model.save("ppo_cartpole")

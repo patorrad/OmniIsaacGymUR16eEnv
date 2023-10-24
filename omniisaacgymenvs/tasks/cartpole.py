@@ -26,7 +26,6 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 from omniisaacgymenvs.robots.articulations.ur10 import UR10
@@ -59,14 +58,10 @@ from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
 # import warp as wp
 
+
 class CartpoleTask(RLTask):
-    def __init__(
-        self,
-        name,
-        sim_config,
-        env,
-        offset=None
-    ) -> None:
+
+    def __init__(self, name, sim_config, env, offset=None) -> None:
 
         self._sim_config = sim_config
         self._cfg = sim_config.config
@@ -79,10 +74,15 @@ class CartpoleTask(RLTask):
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
         self._ur10_positions = torch.tensor([0.0, 0.0, 1.5])
         self._ur10_rotations = torch.tensor([0.0, 0.0, 1.0, 0.0])
-        self._ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device = self._device) 
-        self._ur10_dof_targets = self._ur10_dof_target.repeat(self._num_envs, 1) 
+        self._ur10_dof_target = torch.tensor(
+            [0.06, -2.5, 2.03, 0.58, 1.67, 1.74], device=self._device)
+        self._ur10_dof_targets = self._ur10_dof_target.repeat(
+            self._num_envs, 1)
         # self._target_object_positions = torch.tensor([-0.4, 0.0, 0.9])
-        self._target_object_positions = [torch.tensor([-0.6, 0.0, 0.9]), torch.tensor([-0.6, -0.25, 0.9])]
+        self._target_object_positions = [
+            torch.tensor([-0.6, 0.0, 0.9]),
+            torch.tensor([-0.6, -0.25, 0.9])
+        ]
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
@@ -106,21 +106,34 @@ class CartpoleTask(RLTask):
         self.get_target_object()
         super().set_up_scene(scene)
         # self._cartpoles = ArticulationView(prim_paths_expr="/World/envs/.*/Cartpole", name="cartpole_view", reset_xform_properties=False)
-        self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/ur10", name="ur10_view", reset_xform_properties=False)
+        self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/ur10",
+                                        name="ur10_view",
+                                        reset_xform_properties=False)
         # scene.add(self._cartpoles)
         scene.add(self._robots)
 
         # end-effectors view
-        self._hands = RigidPrimView(prim_paths_expr="/World/envs/.*/ur10/ee_link", name="hand_view", reset_xform_properties=False)
+        self._hands = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/ur10/ee_link",
+            name="hand_view",
+            reset_xform_properties=False)
         scene.add(self._hands)
 
         # target view
-        self._targets = RigidPrimView(prim_paths_expr="/World/envs/.*/target", name="target_view", reset_xform_properties=False)
+        self._targets = RigidPrimView(prim_paths_expr="/World/envs/.*/target",
+                                      name="target_view",
+                                      reset_xform_properties=False)
         scene.add(self._targets)
 
         # target object
-        self._target_objects = [RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_1", name="target__object_view_1", reset_xform_properties=False),
-                                    RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_2", name="target__object_view_2", reset_xform_properties=False)]
+        self._target_objects = [
+            RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_1",
+                          name="target__object_view_1",
+                          reset_xform_properties=False),
+            RigidPrimView(prim_paths_expr="/World/envs/.*/target_object_2",
+                          name="target__object_view_2",
+                          reset_xform_properties=False)
+        ]
         scene.add(self._target_objects[0])
         scene.add(self._target_objects[1])
 
@@ -129,7 +142,6 @@ class CartpoleTask(RLTask):
 
         # self.controller = Controller_osc(self._robots, self._device)
 
-        
         # # retrieve file path for the Cartpole USD file
         # assets_root_path = get_assets_root_path()
         # usd_path = assets_root_path + "/Isaac/Robots/UR10/ur10.usd"
@@ -143,53 +155,75 @@ class CartpoleTask(RLTask):
         self.init_data()
 
         return
-    
+
     def init_data(self) -> None:
         # self.actions = torch.zeros((self._num_envs, self.num_actions), device=self._device)
 
-        self.jacobians = torch.zeros((self._num_envs, 10, 6, 9), device=self._device)
-        self.hand_pos, self.hand_rot = torch.zeros((self._num_envs, 3), device=self._device), torch.zeros((self._num_envs, 4), device=self._device)
+        self.jacobians = torch.zeros((self._num_envs, 10, 6, 9),
+                                     device=self._device)
+        self.hand_pos, self.hand_rot = torch.zeros(
+            (self._num_envs, 3), device=self._device), torch.zeros(
+                (self._num_envs, 4), device=self._device)
 
     def get_cartpole(self):
-        cartpole = Cartpole(prim_path=self.default_zero_env_path + "/Cartpole", name="Cartpole", translation=self._cartpole_positions)
+        cartpole = Cartpole(prim_path=self.default_zero_env_path + "/Cartpole",
+                            name="Cartpole",
+                            translation=self._cartpole_positions)
         # applies articulation settings from the task configuration yaml file
-        self._sim_config.apply_articulation_settings("Cartpole", get_prim_at_path(cartpole.prim_path), self._sim_config.parse_actor_config("Cartpole"))
+        self._sim_config.apply_articulation_settings(
+            "Cartpole", get_prim_at_path(cartpole.prim_path),
+            self._sim_config.parse_actor_config("Cartpole"))
 
     def get_ur10(self):
-        self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10", name="ur10", position=self._ur10_positions, orientation=self._ur10_rotations, attach_gripper=True)
+        self.ur10 = UR10(prim_path=self.default_zero_env_path + "/ur10",
+                         name="ur10",
+                         position=self._ur10_positions,
+                         orientation=self._ur10_rotations,
+                         attach_gripper=True)
         # applies articulation settings from the task configuration yaml file
         self.ur10.set_joint_positions(self._ur10_dof_target)
         self.ur10.set_joints_default_state(self._ur10_dof_target)
-        self._sim_config.apply_articulation_settings("ur10", get_prim_at_path(self.ur10.prim_path), self._sim_config.parse_actor_config("ur10"))
+        self._sim_config.apply_articulation_settings(
+            "ur10", get_prim_at_path(self.ur10.prim_path),
+            self._sim_config.parse_actor_config("ur10"))
 
     def get_target(self):
-        target = DynamicSphere(prim_path=self.default_zero_env_path + "/target",
+        target = DynamicSphere(prim_path=self.default_zero_env_path +
+                               "/target",
                                name="target",
                                radius=0.025,
                                color=torch.tensor([1, 0, 0]))
-        self._sim_config.apply_articulation_settings("target", get_prim_at_path(target.prim_path), self._sim_config.parse_actor_config("target"))
+        self._sim_config.apply_articulation_settings(
+            "target", get_prim_at_path(target.prim_path),
+            self._sim_config.parse_actor_config("target"))
         target.set_collision_enabled(False)
 
     def get_target_object(self):
-        target_object_1 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_1",
-                               name="target_object_1",
-                               position=self._target_object_positions[0],
-                               size=.2,
-                               color=torch.tensor([0, 0, 1]))
-        
-        target_object_2 = DynamicCuboid(prim_path=self.default_zero_env_path + "/target_object_2",
-                               name="target_object_2",
-                               position=self._target_object_positions[1],
-                               size=.2,
-                               color=torch.tensor([1, 0, 1]))
+        target_object_1 = DynamicCuboid(
+            prim_path=self.default_zero_env_path + "/target_object_1",
+            name="target_object_1",
+            position=self._target_object_positions[0],
+            size=.2,
+            color=torch.tensor([0, 0, 1]))
+
+        target_object_2 = DynamicCuboid(
+            prim_path=self.default_zero_env_path + "/target_object_2",
+            name="target_object_2",
+            position=self._target_object_positions[1],
+            size=.2,
+            color=torch.tensor([1, 0, 1]))
         # target_object_2 = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object_2",
         #                        name="target_object",
         #                        position=self._target_object_positions[1],
         #                        radius=.1,
         #                        height=.5,
         #                        color=torch.tensor([1, 0, 1]))
-        self._sim_config.apply_articulation_settings("target_object_1", get_prim_at_path(target_object_1.prim_path), self._sim_config.parse_actor_config("target_object_1"))
-        self._sim_config.apply_articulation_settings("target_object_2", get_prim_at_path(target_object_2.prim_path), self._sim_config.parse_actor_config("target_object_2"))
+        self._sim_config.apply_articulation_settings(
+            "target_object_1", get_prim_at_path(target_object_1.prim_path),
+            self._sim_config.parse_actor_config("target_object_1"))
+        self._sim_config.apply_articulation_settings(
+            "target_object_2", get_prim_at_path(target_object_2.prim_path),
+            self._sim_config.parse_actor_config("target_object_2"))
 
     def get_observations(self) -> dict:
         # dof_pos = self._cartpoles.get_joint_positions(clone=False)
@@ -229,18 +263,18 @@ class CartpoleTask(RLTask):
         # self.obs_buf[:, 8:15] = dof_vel_scaled[:, :7] * generalization_noise
         # self.obs_buf = target_pos - self._env_pos
         self.obs_buf = target_pos
-        
+
         # self.obs_buf[:, 1] = self.hand_pos
 
         # # compute distance for calculate_metrics() and is_done()
         # self._computed_distance = torch.norm(end_effector_pos - target_pos, dim=-1)
 
         # if self._control_space == "cartesian":
-            # self.jacobians = self._robots.get_jacobians(clone=False)[:,6:,:,:]
+        # self.jacobians = self._robots.get_jacobians(clone=False)[:,6:,:,:]
         self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
         # print("$$$$$$$$$$$$$$$$$$$$$$ hand_rot", self.hand_rot)
         # print("$$$$$$$$$$$$$$$$$$$$$$ hand_pos", self.hand_pos)
-            # self.hand_pos -= self._env_pos
+        # self.hand_pos -= self._env_pos
         # print("################################ got observation")
 
         return {self._robots.name: {"obs_buf": self.obs_buf}}
@@ -264,50 +298,59 @@ class CartpoleTask(RLTask):
 
         # indices = torch.arange(self._cartpoles.count, dtype=torch.int32, device=self._device)
         # self._cartpoles.set_joint_efforts(forces, indices=indices)
-        
+
         # PT
         # 0.599
         if self._step % 2 == 0:
             self.debug_draw.clear_lines()
             self.debug_draw.clear_points()
-            indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
+            indices = torch.arange(self._robots.count,
+                                   dtype=torch.int64,
+                                   device=self._device)
             # self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
             self._targets.set_world_poses(self.hand_pos, indices=indices)
             self.jacobians = self._robots.get_jacobians(clone=False)
             # print("~~~~~~~~~~~~~~~~~~~~~~~self.jacobians  ", self.jacobians.shape)
             # self.actions = actions.clone().to(self._device)
-            env_ids_int32 = torch.arange(self._robots.count, dtype=torch.int32, device=self._device)
+            env_ids_int32 = torch.arange(self._robots.count,
+                                         dtype=torch.int32,
+                                         device=self._device)
 
             # goal_position = self.hand_pos #+ actions / 100.0
             goal_position, _ = self._hands.get_world_poses(clone=False)
             # if self._step < 200:
             #     goal_position[:,0] += 0.001
             # else:
-            #     goal_position[:,0] -= 0.001 
-            goal_position[:,1] -= 0.001 
-            delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 7 - 1, :, :],  # ur10 hand index: 7?
-                                                            current_position=self.hand_pos,
-                                                            current_orientation=self.hand_rot,
-                                                            goal_position=goal_position,
-                                                            goal_orientation=None)
-                                                            # torch.tensor([[0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0],
-                                                            # [0.0, 0, 1.0, 0]], device=self._device)) #None)
+            #     goal_position[:,0] -= 0.001
+            goal_position[:, 1] -= 0.001
+            delta_dof_pos = omniverse_isaacgym_utils.ik(
+                jacobian_end_effector=self.
+                jacobians[:, 7 - 1, :, :],  # ur10 hand index: 7?
+                current_position=self.hand_pos,
+                current_orientation=self.hand_rot,
+                goal_position=goal_position,
+                goal_orientation=None)
+            # torch.tensor([[0.0, 0, 1.0, 0],
+            # [0.0, 0, 1.0, 0],
+            # [0.0, 0, 1.0, 0],
+            # [0.0, 0, 1.0, 0]], device=self._device)) #None)
 
             targets = self.robot_dof_targets[:, :7] + delta_dof_pos
 
-            self.robot_dof_targets[:, :7] = torch.clamp(targets, self.robot_dof_lower_limits[:7], self.robot_dof_upper_limits[:7])
+            self.robot_dof_targets[:, :7] = torch.clamp(
+                targets, self.robot_dof_lower_limits[:7],
+                self.robot_dof_upper_limits[:7])
             self.robot_dof_targets[:, 7:] = 0
 
-            self._robots.set_joint_position_targets(self.robot_dof_targets, indices=env_ids_int32)
+            self._robots.set_joint_position_targets(self.robot_dof_targets,
+                                                    indices=env_ids_int32)
 
-        # print("##################", self._robots._gripper.get_world_pose())
-        # test = self._robots._gripper.get_world_pose()
-        
+            # print("##################", self._robots._gripper.get_world_pose())
+            # test = self._robots._gripper.get_world_pose()
 
             # Raytracer
-            target_object_pose, target_object_rot = self._target_objects[0].get_world_poses(clone=False)
+            target_object_pose, target_object_rot = self._target_objects[
+                0].get_world_poses(clone=False)
             # get_relative_transform(self._target_objects)
             ## Normalize quaternion into vector
             # Step 1: Normalize the quaternion
@@ -315,15 +358,15 @@ class CartpoleTask(RLTask):
             q_normalized = self.hand_rot.cpu()[1] / q_norm
             # Step 2: Extract the vector part
             v = q_normalized[1:]
-            
+
             # Step 3: Convert to Cartesian coordinates
             cartesian_vector = v
-            
+
             # Step 4: Normalize the Cartesian vector
             cartesian_norm = np.linalg.norm(cartesian_vector)
             cartesian_normalized = cartesian_vector / cartesian_norm
             # print("euler", quat_to_euler_angles(self.hand_rot.cpu()[1]))
-            
+
             # For 2 sensors
             for i in range(2):
                 # Make the sensors in different positions
@@ -334,24 +377,33 @@ class CartpoleTask(RLTask):
                     hand_pos[1] -= 0.03
 
                 cam_pos = hand_pos - target_object_pose.cpu()[1]
-            
-                ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
+
+                ray_t, ray_dir = self.raytracer.render(
+                    int(np.random.normal(10, 10)), cam_pos,
+                    self.hand_rot.cpu()[1])
 
                 sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
-                sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1], sensor_ray_pos_np[2])
+                sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
+                                        sensor_ray_pos_np[1],
+                                        sensor_ray_pos_np[2])
 
                 ray_dir = np.array(ray_dir)
                 ray_t = ray_t.numpy()
-                line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
+                line_vec = np.transpose(
+                    np.multiply(np.transpose(ray_dir), ray_t))
 
                 # print("ray_t", ray_t)
                 ray_t_nonzero = ray_t[np.nonzero(ray_t)]
                 # print("ray_t nonzero", ray_t)
                 average_distance = np.average(ray_t_nonzero)
-                standard_deviation = math.sqrt(max(average_distance * 100 * 0.4795 - 3.2018, 0)) # variance equation was calculated in cm
-                noise_distance = np.random.normal(average_distance * 1000, standard_deviation)
+                standard_deviation = math.sqrt(
+                    max(average_distance * 100 * 0.4795 - 3.2018,
+                        0))  # variance equation was calculated in cm
+                noise_distance = np.random.normal(average_distance * 1000,
+                                                  standard_deviation)
                 # print("average distance", average_distance * 1000) # simulation: m, real sensor: mm
-                print("distance with noise sensor ", i + 1, ":", noise_distance) # apply noise to average distance
+                print("distance with noise sensor ", i + 1, ":",
+                      noise_distance)  # apply noise to average distance
 
                 # print("ray_dir", ray_dir)
                 # print(np.array(sensor_ray_pos_tuple))
@@ -370,19 +422,25 @@ class CartpoleTask(RLTask):
                     sensor_ray_pos_tuple for _ in range(hits_len)
                 ]
 
-                # Sensor 1: red, sensor 2: yellow 
+                # Sensor 1: red, sensor 2: yellow
                 ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
                 normal_ray_colors = [(1, 0.5, 0, 1) for _ in range(hits_len)]
 
                 ray_sizes = [2 for _ in range(hits_len)]
                 point_sizes = [7 for _ in range(hits_len)]
-                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)] # start (camera) points: green
-                end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)] # end (ray hit) points: sensor 1 purple, sensor 2 white
-                self.debug_draw.draw_lines(sensor_ray_pos_list, ray_hit_points_list, ray_colors, ray_sizes)
+                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)
+                                      ]  # start (camera) points: green
+                end_point_colors = [
+                    (1, i, 1, 1) for _ in range(hits_len)
+                ]  # end (ray hit) points: sensor 1 purple, sensor 2 white
+                self.debug_draw.draw_lines(sensor_ray_pos_list,
+                                           ray_hit_points_list, ray_colors,
+                                           ray_sizes)
 
-                self.debug_draw.draw_points(ray_hit_points_list, end_point_colors, point_sizes)
-                self.debug_draw.draw_points(sensor_ray_pos_list, start_point_colors, point_sizes)
-
+                self.debug_draw.draw_points(ray_hit_points_list,
+                                            end_point_colors, point_sizes)
+                self.debug_draw.draw_points(sensor_ray_pos_list,
+                                            start_point_colors, point_sizes)
 
             # To view distinguished cone edge rays: uncomment these lines, and in raycast.py, change t in the bottom if branch to 1. instead of 0.
             # outside_rays = ray_hit_points_list[np.where(ray_t_nonzero == 1.)]
@@ -392,9 +450,7 @@ class CartpoleTask(RLTask):
             # ]
             # self.debug_draw.draw_lines(sensor_ray_pos_list_outside_only, outside_rays, outside_ray_colors, [2 for _ in range(len(outside_rays))])
 
-            
             # self.debug_draw.draw_lines([(0, 0, 0)], [(3000, 3000, 3000)], [(1, 0, 0, 1)], [20]) # uncomment for sanity check line
-            
 
         # if self._step > 1500:
         #     self.raytracer.save()
@@ -407,9 +463,12 @@ class CartpoleTask(RLTask):
         indices = env_ids.to(dtype=torch.int32)
 
         # reset robot
-        dof_vel = torch.zeros((len(indices), self._robots.num_dof), device=self._device)
-        self._robots.set_joint_position_targets(self.robot_dof_targets[env_ids], indices=indices)
-        self._robots.set_joint_positions(self._ur10_dof_target, indices=indices)
+        dof_vel = torch.zeros((len(indices), self._robots.num_dof),
+                              device=self._device)
+        self._robots.set_joint_position_targets(
+            self.robot_dof_targets[env_ids], indices=indices)
+        self._robots.set_joint_positions(self._ur10_dof_target,
+                                         indices=indices)
         self._robots.set_joint_velocities(dof_vel, indices=indices)
 
         # bookkeeping
@@ -427,14 +486,20 @@ class CartpoleTask(RLTask):
         # self._targets.set_world_poses(pos + self._env_pos[env_ids], indices=indices)
         self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
         self._targets.set_world_poses(self.hand_pos, indices=indices)
-        
+
         # Raytracing
         # print(type(get_prim_at_path(self._target_objects.prim_paths[0])))
         # print(get_prim_at_path(self._target_objects.prim_paths[0]).GetTypeName())
         # print(type(UsdGeom.Cube(get_prim_at_path(self._target_objects.prim_paths[0]))))
         # TODO Move this to raytracer?
-        trimesh_1 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[0].prim_paths[1])), self._target_object_positions[0])
-        trimesh_2 = geom_to_trimesh(UsdGeom.Cube(get_prim_at_path(self._target_objects[1].prim_paths[1])), self._target_object_positions[0])
+        trimesh_1 = geom_to_trimesh(
+            UsdGeom.Cube(
+                get_prim_at_path(self._target_objects[0].prim_paths[1])),
+            self._target_object_positions[0])
+        trimesh_2 = geom_to_trimesh(
+            UsdGeom.Cube(
+                get_prim_at_path(self._target_objects[1].prim_paths[1])),
+            self._target_object_positions[0])
         trimeshes = trimesh.util.concatenate(trimesh_2, trimesh_1)
         # print(trimeshes)
         warp_mesh = warp_from_trimesh(trimeshes, self._device)
@@ -450,9 +515,12 @@ class CartpoleTask(RLTask):
         # self.num_robot_dofs = self._robots.num_dof
         # self.robot_dof_pos = torch.zeros((self.num_envs, self.num_robot_dofs), device=self._device)
         dof_limits = self._robots.get_dof_limits()
-        self.robot_dof_lower_limits = dof_limits[0, :, 0].to(device=self._device)
-        self.robot_dof_upper_limits = dof_limits[0, :, 1].to(device=self._device)
-        self.robot_dof_speed_scales = torch.ones_like(self.robot_dof_lower_limits)
+        self.robot_dof_lower_limits = dof_limits[0, :,
+                                                 0].to(device=self._device)
+        self.robot_dof_upper_limits = dof_limits[0, :,
+                                                 1].to(device=self._device)
+        self.robot_dof_speed_scales = torch.ones_like(
+            self.robot_dof_lower_limits)
         self.robot_dof_targets = self._ur10_dof_targets
         #torch.zeros((self._num_envs, self.num_robot_dofs), dtype=torch.float, device=self._device)
 
@@ -461,7 +529,9 @@ class CartpoleTask(RLTask):
         # self.reset_idx(indices)
 
         # randomize all envs
-        indices = torch.arange(self._robots.count, dtype=torch.int64, device=self._device)
+        indices = torch.arange(self._robots.count,
+                               dtype=torch.int64,
+                               device=self._device)
         self.reset_idx(indices)
         # PT
 
@@ -470,7 +540,6 @@ class CartpoleTask(RLTask):
         # # randomize all envs
         # indices = torch.arange(self._cartpoles.count, dtype=torch.int64, device=self._device)
         # self.reset_idx(indices)
-
 
     def calculate_metrics(self) -> None:
         # cart_pos = self.obs_buf[:, 0]

@@ -39,10 +39,14 @@ class DummyVecEnv(VecEnv):
                 "Please read https://github.com/DLR-RM/stable-baselines3/issues/1151 for more information."
             )
         env = self.envs[0]
-        super().__init__(len(env_fns), env.observation_space, env.action_space)
+        
+        self.env = env
+        
+        # change the method to access the number of environment
+        super().__init__(env.num_envs, env.observation_space, env.action_space)
         obs_space = env.observation_space
         self.keys, shapes, dtypes = obs_space_info(obs_space)
-
+      
         self.buf_obs = OrderedDict([(k, np.zeros((self.num_envs, *tuple(shapes[k])), dtype=dtypes[k])) for k in self.keys])
         self.buf_dones = np.zeros((self.num_envs,), dtype=bool)
         self.buf_rews = np.zeros((self.num_envs,), dtype=np.float32)
@@ -55,9 +59,7 @@ class DummyVecEnv(VecEnv):
     def step_wait(self) -> VecEnvStepReturn:
         # Avoid circular imports
         for env_idx in range(self.num_envs):
-            obs, self.buf_rews[env_idx], terminated, truncated, self.buf_infos[env_idx] = self.envs[env_idx].step(
-                self.actions[env_idx]
-            )
+            obs, self.buf_rews, terminated, truncated, self.buf_infos = self.envs[env_idx].step(self.actions)
             # convert to SB3 VecEnv api
             self.buf_dones[env_idx] = terminated or truncated
             # See https://github.com/openai/gym/issues/3102
@@ -72,10 +74,10 @@ class DummyVecEnv(VecEnv):
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones), deepcopy(self.buf_infos))
 
     def reset(self) -> VecEnvObs:
-        for env_idx in range(self.num_envs):
-            maybe_options = {"options": self._options[env_idx]} if self._options[env_idx] else {}
-            obs, self.reset_infos[env_idx] = self.envs[env_idx].reset(seed=self._seeds[env_idx], **maybe_options)
-            self._save_obs(env_idx, obs)
+        # for env_idx in range(self.num_envs):
+        maybe_options = {"options": self._options[0]} if self._options[0] else {}
+        obs, self.reset_infos = self.envs[0].reset(seed=self._seeds[0], **maybe_options)
+        self._save_obs(obs)
         # Seeds and options are only used once
         self._reset_seeds()
         self._reset_options()
@@ -102,12 +104,12 @@ class DummyVecEnv(VecEnv):
         """
         return super().render(mode=mode)
 
-    def _save_obs(self, env_idx: int, obs: VecEnvObs) -> None:
+    def _save_obs(self, obs: VecEnvObs) -> None:
         for key in self.keys:
             if key is None:
-                self.buf_obs[key][env_idx] = obs
+                self.buf_obs[key] = obs
             else:
-                self.buf_obs[key][env_idx] = obs[key]  # type: ignore[call-overload]
+                self.buf_obs[key] = obs[key]  # type: ignore[call-overload]
 
     def _obs_from_buf(self) -> VecEnvObs:
         return dict_to_obs(self.observation_space, copy_obs_dict(self.buf_obs))

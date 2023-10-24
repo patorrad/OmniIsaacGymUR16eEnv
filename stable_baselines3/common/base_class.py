@@ -113,7 +113,7 @@ class BaseAlgorithm(ABC):
         verbose: int = 0,
         device: Union[th.device, str] = "auto",
         support_multi_env: bool = False,
-        monitor_wrapper: bool = True,
+        monitor_wrapper: bool = False,
         seed: Optional[int] = None,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
@@ -166,15 +166,17 @@ class BaseAlgorithm(ABC):
         # Create and wrap the env if needed
         if env is not None:
             env = maybe_make_env(env, self.verbose)
-            env = self._wrap_env(env, self.verbose, monitor_wrapper)
+            debug_env = self._wrap_env(env, self.verbose, monitor_wrapper)
 
-            self.observation_space = env.observation_space
-            self.action_space = env.action_space
+            self.observation_space = debug_env.observation_space
+            self.action_space = debug_env.action_space
             self.n_envs = env.num_envs
             self.env = env
+         
 
             # get VecNormalize object if needed
             self._vec_normalize_env = unwrap_vec_normalize(env)
+          
 
             if supported_action_spaces is not None:
                 assert isinstance(self.action_space, supported_action_spaces), (
