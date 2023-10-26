@@ -185,7 +185,9 @@ class TofSensorTask(RLTask):
 
         self.load_robot()
         # self.load_target()
-        self.load_manipulated_object()
+        #self.load_manipulated_object()
+
+        self.get_target_object()
         # self.load_pod()
         super().set_up_scene(scene)
 
@@ -398,6 +400,25 @@ class TofSensorTask(RLTask):
             # Alternatively set the density
             mass_api.CreateDensityAttr(1000)
             UsdPhysics.CollisionAPI.Apply(cube_prim)
+
+    
+    def get_target_object(self):
+        target_object_1 = DynamicCuboid(
+            prim_path=self.default_zero_env_path + "/manipulated_object_1",
+            name="manipulated_object_1",
+            position=[0,0,2.02],
+            size=.2,
+            color=torch.tensor([0, 0, 1]))
+        # target_object_2 = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object_2",
+        #                        name="target_object",
+        #                        position=self._target_object_positions[1],
+        #                        radius=.1,
+        #                        height=.5,
+        #                        color=torch.tensor([1, 0, 1]))
+        self._sim_config.apply_articulation_settings(
+            "manipulated_object__1", get_prim_at_path(target_object_1.prim_path),
+            self._sim_config.parse_actor_config("manipulated_object_1"))
+    
 
     def load_manipulated_object(self):
 
