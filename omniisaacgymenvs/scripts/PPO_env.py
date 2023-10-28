@@ -32,34 +32,36 @@ import torch
 import hydra
 import pdb
 from omegaconf import DictConfig
+from pathlib import Path
+import torch.nn as nn
 
-
-
+import argparse
 from omniisaacgymenvs.utils.hydra_cfg.hydra_utils import *
 from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_dict
 
 from omniisaacgymenvs.utils.task_util import initialize_task
 from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
+from omniisaacgymenvs.utils.wandb_util import setup_wandb,WandbCallback
 
 from stable_baselines3.ppo import PPO
-
+import pdb
 
 
 
 @hydra.main(config_name="config", config_path="../cfg")
 def parse_hydra_configs(cfg: DictConfig):
-    
-    
 
+    
+    
+    
+    # init env
     cfg_dict = omegaconf_to_dict(cfg)
     print_dict(cfg_dict)
    
-
     headless = cfg.headless
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
 
-    # env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
     from omni.isaac.gym.vec_env import VecEnvBase
    
     env = VecEnvBase(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
@@ -68,65 +70,65 @@ def parse_hydra_configs(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
     cfg_dict['seed'] = cfg.seed
    
-    
-    
     task = initialize_task(cfg_dict, env)
 
-    # while env._simulation_app.is_running():
-       
-    #     if env._world.is_playing():
-    #         if env._task._step %200 == 0:
-    #             env._task.post_reset()
-    #             # env._world.reset(soft=True)
-            
-    #         actions = torch.tensor(np.array([env.action_space().sample() for _ in range(env.num_envs)]), device=task.rl_device)
-            
-    #         env._task.pre_physics_step(actions)
-    #         # env._world.step(render=render)
-    #         env.sim_frame_count += 1
-    #         env._task.post_physics_step()
-            
-            
-    #     else:
-    #         env._world.step(render=render)
+    training_config = cfg["train"]["params"]["config"]
 
-    # create agent from stable baselines
-   
-    # model = PPO(
-    #     "MlpPolicy",
-    #     env,
-    #     n_steps=1000,
-    #     batch_size=1000,
-    #     n_epochs=20,
-    #     learning_rate=0.001,
-    #     gamma=0.99,
-    #     device="cuda:0",
-    #     ent_coef=0.0,
-    #     vf_coef=0.5,
-    #     max_grad_norm=1.0,
-    #     verbose=1,
-    #     tensorboard_log="./TofSensor"
-    # )
+    import datetime
+    current_time = datetime.datetime.now()
+    result_path = Path("results/"+str(current_time.month)+str(current_time.day)+"/TofSensor")
+    result_path.mkdir(exist_ok=True, parents=True)
+
+
+    policy = "MlpPolicy"
+    policy_kwargs = {
+            'activation_fn': nn.ReLU,
+            "log_std_init": np.log(training_config['std'])
+        }
     
+    # init wandb
+    horizon = 200
+    env_iter = training_config['iteraction'] * horizon * training_config['n_env_horizon']
+    exp_name = "TofSensor_state"
+    config = {
+        'n_env_horizon': training_config['n_env_horizon'],
+        
+        'update_iteration': training_config['iteraction'],
+        'total_step': env_iter,
+    
+    }
+    
+    wandb_run = setup_wandb(config,
+                            exp_name,
+                            tags=["PPO", "Tof"],
+                            project="TofSensor")
+
+
     
     model = PPO(
-        "MlpPolicy",
+        policy,
         env,
-        n_epochs=10,
-        n_steps=2000,
+        n_epochs=training_config['n_epochs'],
+        n_steps=(training_config['n_env_horizon'] //env._num_envs) * horizon,
         learning_rate=3e-4,
-        batch_size=500,
-        seed=500,
-        tensorboard_log="./TofSensor",  #str(result_path / "log"),
+        batch_size=training_config['minibatch_size'],
+        seed=cfg.seed,
+        tensorboard_log=str(result_path+"/log"),  #str(result_path / "log"),
+        policy_kwargs=policy_kwargs,
         verbose=1
         )
     
-    model.learn(total_timesteps=12000000)
-    model.save("ppo_cartpole")
+    model.learn(total_timesteps=env_iter,
+                callback=WandbCallback(model_save_freq=10,
+                model_save_path=str(result_path / "model"),
+                eval_freq=10,
+                ))
+   
 
     env.close()
 
   
 
 if __name__ == '__main__':
+   
     parse_hydra_configs()

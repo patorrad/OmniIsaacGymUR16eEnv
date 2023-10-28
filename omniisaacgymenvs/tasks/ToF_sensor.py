@@ -185,9 +185,9 @@ class TofSensorTask(RLTask):
 
         self.load_robot()
         # self.load_target()
-        #self.load_manipulated_object()
+        self.load_manipulated_object()
 
-        self.get_target_object()
+        #self.get_target_object()
         # self.load_pod()
         super().set_up_scene(scene)
 
@@ -203,7 +203,7 @@ class TofSensorTask(RLTask):
             reset_xform_properties=False)
         scene.add(self._end_effector)
 
-        # target object
+        # manipulated object
         self._manipulated_object = RigidPrimView(
             prim_paths_expr="/World/envs/.*/manipulated_object_1",
             name="manipulated_object_view",
