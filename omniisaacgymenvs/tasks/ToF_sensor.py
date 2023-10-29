@@ -180,6 +180,11 @@ class TofSensorTask(RLTask):
             (self._num_envs, 1))
         self.franka_local_grasp_rot = hand_pose[0:3].repeat(
             (self._num_envs, 1))
+        self.target_angle = torch.zeros(self.num_envs, device=self.device,dtype=torch.float64)
+        self.curr_env_step = torch.zeros(self.num_envs).to(self.device)
+        self.reset_index = torch.arange(0, self.num_envs, device=self.device)
+        # reach target time
+        self.reach_env_step = torch.zeros(self.num_envs).to(self.device)
 
     def set_up_scene(self, scene) -> None:
 
@@ -457,6 +462,13 @@ class TofSensorTask(RLTask):
             self.target_angle[:, None], self.angle_dev[:, None]
         ],
                                  dim=1)
+        # tolerance
+        tolerance_index = torch.where(
+            abs(self.angle_dev) < 5 / 180 * torch.pi)[0]
+      
+       
+        if len(tolerance_index) > 0:
+            self.reach_env_step[tolerance_index] += 1
 
         return self.obs_buf
         
@@ -558,6 +570,7 @@ class TofSensorTask(RLTask):
                                                  1].to(device=self._device)
 
         self._step += 1
+        self.curr_env_step = self.curr_env_step + 1
         if not self._env._world.is_playing():
             return
 
@@ -572,7 +585,7 @@ class TofSensorTask(RLTask):
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
 
-        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi/2)
+        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi)
         # set target dof and target velocity
         self._robots.set_joint_position_targets(targets_dof)
         #self._robots.set_joint_position_targets(self.target_joint_positions)
@@ -595,33 +608,33 @@ class TofSensorTask(RLTask):
 
     def post_reset(self):
 
-        self.robot.initialize()
-        self.robot.disable_gravity()
+        # self.robot.initialize()
+        # self.robot.disable_gravity()
         self.reset()
+        self.reset_target_angle()
 
         # reset goal orientation
 
-        self.target_angle = torch.zeros(self.num_envs, device=self.device)
-
-        self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
-            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
-            np.pi,
-            device=self.device) 
-        self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
-            np.random.uniform(low=-0.5, high=-0.1, size=int(
-                self.num_envs / 2)) * np.pi,
-            device=self.device)
-        self.init_angle_dev = -self.target_angle.clone()
-        self.stop_index = None
-        # print("curr:",self.current_euler_angles[:,1])
-        # print("dev:",self.angle_dev,"rew:",self.rew_buf)
+    def reset_target_angle(self):
+        
+        postive_index = torch.where(self.reset_index <= int(self.num_envs /
+                                                            2))[0]
+        if len(postive_index) > 0:
     
-        # print("rew:",self.rew_buf)
-        # print('=====================')
-        # print("target angle:",-self.target_angle)
-        # frame skip
+            self.target_angle[postive_index] = torch.as_tensor(np.random.uniform( low=0.1, high=0.5, size=int(len(postive_index))) * np.pi,device=self.device)
 
-        # self.reset_internal()
+
+        negative_index = torch.where(self.reset_index > int(self.num_envs /
+                                                            2))[0]
+        if len(negative_index) > 0:
+            self.target_angle[negative_index] = -torch.as_tensor(
+                np.random.uniform(
+                    low=0.1, high=0.5, size=int(len(negative_index))) * np.pi,
+                device=self.device)
+            
+        self.init_angle_dev = -self.target_angle.clone()
+      
+     
 
     def calculate_metrics(self) -> None:
 
@@ -634,7 +647,7 @@ class TofSensorTask(RLTask):
         if not negative_index.size()[0] == 0:
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
-            self.stop_index = negative_index
+            
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
@@ -650,15 +663,52 @@ class TofSensorTask(RLTask):
     def is_done(self) -> None:
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
+        self.infos = [{} for i in range(self.num_envs)]
+        reset_index = []
+        done = [False for i in range(self.num_envs)]
+
+        # time limit truncated
      
+        time_truncated_index = torch.where((self.curr_env_step + 1) %
+                                           200 == 0)[0]
+        if len(time_truncated_index) > 0:
+            for _, index in enumerate(time_truncated_index):
+                self.infos[index]["TimeLimit.truncated"] = True
+                done[index] = True
+            reset_index.append(time_truncated_index)
+
         
-        if (self._step+1) %200 ==0:
-            self._step = 0 
+        # reach_index = torch.where(self.reach_env_step > 10)[0]
+        # if len(reach_index) > 0:
+        #     for index in reach_index:
+        #         self.infos[index]["terminal_observation"] = self.obs_buf[index]
+        #     # reset_index.append(reach_index)
+        #     for _, index in enumerate(reach_index):
+        #         done[index] = True
+            # self.reach_env_step[reach_index]=0
+        
+        if len(reset_index) > 0:
+            
+            reach_index = torch.where(self.reach_env_step > 10)[0]
+            if len(reach_index) > 0:
+                for index in reach_index:
+                    self.infos[index]["terminal_observation"] = self.obs_buf[index]
+                # reset_index.append(reach_index)
+                for _, index in enumerate(reach_index):
+                    done[index] = True
+
+            self.reset_index = torch.concatenate(reset_index)
+            #reset env
+      
+            self.curr_env_step[self.reset_index] = 0
             self.post_reset()
-            return [True for i in range(self.num_envs)]
+            self.reach_env_step[self.reset_index] *= 0
         
             
-        return [False for i in range(self.num_envs)]
+        return done
+    
+    def get_extras(self):
+        return self.infos
 
 
     def reset_internal(self):
@@ -675,6 +725,57 @@ class TofSensorTask(RLTask):
                                         name="robot_view",
                                         reset_xform_properties=False)
         self.scene.add(self._robots)
+    
+    
+    
+    def reset_robot(self):
+
+        # self._end_effector.get_world_poses()
+
+        # target_joint_positions, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0.,0,0.707]))
+        # target_joint_positions = target_joint_positions.joint_positions.astype(np.float)
+        # # initial robot
+        target_joint_positions = torch.zeros(6, device=self.device)
+        target_joint_positions[0] = 1.57
+        target_joint_positions[1] = -1.57
+        target_joint_positions[2] = 1.57
+        target_joint_positions[3] = 0
+        target_joint_positions[4] = 1.57
+
+        # [-1.29522039  3.66315136 -0.13982686  5.29926468 -0.22134689 -0.44278792] #
+        # print(target_joint_positions)
+        # target_joint_positions[5] = -1.57
+
+        self._robots.set_joint_positions(
+            torch.tensor(target_joint_positions,
+                         dtype=torch.float).repeat(len(self.reset_index), 1),
+            indices=torch.as_tensor(self.reset_index))
+
+        for i in range(1):  #reset robot
+            self._env._world.step(render=False)
+        
+        self._robots.get_joint_positions(self.reset_index)
+        
+       
+        object_position, _ = self._end_effector.get_world_poses(
+            indices=torch.as_tensor(self.reset_index))  # wxyz
+        
+
+        object_position = object_position.clone()
+        object_position[:, 1] += 0.6
+
+        self._manipulated_object.set_world_poses(object_position,
+                                                 indices=torch.as_tensor(
+                                                     self.reset_index))
+
+        self.default_dof = torch.tensor(target_joint_positions,
+                                        dtype=torch.float).repeat(
+                                            self.num_envs, 1).clone()
+
+        for i in range(1):  #reset env
+            self._env._world.step(render=False)
+        
+        _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
 
     def reset(self):
 

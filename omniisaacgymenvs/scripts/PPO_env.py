@@ -113,7 +113,7 @@ def parse_hydra_configs(cfg: DictConfig):
         learning_rate=3e-4,
         batch_size=training_config['minibatch_size'],
         seed=cfg.seed,
-        tensorboard_log=str(result_path+"/log"),  #str(result_path / "log"),
+        tensorboard_log=str(result_path/"log"),  #str(result_path / "log"),
         policy_kwargs=policy_kwargs,
         verbose=1
         )

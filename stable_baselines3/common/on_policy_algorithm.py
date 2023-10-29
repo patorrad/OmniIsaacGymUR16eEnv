@@ -226,21 +226,24 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             # Handle timeout by bootstraping with value function
             # see GitHub issue #633
             for idx, done in enumerate(dones):
-                # if (done and infos[idx].get("terminal_observation") is not None
-                #         and infos[idx].get("TimeLimit.truncated", False)):
                 if done:
+                    # if (infos[idx].get("terminal_observation") is not None
+                    #         and infos[idx].get("TimeLimit.truncated", False)):
                 
-                   
-                    terminal_obs = new_obs[idx][None,:]
-                    with th.no_grad():
-                        terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
-                   
-                    rewards[idx] += self.gamma * terminal_value[0]
-                    
-                    
+                        terminal_obs = new_obs[idx][None,:]
+                        # terminal_obs = infos[idx]["terminal_observation"][None,:]
+                        with th.no_grad():
+                            terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
+                
+                        rewards[idx] += self.gamma * terminal_value[0]
+                        
+                if done: #or infos[idx].get("terminal_observation") is not None or infos[idx].get("TimeLimit.truncated", True) :    
                     num_rollouts += 1
+                
             
             self.last_rollout_reward += rewards.sum()
+            
+            
             
         
         
@@ -263,7 +266,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             values = self.policy.predict_values(
                new_obs)  # type: ignore[arg-type]
 
-
+      
         rollout_buffer.compute_returns_and_advantage(last_values=values,
                                                      dones=dones)
         
