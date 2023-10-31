@@ -12,7 +12,7 @@ import matplotlib.figure
 import numpy as np
 import pandas
 import torch as th
-
+import wandb 
 try:
     from torch.utils.tensorboard import SummaryWriter
     from torch.utils.tensorboard.summary import hparams
@@ -107,6 +107,8 @@ class FormatUnsupportedError(NotImplementedError):
             f"The {format_str} not supported for the {value_description} value logged.\n"
             f"You can exclude formats via the `exclude` parameter of the logger's `record` function."
         )
+
+
 
 
 class KVWriter:
@@ -274,7 +276,36 @@ def filter_excluded_keys(key_values: Dict[str, Any], key_excluded: Dict[str, Tup
         return key in key_excluded and key_excluded[key] is not None and _format in key_excluded[key]
 
     return {key: value for key, value in key_values.items() if not is_excluded(key)}
+class WandbOutputFormat(KVWriter):
+    """
+    Dumps key/value pairs into TensorBoard's numeric format.
 
+    :param folder: the folder to write the log to
+    """
+    def __init__(self, folder: str):
+       
+        pass
+
+    def write(self,
+              key_values: Dict[str, Any],
+              key_excluded: Dict[str, Union[str, Tuple[str, ...]]],
+              step: int = 0) -> None:
+
+        write_dict = {}
+        for (key, value), (_, excluded) in zip(sorted(key_values.items()),
+                                               sorted(key_excluded.items())):
+
+            if excluded is not None and "wandb" in excluded:
+                continue
+
+            if isinstance(value, np.ScalarType):
+                write_dict[key] = value
+
+            if isinstance(value, th.Tensor):
+                write_dict[key] = value.item()
+
+        # Flush the output to the file
+        wandb.log(write_dict, step=step)
 
 class JSONOutputFormat(KVWriter):
     """
@@ -400,6 +431,7 @@ class TensorBoardOutputFormat(KVWriter):
         self._is_closed = False
 
     def write(self, key_values: Dict[str, Any], key_excluded: Dict[str, Tuple[str, ...]], step: int = 0) -> None:
+        
         assert not self._is_closed, "The SummaryWriter was closed, please re-create one."
         for (key, value), (_, excluded) in zip(sorted(key_values.items()), sorted(key_excluded.items())):
             if excluded is not None and "tensorboard" in excluded:
@@ -452,6 +484,7 @@ def make_output_format(_format: str, log_dir: str, log_suffix: str = "") -> KVWr
     :param log_suffix: the suffix for the log file
     :return: the logger
     """
+    
     os.makedirs(log_dir, exist_ok=True)
     if _format == "stdout":
         return HumanOutputFormat(sys.stdout)
@@ -463,6 +496,8 @@ def make_output_format(_format: str, log_dir: str, log_suffix: str = "") -> KVWr
         return CSVOutputFormat(os.path.join(log_dir, f"progress{log_suffix}.csv"))
     elif _format == "tensorboard":
         return TensorBoardOutputFormat(log_dir)
+    elif _format == "wandb":
+        return WandbOutputFormat(log_dir)
     else:
         raise ValueError(f"Unknown format specified: {_format}")
 
@@ -654,7 +689,7 @@ def configure(folder: Optional[str] = None, format_strings: Optional[List[str]] 
     log_suffix = ""
     if format_strings is None:
         format_strings = os.getenv("SB3_LOG_FORMAT", "stdout,log,csv").split(",")
-
+    format_strings.append("wandb")
     format_strings = list(filter(None, format_strings))
     output_formats = [make_output_format(f, folder, log_suffix) for f in format_strings]
 

@@ -337,7 +337,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 
                 self.logger.record("time/iterations",
                                    iteration,
-                                   exclude="tensorboard")
+                                   exclude="wandb")
                
                 self.logger.record("rollout/rollout_rew_mean",
                                    self.last_rollout_reward.cpu().item())
