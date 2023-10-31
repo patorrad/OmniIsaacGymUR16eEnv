@@ -122,6 +122,7 @@ def parse_hydra_configs(cfg: DictConfig):
                 callback=WandbCallback(model_save_freq=10,
                 model_save_path=str(result_path / "model"),
                 eval_freq=10,
+                eval_env_fn=None
                 ))
    
 

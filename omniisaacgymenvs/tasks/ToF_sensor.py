@@ -86,7 +86,8 @@ from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
 
-
+import omni.replicator.core as rep
+from omni.isaac.core.utils.viewports import set_camera_view
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
@@ -185,6 +186,31 @@ class TofSensorTask(RLTask):
         self.reset_index = torch.arange(0, self.num_envs, device=self.device)
         # reach target time
         self.reach_env_step = torch.zeros(self.num_envs).to(self.device)
+
+        self.init_camera()
+
+
+    def init_camera(self):  
+        stage = omni.usd.get_context().get_stage()
+        camera_prim = stage.DefinePrim("/World/Camera1", "Camera")
+        UsdGeom.Xformable(camera_prim).AddTranslateOp().Set((0., 10., 20.))
+        UsdGeom.Xformable(camera_prim).AddRotateXYZOp().Set((-15., 0., 0.))
+
+        cam = rep.create.camera(position=(10, 10, 3), look_at=(0, 0, 0))
+        rp = rep.create.render_product(cam, (512, 512))
+
+        self.rgb_annot = rep.AnnotatorRegistry.get_annotator("rgb")
+        self.rgb_annot.attach([rp])
+    
+
+    def render_image(self):
+        from PIL import Image
+        self.rgb_data = self.rgb_annot.get_data()
+        rgb_image_data = np.frombuffer(self.rgb_data, dtype=np.uint8).reshape(*self.rgb_data.shape, -1)
+        rgb_img = Image.fromarray(rgb_image_data, "RGBA")
+        rgb_img.save("image.png")
+        return rgb_img
+
 
     def set_up_scene(self, scene) -> None:
 
@@ -605,6 +631,9 @@ class TofSensorTask(RLTask):
         self.cartesian_error = torch.linalg.norm(target_position -
                                                  current_position,
                                                  dim=1)
+        # for i in range(10):
+        #     self._env._world.step(render=True)
+        #     self.render_image()
 
     def post_reset(self):
 

@@ -84,33 +84,34 @@ class WandbCallback(BaseCallback):
                     self.save_model()
 
         if self.eval_freq is not None and self.eval_env_fn is not None:
+            self.eval_env_fn._task.post_reset()
+            self.eval_env_fn._task.curr_env_step *= 0
+            
+            for i in range(10):
+                self.eval_env_fn._task._env._world.step(render=True)
+
             if self.roll_out % self.eval_freq == 0:
-                env = self.eval_env_fn()
+                env = self.eval_env_fn
                 reward_sum = 0
                 obs = env.reset()
-                img_dict = {key: [] for key in self.eval_cam_names}
-                for i in range(env.horizon):
+                image_list = []
+                for i in range(200):
+                    
                     action = self.model.policy.predict(observation=obs, deterministic=True)[0]
                     obs, reward, done, _ = env.step(action)
-                    env.scene.update_render()
-                    for cam_name in self.eval_cam_names:
-                        cam = env.cameras[cam_name]
-                        cam.take_picture()
-                        img_dict[cam_name].append(fetch_texture(cam, "Color", return_torch=False))
+                    rgb_image = self.eval_env_fn._task.render_image()
+                    
 
-                    reward_sum += reward
+                    reward_sum += reward.sum().cpu().detach().item()/env._num_envs
+                    image_list.append(np.array(rgb_image))
 
-                if self.viz_point_cloud:
-                    points, colors, cats = generate_imagination_pc_from_obs(obs)
-                    cat_points = np.concatenate([points, (cats + 1) * 3], axis=-1)
-                    wandb.log({"point_cloud": wandb.Object3D(cat_points)})
-
-                for cam_name, img_list in img_dict.items():
-                    video_array = (np.stack(img_list, axis=0) * 255).astype(np.uint8)
-                    video_array = np.transpose(video_array, (0, 3, 1, 2))
-                    wandb.log(
-                        {f"{cam_name}_view": wandb.Video(video_array, fps=20, format="gif",
-                                                         caption=f"Reward: {reward_sum:.2f}")})
+             
+                
+                video_array = (np.stack(image_list, axis=0)).astype(np.uint8)[:,:,:,:3]
+                video_array = np.transpose(video_array, (0, 3, 1, 2))
+                wandb.log(
+                    {"test_view": wandb.Video(video_array, fps=20, format="mp4",
+                                                        caption=f"Reward: {reward_sum:.2f}")})
         self.roll_out += 1
 
     def _on_training_end(self) -> None:

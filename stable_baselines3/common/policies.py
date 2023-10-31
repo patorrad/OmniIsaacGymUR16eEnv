@@ -354,12 +354,13 @@ class BasePolicy(BaseModel, ABC):
                 "and documentation for more information: https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html#vecenv-api-vs-gym-api"
             )
 
-        observation, vectorized_env = self.obs_to_tensor(observation)
+        # observation, vectorized_env = self.obs_to_tensor(observation)
 
         with th.no_grad():
             actions = self._predict(observation, deterministic=deterministic)
         # Convert to numpy, and reshape to the original action shape
-        actions = actions.cpu().numpy().reshape((-1, *self.action_space.shape))
+        actions = actions.reshape((-1, *self.action_space.shape))
+        
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:
@@ -368,11 +369,12 @@ class BasePolicy(BaseModel, ABC):
             else:
                 # Actions could be on arbitrary scale, so clip the actions to avoid
                 # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                import torch
+                actions = torch.clamp(actions, self.action_space.low[0], self.action_space.high[0])
 
         # Remove batch dimension if needed
-        if not vectorized_env:
-            actions = actions.squeeze(axis=0)
+        # if not vectorized_env:
+        #     actions = actions.squeeze(axis=0)
 
         return actions, state
 
