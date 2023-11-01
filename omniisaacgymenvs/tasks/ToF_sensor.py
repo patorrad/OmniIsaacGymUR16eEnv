@@ -186,6 +186,8 @@ class TofSensorTask(RLTask):
         self.reset_index = torch.arange(0, self.num_envs, device=self.device)
         # reach target time
         self.reach_env_step = torch.zeros(self.num_envs).to(self.device)
+        
+        self.init_angle_dev = torch.zeros(self.num_envs).to(self.device) + 90
 
         # self.init_camera()
 
@@ -362,7 +364,7 @@ class TofSensorTask(RLTask):
             "Object",
             object_prim.GetPrim(),
             self._sim_config.parse_actor_config("Object"),
-            is_articulation=False)
+            is_articulation=True)
 
         # ================================= add texture ========================================
         # Change the server to your Nucleus install, default is set to localhost in omni.isaac.sim.base.kit
@@ -459,6 +461,7 @@ class TofSensorTask(RLTask):
 
         for i in range(self.num_envs):
             object_name = object_list[i]  #np.random.choice(object_list)
+          
 
             object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
             self.load_object(usd_path=object_path, env_index=i, object_index=1)
