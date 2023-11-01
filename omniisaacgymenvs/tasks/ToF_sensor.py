@@ -187,7 +187,7 @@ class TofSensorTask(RLTask):
         # reach target time
         self.reach_env_step = torch.zeros(self.num_envs).to(self.device)
 
-        self.init_camera()
+        # self.init_camera()
 
 
     def init_camera(self):  
