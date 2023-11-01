@@ -635,11 +635,14 @@ class TofSensorTask(RLTask):
         #     self._env._world.step(render=True)
         #     self.render_image()
 
-    def post_reset(self):
+    def reset(self):
 
         # self.robot.initialize()
         # self.robot.disable_gravity()
-        self.reset()
+        
+        self.curr_env_step[:] = 0
+        self.reach_env_step[:] *= 0
+        self.post_reset()
         self.reset_target_angle()
 
         # reset goal orientation
@@ -698,12 +701,15 @@ class TofSensorTask(RLTask):
 
         # time limit truncated
      
-        time_truncated_index = torch.where((self.curr_env_step + 1) %
+        time_truncated_index = torch.where((self.curr_env_step) %
                                            200 == 0)[0]
         if len(time_truncated_index) > 0:
             for _, index in enumerate(time_truncated_index):
                 self.infos[index]["TimeLimit.truncated"] = True
                 done[index] = True
+              
+                
+                self.infos[index]["deviation"] = self.angle_dev[index]
             reset_index.append(time_truncated_index)
 
         
@@ -806,7 +812,7 @@ class TofSensorTask(RLTask):
         
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
 
-    def reset(self):
+    def post_reset(self):
 
         # self._end_effector.get_world_poses()
 
