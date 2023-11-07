@@ -26,6 +26,13 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from omni.isaac.core.utils.viewports import set_camera_view
+import omni.replicator.core as rep
+from omni.isaac.core.utils.torch.rotations import *
+from omni.isaac.core.utils.torch.transformations import *
+from omni.isaac.core.utils.stage import get_current_stage
+from omniisaacgymenvs.utils.tools.rotation_conversions import *
+from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 # from omniisaacgymenvs.robots.articulations.ur10 import UR10
@@ -76,18 +83,8 @@ import gym
 import omni.isaac.core.utils.nucleus as nucleus_utils
 
 ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
-from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
-from omni.isaac.core.simulation_context import SimulationContext
 
-from omniisaacgymenvs.utils.tools.rotation_conversions import *
-from omni.isaac.core.simulation_context import SimulationContext
-from omni.isaac.core.utils.stage import get_current_stage
 
-from omni.isaac.core.utils.torch.transformations import *
-from omni.isaac.core.utils.torch.rotations import *
-
-import omni.replicator.core as rep
-from omni.isaac.core.utils.viewports import set_camera_view
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
@@ -127,7 +124,7 @@ class TofSensorTask(RLTask):
 
         self._step = 0
         self.angle_dev = None
-        self.current_euler_angles = torch.zeros((self.num_envs,3))
+        self.current_euler_angles = torch.zeros((self.num_envs, 3))
 
         # control parameter
 
@@ -138,11 +135,11 @@ class TofSensorTask(RLTask):
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
         velocity_limit = torch.as_tensor([1.0] * 3 + [1.0] * 3,
-                                         device=self.device)  #slow down
+                                         device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-                                              device=self.device)
+            device=self.device)
 
         return
 
@@ -181,18 +178,18 @@ class TofSensorTask(RLTask):
             (self._num_envs, 1))
         self.franka_local_grasp_rot = hand_pose[0:3].repeat(
             (self._num_envs, 1))
-        self.target_angle = torch.zeros(self.num_envs, device=self.device,dtype=torch.float64)
+        self.target_angle = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.float64)
         self.curr_env_step = torch.zeros(self.num_envs).to(self.device)
         self.reset_index = torch.arange(0, self.num_envs, device=self.device)
         # reach target time
         self.reach_env_step = torch.zeros(self.num_envs).to(self.device)
-        
+
         self.init_angle_dev = torch.zeros(self.num_envs).to(self.device) + 90
 
         # self.init_camera()
 
-
-    def init_camera(self):  
+    def init_camera(self):
         stage = omni.usd.get_context().get_stage()
         camera_prim = stage.DefinePrim("/World/Camera1", "Camera")
         UsdGeom.Xformable(camera_prim).AddTranslateOp().Set((0., 10., 20.))
@@ -203,24 +200,24 @@ class TofSensorTask(RLTask):
 
         self.rgb_annot = rep.AnnotatorRegistry.get_annotator("rgb")
         self.rgb_annot.attach([rp])
-    
 
     def render_image(self):
         from PIL import Image
         self.rgb_data = self.rgb_annot.get_data()
-        rgb_image_data = np.frombuffer(self.rgb_data, dtype=np.uint8).reshape(*self.rgb_data.shape, -1)
+        rgb_image_data = np.frombuffer(
+            self.rgb_data, dtype=np.uint8).reshape(*self.rgb_data.shape, -1)
         rgb_img = Image.fromarray(rgb_image_data, "RGBA")
         rgb_img.save("image.png")
         return rgb_img
-
 
     def set_up_scene(self, scene) -> None:
 
         self.load_robot()
         # self.load_target()
-        self.load_manipulated_object()
+        # self.load_shapenet_object()
+        self.load_ycb_object()
 
-        #self.get_target_object()
+        # self.load_cube()
         # self.load_pod()
         super().set_up_scene(scene)
 
@@ -240,7 +237,7 @@ class TofSensorTask(RLTask):
         self._manipulated_object = RigidPrimView(
             prim_paths_expr="/World/envs/.*/manipulated_object_1",
             name="manipulated_object_view",
-            reset_xform_properties=False)
+            reset_xform_properties=True)
         scene.add(self._manipulated_object)
 
         # Raytracing
@@ -252,10 +249,8 @@ class TofSensorTask(RLTask):
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
+            robot_description_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            urdf_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
         )
         from omni.isaac.core.articulations import Articulation
 
@@ -317,7 +312,9 @@ class TofSensorTask(RLTask):
                     object_index,
                     translaton=[-0.69, 0.1, 1.3],
                     orientation=[0, 0, 0.707, 0.707],
-                    scale=[0.4, 0.4, 0.4]):
+                    scale=[0.4, 0.4, 0.4],
+                    texture=True):
+       
 
         # ================================= load object ========================================
         prim_utils.create_prim(f"/World/envs/env_{env_index}" +
@@ -341,7 +338,7 @@ class TofSensorTask(RLTask):
         # # mass_api.CreateDensityAttr(1000)
         # UsdPhysics.CollisionAPI.Apply(object_prim)
 
-        #self._sim_config.apply_rigid_body_settings("Object", object_prim.GetPrim(),self._sim_config.parse_actor_config("Object"),is_articulation=False)
+        # self._sim_config.apply_rigid_body_settings("Object", object_prim.GetPrim(),self._sim_config.parse_actor_config("Object"),is_articulation=False)
         # Make it a rigid body with kinematic
         # utils.setRigidBody(object_prim, "convexMeshSimplification", True)
 
@@ -364,36 +361,37 @@ class TofSensorTask(RLTask):
             "Object",
             object_prim.GetPrim(),
             self._sim_config.parse_actor_config("Object"),
-            is_articulation=True)
+            is_articulation=False)
 
         # ================================= add texture ========================================
-        # Change the server to your Nucleus install, default is set to localhost in omni.isaac.sim.base.kit
-        default_server = carb.settings.get_settings().get(
-            "/persistent/isaac/asset_root/default")
-        mtl_created_list = []
-        # Create a new material using OmniPBR.mdl
-        omni.kit.commands.execute(
-            "CreateAndBindMdlMaterialFromLibrary",
-            mdl_name="OmniPBR.mdl",
-            mtl_name="OmniPBR",
-            mtl_created_list=mtl_created_list,
-        )
-        stage = omni.usd.get_context().get_stage()
-        mtl_prim = stage.GetPrimAtPath(mtl_created_list[0])
-        # Set material inputs, these can be determined by looking at the .mdl file
-        # or by selecting the Shader attached to the Material in the stage window and looking at the details panel
-        omni.usd.create_material_input(
-            mtl_prim,
-            "diffuse_texture",
-            default_server +
-            "/Isaac/Samples/DR/Materials/Textures/marble_tile.png",
-            Sdf.ValueTypeNames.Asset,
-        )
+        # if texture is not None:
+        #     # Change the server to your Nucleus install, default is set to localhost in omni.isaac.sim.base.kit
+        #     default_server = carb.settings.get_settings().get(
+        #         "/persistent/isaac/asset_root/default")
+        #     mtl_created_list = []
+        #     # Create a new material using OmniPBR.mdl
+        #     omni.kit.commands.execute(
+        #         "CreateAndBindMdlMaterialFromLibrary",
+        #         mdl_name="OmniPBR.mdl",
+        #         mtl_name="OmniPBR",
+        #         mtl_created_list=mtl_created_list,
+        #     )
+        #     stage = omni.usd.get_context().get_stage()
+        #     mtl_prim = stage.GetPrimAtPath(mtl_created_list[0])
+        #     # Set material inputs, these can be determined by looking at the .mdl file
+        #     # or by selecting the Shader attached to the Material in the stage window and looking at the details panel
+        #     omni.usd.create_material_input(
+        #         mtl_prim,
+        #         "diffuse_texture",
+        #         default_server +
+        #         "/Isaac/Samples/DR/Materials/Textures/marble_tile.png",
+        #         Sdf.ValueTypeNames.Asset,
+        #     )
 
-        # Bind the material to the prim
-        cube_mat_shade = UsdShade.Material(mtl_prim)
-        UsdShade.MaterialBindingAPI(object_prim).Bind(
-            cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
+        #     # Bind the material to the prim
+        #     cube_mat_shade = UsdShade.Material(mtl_prim)
+        #     UsdShade.MaterialBindingAPI(object_prim).Bind(
+        #         cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
 
     def load_pod(self):
         for i in range(self.num_envs):
@@ -434,12 +432,11 @@ class TofSensorTask(RLTask):
             mass_api.CreateDensityAttr(1000)
             UsdPhysics.CollisionAPI.Apply(cube_prim)
 
-    
-    def get_target_object(self):
+    def load_cube(self):
         target_object_1 = DynamicCuboid(
             prim_path=self.default_zero_env_path + "/manipulated_object_1",
             name="manipulated_object_1",
-            position=[0,0,2.02],
+            position=[0, 0, 2.02],
             size=.2,
             color=torch.tensor([0, 0, 1]))
         # target_object_2 = DynamicCylinder(prim_path=self.default_zero_env_path + "/target_object_2",
@@ -449,19 +446,53 @@ class TofSensorTask(RLTask):
         #                        height=.5,
         #                        color=torch.tensor([1, 0, 1]))
         self._sim_config.apply_articulation_settings(
-            "manipulated_object__1", get_prim_at_path(target_object_1.prim_path),
+            "manipulated_object__1", get_prim_at_path(
+                target_object_1.prim_path),
             self._sim_config.parse_actor_config("manipulated_object_1"))
-    
 
-    def load_manipulated_object(self):
+    def load_ycb_object(self):
+
+        ycb_usd_paths = {
+            "crackerBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/003_cracker_box.usd",
+            "sugarBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/004_sugar_box.usd",
+            "tomatoSoupCan": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/005_tomato_soup_can.usd",
+            "mustardBottle": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/006_mustard_bottle.usd",
+            "masterChefCan": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/002_master_chef_can.usd",
+            "tunaFishCan": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/007_tuna_fish_can.usd",
+            "puddingBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/008_pudding_box.usd",
+            "gelatinBox": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/009_gelatin_box.usd",
+            "pottedMeatCan": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/010_potted_meat_can.usd",
+            "banana": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/011_banana.usd",
+            "pitcherBase": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/019_pitcher_base.usd",
+            "bleachCleanser": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/021_bleach_cleanser.usd",
+            "bowl": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/024_bowl.usd",
+            "powerDrill": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/035_power_drill.usd",
+            "woodBlock": f"{ISAAC_NUCLEUS_DIR}/Props/YCB/Axis_Aligned/036_wood_block.usd",
+
+        }
+        ycb_list = ['crackerBox', 'sugarBox', 'tomatoSoupCan', 'mustardBottle', "masterChefCan", "tunaFishCan", "puddingBox",
+                    "gelatinBox","pottedMeatCan"
+                    ]
+        ycb_list = ['banana']
+        for i in range(self.num_envs):
+            np.random.shuffle(ycb_list)
+            object_name = np.random.choice(ycb_list)
+
+            object_path = ycb_usd_paths[object_name]
+            self.load_object(usd_path=object_path, env_index=i, object_index=1,scale=[1.0,1.0,1.0],texture=None)
+            self.object_prim_path.append(object_path)
+
+            # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
+            # self.load_object(usd_path=object_path,env_index=i,object_index=2)
+
+    def load_shapenet_object(self):
 
         object_dir = self.current_directory + "/omniisaacgymenvs/assests/objects/shapenet_nomat/" + self._task_cfg[
             'sim']["Object"]["category"]
         object_list = os.listdir(object_dir)
 
         for i in range(self.num_envs):
-            object_name = object_list[i]  #np.random.choice(object_list)
-          
+            object_name = object_list[i]  # np.random.choice(object_list)
 
             object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
             self.load_object(usd_path=object_path, env_index=i, object_index=1)
@@ -485,22 +516,21 @@ class TofSensorTask(RLTask):
         robot_joint = self._robots.get_joint_positions()
 
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
-    
+
         self.obs_buf = torch.cat([
-             current_euler_angles[:, 1][:, None],
+            current_euler_angles[:, 1][:, None],
             self.target_angle[:, None], self.angle_dev[:, None]
         ],
-                                 dim=1)
+            dim=1)
         # tolerance
         tolerance_index = torch.where(
             abs(self.angle_dev) < 5 / 180 * torch.pi)[0]
-      
-       
+
         if len(tolerance_index) > 0:
             self.reach_env_step[tolerance_index] += 1
 
         return self.obs_buf
-        
+
     def update_cache_state(self):
         self._q = self._robots.get_joint_positions()
         self._qd = self._robots.get_joint_velocities()
@@ -520,7 +550,7 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-                                    dim=1)
+            dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def _compute_osc_torques(self, dpose):
@@ -586,7 +616,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 **2)
+                                                                 ** 2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -617,7 +647,7 @@ class TofSensorTask(RLTask):
         targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi)
         # set target dof and target velocity
         self._robots.set_joint_position_targets(targets_dof)
-        #self._robots.set_joint_position_targets(self.target_joint_positions)
+        # self._robots.set_joint_position_targets(self.target_joint_positions)
         # self._robots.set_joint_velocity_targets(delta_dof_pos)
 
         pre_position, pre_orientation = self._end_effector.get_world_poses(
@@ -642,7 +672,7 @@ class TofSensorTask(RLTask):
 
         # self.robot.initialize()
         # self.robot.disable_gravity()
-        
+
         self.curr_env_step[:] = 0
         self.reach_env_step[:] *= 0
         self.post_reset()
@@ -651,13 +681,13 @@ class TofSensorTask(RLTask):
         # reset goal orientation
 
     def reset_target_angle(self):
-        
+
         postive_index = torch.where(self.reset_index <= int(self.num_envs /
                                                             2))[0]
         if len(postive_index) > 0:
-    
-            self.target_angle[postive_index] = torch.as_tensor(np.random.uniform( low=0.1, high=0.5, size=int(len(postive_index))) * np.pi,device=self.device)
 
+            self.target_angle[postive_index] = torch.as_tensor(np.random.uniform(
+                low=0.1, high=0.5, size=int(len(postive_index))) * np.pi, device=self.device)
 
         negative_index = torch.where(self.reset_index > int(self.num_envs /
                                                             2))[0]
@@ -666,10 +696,8 @@ class TofSensorTask(RLTask):
                 np.random.uniform(
                     low=0.1, high=0.5, size=int(len(negative_index))) * np.pi,
                 device=self.device)
-            
+
         self.init_angle_dev = -self.target_angle.clone()
-      
-     
 
     def calculate_metrics(self) -> None:
 
@@ -682,17 +710,13 @@ class TofSensorTask(RLTask):
         if not negative_index.size()[0] == 0:
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
-            
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
-       
-        self.rew_buf = (1 - torch.clamp(dev_percentage, 0 , 1.2)) * 5
-      
-        
-        
-        
+            dim=1) * -0.0
+
+        self.rew_buf = (1 - torch.clamp(dev_percentage, 0, 1.2)) * 5
+
         return self.rew_buf
 
     def is_done(self) -> None:
@@ -703,19 +727,17 @@ class TofSensorTask(RLTask):
         done = [False for i in range(self.num_envs)]
 
         # time limit truncated
-     
+
         time_truncated_index = torch.where((self.curr_env_step) %
                                            200 == 0)[0]
         if len(time_truncated_index) > 0:
             for _, index in enumerate(time_truncated_index):
                 self.infos[index]["TimeLimit.truncated"] = True
                 done[index] = True
-              
-                
+
                 self.infos[index]["deviation"] = self.angle_dev[index]
             reset_index.append(time_truncated_index)
 
-        
         # reach_index = torch.where(self.reach_env_step > 10)[0]
         # if len(reach_index) > 0:
         #     for index in reach_index:
@@ -724,9 +746,9 @@ class TofSensorTask(RLTask):
         #     for _, index in enumerate(reach_index):
         #         done[index] = True
             # self.reach_env_step[reach_index]=0
-        
+
         if len(reset_index) > 0:
-            
+
             reach_index = torch.where(self.reach_env_step > 10)[0]
             if len(reach_index) > 0:
                 for index in reach_index:
@@ -736,18 +758,16 @@ class TofSensorTask(RLTask):
                     done[index] = True
 
             self.reset_index = torch.concatenate(reset_index)
-            #reset env
-      
+            # reset env
+
             self.curr_env_step[self.reset_index] = 0
             self.post_reset()
             self.reach_env_step[self.reset_index] *= 0
-        
-            
+
         return done
-    
+
     def get_extras(self):
         return self.infos
-
 
     def reset_internal(self):
 
@@ -757,15 +777,13 @@ class TofSensorTask(RLTask):
 
         self.load_robot()
         # self.load_target()
-        # self.load_manipulated_object()
+        # self.load_shapenet_object()
 
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
                                         name="robot_view",
                                         reset_xform_properties=False)
         self.scene.add(self._robots)
-    
-    
-    
+
     def reset_robot(self):
 
         # self._end_effector.get_world_poses()
@@ -789,15 +807,13 @@ class TofSensorTask(RLTask):
                          dtype=torch.float).repeat(len(self.reset_index), 1),
             indices=torch.as_tensor(self.reset_index))
 
-        for i in range(1):  #reset robot
+        for i in range(1):  # reset robot
             self._env._world.step(render=False)
-        
+
         self._robots.get_joint_positions(self.reset_index)
-        
-       
+
         object_position, _ = self._end_effector.get_world_poses(
             indices=torch.as_tensor(self.reset_index))  # wxyz
-        
 
         object_position = object_position.clone()
         object_position[:, 1] += 0.6
@@ -810,9 +826,9 @@ class TofSensorTask(RLTask):
                                         dtype=torch.float).repeat(
                                             self.num_envs, 1).clone()
 
-        for i in range(1):  #reset env
+        for i in range(1):  # reset env
             self._env._world.step(render=False)
-        
+
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
 
     def post_reset(self):
@@ -847,8 +863,6 @@ class TofSensorTask(RLTask):
         self.default_dof = torch.tensor(target_joint_positions,
                                         dtype=torch.float).repeat(
                                             self.num_envs, 1).clone()
-
-        
 
         for i in range(self.frame_skip):
             self._env._world.step(render=False)

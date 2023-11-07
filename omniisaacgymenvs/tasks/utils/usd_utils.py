@@ -94,7 +94,7 @@ def create_distant_light(prim_path="/World/defaultDistantLight", intensity=500):
     
     from omni.isaac.core.prims.xform_prim import XFormPrim
     sphereLight = UsdLux.SphereLight.Define(get_current_stage(), Sdf.Path("/World/SphereLight"))
-    sphereLight.CreateRadiusAttr(8)
+    sphereLight.CreateRadiusAttr(6)
     sphereLight.CreateIntensityAttr(10000)
     XFormPrim(sphereLight.GetPath().pathString).set_world_pose([16.5, 0, 12])
 
