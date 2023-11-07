@@ -81,7 +81,20 @@ def set_drive(prim_path, drive_type, target_type, target_value, stiffness, dampi
     set_drive_damping(drive, damping)
     set_drive_max_force(drive, max_force)
 
-def create_distant_light(prim_path="/World/defaultDistantLight", intensity=5000):
+def create_distant_light(prim_path="/World/defaultDistantLight", intensity=500):
     stage = get_current_stage()
-    light = UsdLux.DistantLight.Define(stage, prim_path)
-    light.GetPrim().GetAttribute("intensity").Set(intensity)
+    #light = UsdLux.DistantLight.Define(stage, prim_path)
+    #light.GetPrim().GetAttribute("intensity").Set(intensity)
+    from pxr import Sdf
+    # distantLight = UsdLux.DistantLight.Define(stage, Sdf.Path("/Sun"))
+    # distantLight.CreateIntensityAttr(intensity)
+    # distantLight.CreateAngleAttr(0.53)
+    # distantLight.CreateSpecularAttr().Set(0.0)
+ 
+    
+    from omni.isaac.core.prims.xform_prim import XFormPrim
+    sphereLight = UsdLux.SphereLight.Define(get_current_stage(), Sdf.Path("/World/SphereLight"))
+    sphereLight.CreateRadiusAttr(8)
+    sphereLight.CreateIntensityAttr(10000)
+    XFormPrim(sphereLight.GetPath().pathString).set_world_pose([16.5, 0, 12])
+
