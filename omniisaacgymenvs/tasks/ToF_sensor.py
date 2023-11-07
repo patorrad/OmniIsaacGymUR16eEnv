@@ -215,9 +215,9 @@ class TofSensorTask(RLTask):
         self.load_robot()
         # self.load_target()
         # self.load_shapenet_object()
-        self.load_ycb_object()
+        #self.load_ycb_object()
 
-        # self.load_cube()
+        self.load_cube()
         # self.load_pod()
         super().set_up_scene(scene)
 
@@ -448,7 +448,7 @@ class TofSensorTask(RLTask):
         self._sim_config.apply_articulation_settings(
             "manipulated_object__1", get_prim_at_path(
                 target_object_1.prim_path),
-            self._sim_config.parse_actor_config("manipulated_object_1"))
+            self._sim_config.parse_actor_config("manipulated_object_1"),force_articulation=False)
 
     def load_ycb_object(self):
 
