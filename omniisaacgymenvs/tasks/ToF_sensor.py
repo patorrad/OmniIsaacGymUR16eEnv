@@ -35,6 +35,7 @@ from omni.isaac.core.objects import DynamicSphere
 
 from omni.isaac.core.objects import DynamicCuboid
 from omni.isaac.core.objects import DynamicCylinder
+from omni.isaac.core.objects import FixedCuboid
 from omniisaacgymenvs.robots.controller.ocs2 import Controller_ocs2
 from omniisaacgymenvs.robots.controller.osc import Controller_osc
 
@@ -47,6 +48,7 @@ import numpy as np
 import torch
 import math
 import trimesh
+from trimesh import creation, transformations
 
 # from omni.isaac.universal_robots import UR10
 from omni.isaac.core.utils.prims import create_prim
@@ -66,7 +68,8 @@ from omni.physx.scripts import utils
 from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
 
 from omni.physx import acquire_physx_interface
-from pxr import Sdf
+# from pxr import Sd
+from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
 import carb
 
@@ -86,6 +89,10 @@ from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
 
+from cprint import *
+
+DEBUG = True
+DEBUG_WITH_TRIMESH = False
 
 class TofSensorTask(RLTask):
 
@@ -188,7 +195,11 @@ class TofSensorTask(RLTask):
         #self.load_manipulated_object()
 
         self.get_target_object()
+        
         # self.load_pod()
+        # Table
+        self.load_table()
+
         super().set_up_scene(scene)
 
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
@@ -308,7 +319,7 @@ class TofSensorTask(RLTask):
         # # mass_api.CreateDensityAttr(1000)
         # UsdPhysics.CollisionAPI.Apply(object_prim)
 
-        #self._sim_config.apply_rigid_body_settings("Object", object_prim.GetPrim(),self._sim_config.parse_actor_config("Object"),is_articulation=False)
+        # self._sim_config.apply_rigid_body_settings("Object", object_prim.GetPrim(),self._sim_config.parse_actor_config("Object"),is_articulation=False)
         # Make it a rigid body with kinematic
         # utils.setRigidBody(object_prim, "convexMeshSimplification", True)
 
@@ -401,6 +412,23 @@ class TofSensorTask(RLTask):
             mass_api.CreateDensityAttr(1000)
             UsdPhysics.CollisionAPI.Apply(cube_prim)
 
+    def load_table(self):
+        table_translation = np.array([0.25, 1.0, 1.])
+        table_orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        
+        table = FixedCuboid(
+            prim_path=self.default_zero_env_path + "/table",
+            name="table",
+            translation=table_translation,
+            orientation=table_orientation,
+            scale=np.array([
+                0.6, 
+                0.6, 
+                0.5,
+            ]),
+            size=1.0,
+            color=np.array([1, 0, 0]),
+        )
     
     def get_target_object(self):
         target_object_1 = DynamicCuboid(
@@ -418,7 +446,8 @@ class TofSensorTask(RLTask):
         self._sim_config.apply_articulation_settings(
             "manipulated_object__1", get_prim_at_path(target_object_1.prim_path),
             self._sim_config.parse_actor_config("manipulated_object_1"))
-    
+        
+
 
     def load_manipulated_object(self):
 
@@ -549,6 +578,108 @@ class TofSensorTask(RLTask):
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
+    def raytrace_step(self) -> None:
+
+        self.debug_draw.clear_lines()
+        self.debug_draw.clear_points()
+        
+        # ## Normalize quaternion into vector
+        gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses()
+        for i in range(self.num_envs):
+            trimesh_1 = geom_to_trimesh(
+                UsdGeom.Cube(
+                    get_prim_at_path(self._manipulated_object.prim_paths[i])),
+                    self.target_object_pose[i].cpu(), transformations.euler_from_quaternion(self.target_object_rot[i].cpu())) #TODO Why to CPU?
+            warp_mesh = warp_from_trimesh(trimesh_1, self._device)
+            self.raytracer.set_geom(warp_mesh)
+            ray_t, ray_dir = self.raytracer.render(
+                int(np.random.normal(10, 10)), gripper_pose.cpu()[i],
+                gripper_rot.cpu()[i])
+
+            if DEBUG_WITH_TRIMESH:
+                ## Visualization for trimesh
+                # Create axis for visualization
+                axis_origins = np.array([[0, 0, 0],
+                                        [0, 0, 0],
+                                        [0, 0, 0]])
+                axis_directions = np.array([[1, 0, 0],
+                                        [0, 1, 0],
+                                        [0, 0, 1]])
+                # stack axis rays into line segments for visualization as Path3D
+                axis_visualize = trimesh.load_path(np.hstack((
+                    axis_origins,
+                    axis_origins + axis_directions)).reshape(-1, 2, 3), colors=np.array([[0, 0, 255, 255], [0, 255, 0, 255], [255, 0, 0, 255]]))
+                # stack rays into line segments for visualization as Path3D
+                ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0], axis=0),repeats=256, axis=0)
+                ray_visualize = trimesh.load_path(np.hstack((
+                    ray_origins,
+                    ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
+                # trimesh_1.apply_transform(matrix)
+                self.j = self.j + 1
+                if self.j % 25 == 0:
+                    scene = trimesh.Scene([
+                        trimesh_1,
+                        ray_visualize,
+                        axis_visualize])
+
+                    # display the scene
+                    scene.show()
+
+            if DEBUG:
+                sensor_ray_pos_np = gripper_pose.cpu()[i].numpy()
+                sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
+                                        sensor_ray_pos_np[1],
+                                        sensor_ray_pos_np[2])
+
+                ray_dir = ray_dir.numpy()
+                ray_t = ray_t.numpy()
+                line_vec = np.transpose(
+                    np.multiply(np.transpose(ray_dir), ray_t))
+
+                ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+                average_distance = np.average(ray_t_nonzero)
+                standard_deviation = math.sqrt(
+                            max(average_distance * 100 * 0.4795 - 3.2018,
+                                0)) 
+                noise_distance = np.random.normal(average_distance * 1000,
+                                                        standard_deviation)
+                print(f'distance with noise sensor {i}: , {noise_distance}')
+                
+                # Get rid of ray misses (0 values)
+                line_vec = line_vec[np.any(line_vec, axis=1)]
+                ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+                hits_len = len(ray_hit_points_list)
+                sensor_ray_pos_list = [
+                            sensor_ray_pos_tuple for _ in range(hits_len)
+                        ]
+                ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+                ray_sizes = [2 for _ in range(hits_len)]
+                point_sizes = [7 for _ in range(hits_len)]
+                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)
+                                        ]  # start (camera) points: green
+                end_point_colors = [
+                    (1, i, 1, 1) for _ in range(hits_len)
+                ]  # end (ray hit) points: sensor 1 purple, sensor 2 white
+                self.debug_draw.draw_lines(sensor_ray_pos_list,
+                                            ray_hit_points_list, ray_colors,
+                                            ray_sizes)
+
+                self.debug_draw.draw_points(ray_hit_points_list,
+                                            end_point_colors, point_sizes)
+                self.debug_draw.draw_points(sensor_ray_pos_list,
+                                            start_point_colors, point_sizes)
+                # Debug draw the gripper pose
+                self.debug_draw.draw_points([gripper_pose[i].cpu().numpy()],
+                                            [(1, 0, 0, 1)], [10])
+                # Debug draw the target object pose
+                self.debug_draw.draw_points([self.target_object_pose[i].cpu().numpy()],
+                                            [(0, 1, 0, 1)], [10])   
+                # Draw line between gripper and target object
+                self.debug_draw.draw_lines([gripper_pose[i].cpu().numpy()],
+                                            [self.target_object_pose[i].cpu().numpy()],
+                                            [(0, 0, 1, 1)], [2])
+        
     def pre_physics_step(self, actions) -> None:
 
         dof_limits = self._robots.get_dof_limits()
@@ -593,11 +724,14 @@ class TofSensorTask(RLTask):
                                                  current_position,
                                                  dim=1)
 
+        self.raytrace_step()
+
     def post_reset(self):
 
         self.robot.initialize()
         self.robot.disable_gravity()
         self.reset()
+        self.reset_raytracer()
 
         # reset goal orientation
 
@@ -622,6 +756,7 @@ class TofSensorTask(RLTask):
         # frame skip
 
         # self.reset_internal()
+
 
     def calculate_metrics(self) -> None:
 
@@ -714,3 +849,15 @@ class TofSensorTask(RLTask):
         for i in range(self.frame_skip):
             self._env._world.step(render=False)
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
+
+    def reset_raytracer(self):
+        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(clone=True)
+        trimesh_1 = geom_to_trimesh(
+            UsdGeom.Cube(
+                get_prim_at_path(self._manipulated_object.prim_paths[0])),
+                self.target_object_pose[0].cpu(),
+                self.target_object_rot[0].cpu()) #TODO Why to CPU?
+        warp_mesh = warp_from_trimesh(trimesh_1, self._device)
+
+        if DEBUG_WITH_TRIMESH:
+            self.j = 0

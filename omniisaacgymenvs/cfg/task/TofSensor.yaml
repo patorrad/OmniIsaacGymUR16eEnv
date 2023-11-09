@@ -97,7 +97,8 @@ sim:
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
   Object:
    category: "02876657"
-   
+  manipulated_object_1:
+   make_kinematic: 1
     
   
     

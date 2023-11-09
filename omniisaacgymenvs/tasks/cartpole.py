@@ -56,6 +56,7 @@ from skrl.utils import omniverse_isaacgym_utils
 from pxr import Usd, UsdGeom
 from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
+from cprint import *
 # import warp as wp
 
 
@@ -356,8 +357,12 @@ class CartpoleTask(RLTask):
             # Step 1: Normalize the quaternion
             q_norm = np.linalg.norm(self.hand_rot.cpu()[1])
             q_normalized = self.hand_rot.cpu()[1] / q_norm
+            cprint.info(f'q_normalized {q_normalized}')
+            cprint.info(f'q_normalized {q_normalized.shape}')
             # Step 2: Extract the vector part
             v = q_normalized[1:]
+            cprint.info(f'v {v}')
+            cprint.info(f'v {v.shape}')
 
             # Step 3: Convert to Cartesian coordinates
             cartesian_vector = v
@@ -377,10 +382,13 @@ class CartpoleTask(RLTask):
                     hand_pos[1] -= 0.03
 
                 cam_pos = hand_pos - target_object_pose.cpu()[1]
-
-                ray_t, ray_dir = self.raytracer.render(
-                    int(np.random.normal(10, 10)), cam_pos,
-                    self.hand_rot.cpu()[1])
+                cprint(f'cam_pos {cam_pos}')
+                cprint(f'cam_pos type {type(cam_pos)}')
+                cprint(f'cam_pos shape {cam_pos.shape}')
+                cprint(f'self.hand_rot.cpu()[1] {self.hand_rot.cpu()[1]}')
+                cprint(f'self.hand_rot.cpu()[1] type {type(self.hand_rot.cpu()[1])}')
+                cprint(f'self.hand_rot.cpu()[1] shape {self.hand_rot.cpu()[1].shape}')
+                ray_t, ray_dir = self.raytracer.render(int(np.random.normal(10, 10)), cam_pos, self.hand_rot.cpu()[1])            
 
                 sensor_ray_pos_np = self.hand_pos.cpu()[1].numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],

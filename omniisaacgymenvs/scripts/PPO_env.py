@@ -113,7 +113,7 @@ def parse_hydra_configs(cfg: DictConfig):
         "MlpPolicy",
         env,
         n_epochs=10,
-        n_steps=2000,
+        n_steps=20000,
         learning_rate=3e-4,
         batch_size=500,
         seed=500,
