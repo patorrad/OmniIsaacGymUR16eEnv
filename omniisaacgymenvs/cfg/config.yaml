@@ -63,3 +63,8 @@ hydra:
   run:
     dir: .
 
+# Debug
+debug: True 
+debug_with_trimesh: False 
+
+

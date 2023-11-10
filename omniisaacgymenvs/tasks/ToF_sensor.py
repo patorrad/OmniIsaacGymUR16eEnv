@@ -93,6 +93,7 @@ from cprint import *
 
 DEBUG = True
 DEBUG_WITH_TRIMESH = False
+SENSORS = 3
 
 class TofSensorTask(RLTask):
 
@@ -583,37 +584,148 @@ class TofSensorTask(RLTask):
         self.debug_draw.clear_lines()
         self.debug_draw.clear_points()
         
-        # ## Normalize quaternion into vector
         gripper_pose, gripper_rot = self._end_effector.get_world_poses()
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses()
-        for i in range(self.num_envs):
+
+        # PT Multiple sensors TODO need to move this to utils file
+        # circle = []
+        # for i in range(self._task_cfg['sim']["URRobot"]['num_sensors']):
+        # normal = find_plane_normal(gripper_pose[0], gripper_rot[0])
+        # cprint.info(f'normal {normal}')
+        # cprint.info(f'normal shape {normal.shape}')
+        # circle = circle_points(self._task_cfg['sim']["URRobot"]['sensor_radius'], 
+        #                     gripper_pose[0], 
+        #                     normal, 
+        #                     self._task_cfg['sim']["URRobot"]['num_sensors'])
+        normals = find_plane_normal(self.num_envs, gripper_rot)
+        cprint.info(f'normal {normals}')
+        cprint.info(f'normal shape {normals.shape}')
+        circle = circle_points(self._task_cfg['sim']["URRobot"]['sensor_radius'], 
+                            gripper_pose, 
+                            normals, 
+                            self._task_cfg['sim']["URRobot"]['num_sensors'])
+
+        cprint.info(f'circle {circle}')
+        cprint.info(f'circle shape {circle.shape}')
+        # for i in range(self.num_envs):
+        #     trimesh_1 = geom_to_trimesh(
+        #         UsdGeom.Cube(
+        #             get_prim_at_path(self._manipulated_object.prim_paths[i])),
+        #             self.target_object_pose[i].cpu(), transformations.euler_from_quaternion(self.target_object_rot[i].cpu())) #TODO Why to CPU?
+        #     warp_mesh = warp_from_trimesh(trimesh_1, self._device)
+        #     self.raytracer.set_geom(warp_mesh)
+        #     ray_t, ray_dir = self.raytracer.render(
+        #         int(np.random.normal(10, 10)), gripper_pose[i].cpu(),
+        #         gripper_rot[i].cpu())
+
+        #     if self._cfg["debug_with_trimesh"]: #TODO Update with sensor circle
+        #         ## Visualization for trimesh
+        #         # Create axis for visualization
+        #         axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        #         axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        #         # stack axis rays into line segments for visualization as Path3D
+        #         axis_visualize = trimesh.load_path(np.hstack(( axis_origins,
+        #             axis_origins + axis_directions)).reshape(-1, 2, 3), colors=np.array([[0, 0, 255, 255], [0, 255, 0, 255], [255, 0, 0, 255]]))
+        #         # stack rays into line segments for visualization as Path3D
+        #         ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0], axis=0),repeats=256, axis=0)
+        #         ray_visualize = trimesh.load_path(np.hstack((ray_origins,
+        #             ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
+        #         # trimesh_1.apply_transform(matrix)
+        #         self.j = self.j + 1
+        #         if self.j % 25 == 0:
+        #             scene = trimesh.Scene([
+        #                 trimesh_1,
+        #                 ray_visualize,
+        #                 axis_visualize])
+
+        #             # display the scene
+        #             scene.show()
+
+        #     if DEBUG:
+        #         sensor_ray_pos_np = gripper_pose[i].cpu().numpy()
+        #         sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
+        #                                 sensor_ray_pos_np[1],
+        #                                 sensor_ray_pos_np[2])
+
+        #         ray_dir = ray_dir.numpy()
+        #         ray_t = ray_t.numpy()
+        #         line_vec = np.transpose(
+        #             np.multiply(np.transpose(ray_dir), ray_t))
+
+        #         ray_t_nonzero = ray_t[np.nonzero(ray_t)]
+        #         average_distance = np.average(ray_t_nonzero)
+        #         standard_deviation = math.sqrt(
+        #                     max(average_distance * 100 * 0.4795 - 3.2018,
+        #                         0)) 
+        #         noise_distance = np.random.normal(average_distance * 1000,
+        #                                                 standard_deviation)
+        #         print(f'distance with noise sensor {i}: , {noise_distance}')
+                
+        #         # Get rid of ray misses (0 values)
+        #         line_vec = line_vec[np.any(line_vec, axis=1)]
+        #         ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+        #         hits_len = len(ray_hit_points_list)
+        #         sensor_ray_pos_list = [
+        #                     sensor_ray_pos_tuple for _ in range(hits_len)
+        #                 ]
+        #         ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+        #         ray_sizes = [2 for _ in range(hits_len)]
+        #         point_sizes = [7 for _ in range(hits_len)]
+        #         start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)
+        #                                 ]  # start (camera) points: green
+        #         end_point_colors = [
+        #             (1, i, 1, 1) for _ in range(hits_len)
+        #         ]  # end (ray hit) points: sensor 1 purple, sensor 2 white
+        #         self.debug_draw.draw_lines(sensor_ray_pos_list,
+        #                                     ray_hit_points_list, ray_colors,
+        #                                     ray_sizes)
+
+        #         self.debug_draw.draw_points(ray_hit_points_list,
+        #                                     end_point_colors, point_sizes)
+        #         self.debug_draw.draw_points(sensor_ray_pos_list,
+        #                                     start_point_colors, point_sizes)
+        #         # Debug draw the gripper pose
+        #         # self.debug_draw.draw_points([circle.cpu().numpy()],
+        #         #                             [(1, 0, 0, 1)], [10])
+        #         # # Debug draw the target object pose
+        #         # self.debug_draw.draw_points([self.target_object_pose[i].cpu().numpy()],
+        #         #                             [(0, 1, 0, 1)], [10])   
+        #         # # Draw line between gripper and target object
+        #         # self.debug_draw.draw_lines([gripper_pose[i].cpu().numpy()],
+        #         #                             [self.target_object_pose[i].cpu().numpy()],
+        #         #                             [(0, 0, 1, 1)], [2])
+        #         # Draw circle
+        #         p = [np.array(row) for row in circle.tolist()]
+        #         cprint.info(p)
+        #         self.debug_draw.draw_points(p,
+        #                                     [(0, 1, 0, 1), (0, 1, 0, 1), (0, 1, 0, 1)], [10, 10, 10]) 
+        cprint.info(f'num sensors {3}')
+        cprint.info(f'tensor {torch.arange(0,self.num_envs).repeat(1,3)}')
+        for i, env in zip(torch.arange(self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(self.num_envs), torch.arange(self.num_envs).repeat_interleave(self._task_cfg['sim']["URRobot"]['num_sensors'])):
             trimesh_1 = geom_to_trimesh(
                 UsdGeom.Cube(
-                    get_prim_at_path(self._manipulated_object.prim_paths[i])),
-                    self.target_object_pose[i].cpu(), transformations.euler_from_quaternion(self.target_object_rot[i].cpu())) #TODO Why to CPU?
+                    get_prim_at_path(self._manipulated_object.prim_paths[env])),
+                    self.target_object_pose[env].cpu(), transformations.euler_from_quaternion(self.target_object_rot[env].cpu())) #TODO Why to CPU?
             warp_mesh = warp_from_trimesh(trimesh_1, self._device)
             self.raytracer.set_geom(warp_mesh)
+            cprint.err(f'i: {i}')
+            cprint.err(f'env: {env}')
+            cprint.err(circle[env][i])
             ray_t, ray_dir = self.raytracer.render(
-                int(np.random.normal(10, 10)), gripper_pose.cpu()[i],
-                gripper_rot.cpu()[i])
+                int(np.random.normal(10, 10)), circle[env][i].cpu(),
+                gripper_rot.cpu()[env])
 
-            if DEBUG_WITH_TRIMESH:
+            if self._cfg["debug_with_trimesh"]: #TODO Update with sensor circle
                 ## Visualization for trimesh
                 # Create axis for visualization
-                axis_origins = np.array([[0, 0, 0],
-                                        [0, 0, 0],
-                                        [0, 0, 0]])
-                axis_directions = np.array([[1, 0, 0],
-                                        [0, 1, 0],
-                                        [0, 0, 1]])
+                axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+                axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
                 # stack axis rays into line segments for visualization as Path3D
-                axis_visualize = trimesh.load_path(np.hstack((
-                    axis_origins,
+                axis_visualize = trimesh.load_path(np.hstack(( axis_origins,
                     axis_origins + axis_directions)).reshape(-1, 2, 3), colors=np.array([[0, 0, 255, 255], [0, 255, 0, 255], [255, 0, 0, 255]]))
                 # stack rays into line segments for visualization as Path3D
                 ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0], axis=0),repeats=256, axis=0)
-                ray_visualize = trimesh.load_path(np.hstack((
-                    ray_origins,
+                ray_visualize = trimesh.load_path(np.hstack((ray_origins,
                     ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
                 # trimesh_1.apply_transform(matrix)
                 self.j = self.j + 1
@@ -627,7 +739,7 @@ class TofSensorTask(RLTask):
                     scene.show()
 
             if DEBUG:
-                sensor_ray_pos_np = gripper_pose.cpu()[i].numpy()
+                sensor_ray_pos_np = circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
@@ -670,15 +782,20 @@ class TofSensorTask(RLTask):
                 self.debug_draw.draw_points(sensor_ray_pos_list,
                                             start_point_colors, point_sizes)
                 # Debug draw the gripper pose
-                self.debug_draw.draw_points([gripper_pose[i].cpu().numpy()],
+                self.debug_draw.draw_points([circle[env][i].cpu().numpy()],
                                             [(1, 0, 0, 1)], [10])
-                # Debug draw the target object pose
-                self.debug_draw.draw_points([self.target_object_pose[i].cpu().numpy()],
-                                            [(0, 1, 0, 1)], [10])   
-                # Draw line between gripper and target object
-                self.debug_draw.draw_lines([gripper_pose[i].cpu().numpy()],
-                                            [self.target_object_pose[i].cpu().numpy()],
-                                            [(0, 0, 1, 1)], [2])
+                # # Debug draw the target object pose
+                # self.debug_draw.draw_points([self.target_object_pose[i].cpu().numpy()],
+                #                             [(0, 1, 0, 1)], [10])   
+                # # Draw line between gripper and target object
+                # self.debug_draw.draw_lines([gripper_pose[i].cpu().numpy()],
+                #                             [self.target_object_pose[i].cpu().numpy()],
+                #                             [(0, 0, 1, 1)], [2])
+                # Draw circle
+                # p = [np.array(row) for row in circle.tolist()]
+                # cprint.info(p)
+                # self.debug_draw.draw_points(p,
+                #                             [(0, 1, 0, 1), (0, 1, 0, 1), (0, 1, 0, 1)], [10, 10, 10]) 
         
     def pre_physics_step(self, actions) -> None:
 
@@ -859,5 +976,156 @@ class TofSensorTask(RLTask):
                 self.target_object_rot[0].cpu()) #TODO Why to CPU?
         warp_mesh = warp_from_trimesh(trimesh_1, self._device)
 
-        if DEBUG_WITH_TRIMESH:
+        if self._cfg["debug_with_trimesh"]:
             self.j = 0
+
+# def circle_points(radius, center, normal, num_points):
+#     """
+#     Generate points on a circle in 3D space.
+
+#     Args:
+#     radius (float): The radius of the circle.
+#     center (torch.Tensor): a tensor of shape (3,) representing the center of the circle.
+#     normal (torch.Tensor): a tensor of shape (3,) representing the normal to the plane of the circle.
+#     num_points (int): The number of points to generate.
+
+#     Returns:
+#     torch.Tensor: a tensor of shape (num_points, 3) representing the points on the circle.
+#     """
+#     # Normalize the normal vector
+#     normal = normal / torch.norm(normal)
+
+#     # Generate a random vector not in the same direction as the normal
+#     not_normal = torch.rand(3, device='cuda:0')
+#     while torch.dot(normal, not_normal) > 0.99:  # Ensure it's not too similar
+#         not_normal = torch.rand(3, device='cuda:0')
+
+#     # Compute the basis of the plane
+#     basis1 = torch.cross(normal, not_normal)
+#     basis1 /= torch.norm(basis1)
+#     basis2 = torch.cross(normal, basis1)
+#     basis2 /= torch.norm(basis2)
+
+#     # Generate points on the circle
+#     t = torch.arange(0, 2*torch.pi, step=2*torch.pi/num_points, device='cuda:0')
+#     circle = center[:, None] + radius * (basis1[:, None] * torch.cos(t) + basis2[:, None] * torch.sin(t))
+
+#     return circle.T
+
+def circle_points(radius, centers, normals, num_points):
+    """
+    Generate points on a batch of circles in 3D space.
+
+    Args:
+    radius (float): The radius of the circles.
+    centers (torch.Tensor): a tensor of shape (batch_size, 3) representing the centers of the circles.
+    normals (torch.Tensor): a tensor of shape (batch_size, 3) representing the normals to the planes of the circles.
+    num_points (int): The number of points to generate on each circle.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, num_points, 3) representing the points on the circles.
+    """
+    batch_size = centers.shape[0]
+
+    # Normalize the normal vectors
+    normals = normals / torch.norm(normals, dim=-1, keepdim=True)
+
+    # Generate random vectors not in the same direction as the normals
+    not_normals = torch.rand(batch_size, 3, device='cuda:0')
+    while (normals * not_normals).sum(dim=-1).max() > 0.99:  # Ensure they're not too similar
+        not_normals = torch.rand(batch_size, 3, device='cuda:0')
+
+    # Compute the basis of the planes
+    basis1 = torch.cross(normals, not_normals)
+    basis1 /= torch.norm(basis1, dim=-1, keepdim=True)
+    basis2 = torch.cross(normals, basis1)
+    basis2 /= torch.norm(basis2, dim=-1, keepdim=True)
+
+    # Generate points on the circles
+    t = torch.arange(0, 2*torch.pi, step=2*torch.pi/num_points, device='cuda:0')
+    # circles = centers[:, None, :] + radius * (basis1[:, None, :] * torch.cos(t) + basis2[:, None, :] * torch.sin(t))
+    circles = centers[:, None, :] + radius * (basis1[:, None, :] * torch.cos(t)[None, :, None] + basis2[:, None, :] * torch.sin(t)[None, :, None])
+    return circles
+
+# def quaternion_to_rotation_matrix(quaternion):
+#     """
+#     Convert a quaternion to a rotation matrix.
+
+#     Args:
+#     quaternion (torch.Tensor): a tensor of shape (4,) representing the quaternion.
+
+#     Returns:
+#     torch.Tensor: a 3x3 rotation matrix.
+#     """
+#     w, x, y, z = quaternion
+#     return torch.tensor([
+#         [1 - 2*y**2 - 2*z**2, 2*x*y - 2*z*w, 2*x*z + 2*y*w],
+#         [2*x*y + 2*z*w, 1 - 2*x**2 - 2*z**2, 2*y*z - 2*x*w],
+#         [2*x*z - 2*y*w, 2*y*z + 2*x*w, 1 - 2*x**2 - 2*y**2]
+#     ], device='cuda:0')
+def quaternion_to_rotation_matrix(quaternion):
+    """
+    Convert a batch of quaternions to rotation matrices.
+
+    Args:
+    quaternion (torch.Tensor): a tensor of shape (batch_size, 4) representing the quaternions.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, 3, 3) representing the rotation matrices.
+    """
+    w, x, y, z = quaternion.unbind(dim=-1)
+
+    batch_size = quaternion.shape[0]
+
+    rotation_matrix = torch.empty((batch_size, 3, 3), device='cuda:0')
+
+    rotation_matrix[:, 0, 0] = 1 - 2*y**2 - 2*z**2
+    rotation_matrix[:, 0, 1] = 2*x*y - 2*z*w
+    rotation_matrix[:, 0, 2] = 2*x*z + 2*y*w
+    rotation_matrix[:, 1, 0] = 2*x*y + 2*z*w
+    rotation_matrix[:, 1, 1] = 1 - 2*x**2 - 2*z**2
+    rotation_matrix[:, 1, 2] = 2*y*z - 2*x*w
+    rotation_matrix[:, 2, 0] = 2*x*z - 2*y*w
+    rotation_matrix[:, 2, 1] = 2*y*z + 2*x*w
+    rotation_matrix[:, 2, 2] = 1 - 2*x**2 - 2*y**2
+
+    return rotation_matrix
+
+# def find_plane_normal(point, quaternion):
+#     """
+#     Find the normal to a plane defined by a point and a rotation.
+
+#     Args:
+#     point (torch.Tensor): a tensor of shape (3,) representing the point on the plane.
+#     quaternion (torch.Tensor): a tensor of shape (4,) representing the rotation.
+
+#     Returns:
+#     torch.Tensor: a tensor of shape (3,) representing the normal to the plane.
+#     """
+#     # Convert the quaternion to a rotation matrix
+#     rotation_matrix = quaternion_to_rotation_matrix(quaternion)
+#     cprint.info(f'rotation_matrix {rotation_matrix}')
+#     cprint.info(f'rotation_matrix shape {rotation_matrix.shape}')
+#     # Apply the rotation to the standard normal vector
+#     normal = rotation_matrix @ torch.tensor([1.0, 0.0, 0.0], device='cuda:0')
+
+#     return normal
+def find_plane_normal(num_env, quaternions):
+    """
+    Find the normal to a plane defined by a batch of points and rotations.
+
+    Args:
+    points (torch.Tensor): a tensor of shape (batch_size, 3) representing the points on the planes.
+    quaternions (torch.Tensor): a tensor of shape (batch_size, 4) representing the rotations.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, 3) representing the normals to the planes.
+    """
+    # Convert the quaternions to rotation matrices
+    rotation_matrices = quaternion_to_rotation_matrix(quaternions)
+    cprint.info(f'rotation_matrix {rotation_matrices}')
+    cprint.info(f'rotation_matrix shape {rotation_matrices.shape}')
+    normals = torch.tensor([1.0, 0.0, 0.0], device='cuda:0').expand(num_env,-1)
+    normals = normals.view(num_env,3,1)
+    rotated_normals = torch.bmm(rotation_matrices, normals)
+    return rotated_normals.view(num_env,3)

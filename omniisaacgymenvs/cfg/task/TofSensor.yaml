@@ -95,10 +95,11 @@ sim:
     position: [0, 0.0, 2.02]
     quaternion: [0, 0, 1, 0]
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
+    num_sensors: 3
+    sensor_radius: 0.2
   Object:
    category: "02876657"
-  manipulated_object_1:
-   make_kinematic: 1
+
     
   
     
