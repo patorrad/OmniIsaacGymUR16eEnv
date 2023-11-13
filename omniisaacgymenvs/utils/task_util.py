@@ -33,40 +33,40 @@ def initialize_task(config, env, init_sim=True):
    
     
 
-    from omniisaacgymenvs.tasks.allegro_hand import AllegroHandTask
-    from omniisaacgymenvs.tasks.ant import AntLocomotionTask
-    from omniisaacgymenvs.tasks.anymal import AnymalTask
-    from omniisaacgymenvs.tasks.anymal_terrain import AnymalTerrainTask
-    from omniisaacgymenvs.tasks.ball_balance import BallBalanceTask
-    from omniisaacgymenvs.tasks.cartpole import CartpoleTask
-    from omniisaacgymenvs.tasks.factory.factory_task_nut_bolt_pick import FactoryTaskNutBoltPick
-    from omniisaacgymenvs.tasks.franka_cabinet import FrankaCabinetTask
-    from omniisaacgymenvs.tasks.humanoid import HumanoidLocomotionTask
-    from omniisaacgymenvs.tasks.ingenuity import IngenuityTask
-    from omniisaacgymenvs.tasks.quadcopter import QuadcopterTask
-    from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
-    from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
+    # from omniisaacgymenvs.tasks.allegro_hand import AllegroHandTask
+    # from omniisaacgymenvs.tasks.ant import AntLocomotionTask
+    # from omniisaacgymenvs.tasks.anymal import AnymalTask
+    # from omniisaacgymenvs.tasks.anymal_terrain import AnymalTerrainTask
+    # from omniisaacgymenvs.tasks.ball_balance import BallBalanceTask
+    # from omniisaacgymenvs.tasks.cartpole import CartpoleTask
+    # from omniisaacgymenvs.tasks.factory.factory_task_nut_bolt_pick import FactoryTaskNutBoltPick
+    # from omniisaacgymenvs.tasks.franka_cabinet import FrankaCabinetTask
+    # from omniisaacgymenvs.tasks.humanoid import HumanoidLocomotionTask
+    # from omniisaacgymenvs.tasks.ingenuity import IngenuityTask
+    # from omniisaacgymenvs.tasks.quadcopter import QuadcopterTask
+    # from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
+    # from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     # from omniisaacgymenvs.tasks.ur10e import UR10e
     from omniisaacgymenvs.tasks.ToF_sensor import TofSensorTask
     
     # Mappings from strings to environments
    
     task_map = {
-        "AllegroHand": AllegroHandTask,
-        "Ant": AntLocomotionTask,
-        "Anymal": AnymalTask,
-        "AnymalTerrain": AnymalTerrainTask,
-        "BallBalance": BallBalanceTask,
-        "Cartpole": CartpoleTask,
-        "FactoryTaskNutBoltPick": FactoryTaskNutBoltPick,
-        "FrankaCabinet": FrankaCabinetTask,
-        "Humanoid": HumanoidLocomotionTask,
-        "Ingenuity": IngenuityTask,
-        "Quadcopter": QuadcopterTask,
-        "Crazyflie": CrazyflieTask,
-        "ShadowHand": ShadowHandTask,
-        "ShadowHandOpenAI_FF": ShadowHandTask,
-        "ShadowHandOpenAI_LSTM": ShadowHandTask,
+        # "AllegroHand": AllegroHandTask,
+        # "Ant": AntLocomotionTask,
+        # "Anymal": AnymalTask,
+        # "AnymalTerrain": AnymalTerrainTask,
+        # "BallBalance": BallBalanceTask,
+        # "Cartpole": CartpoleTask,
+        # "FactoryTaskNutBoltPick": FactoryTaskNutBoltPick,
+        # "FrankaCabinet": FrankaCabinetTask,
+        # "Humanoid": HumanoidLocomotionTask,
+        # "Ingenuity": IngenuityTask,
+        # "Quadcopter": QuadcopterTask,
+        # "Crazyflie": CrazyflieTask,
+        # "ShadowHand": ShadowHandTask,
+        # "ShadowHandOpenAI_FF": ShadowHandTask,
+        # "ShadowHandOpenAI_LSTM": ShadowHandTask,
         # "UR10e": UR10e,
         "TofSensor":TofSensorTask,
     }

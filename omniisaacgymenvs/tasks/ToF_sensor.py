@@ -646,7 +646,7 @@ class TofSensorTask(RLTask):
                                 0)) 
                 noise_distance = np.random.normal(average_distance * 1000,
                                                         standard_deviation)
-                print(f'distance with noise sensor {i}: , {noise_distance}')
+                # print(f'distance with noise sensor {i}: , {noise_distance}')
                 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -709,7 +709,7 @@ class TofSensorTask(RLTask):
         target_position = pre_position + delta_pose[:, :3]
 
         # frame skip
-        for i in range(self.frame_skip):
+        for i in range(10):
             self._env._world.step(render=False)
 
         current_position, current_orientation = self._end_effector.get_world_poses(
@@ -720,6 +720,8 @@ class TofSensorTask(RLTask):
                                                  dim=1)
 
         self.raytrace_step()
+
+        #print(self._manipulated_object.get_world_poses()[0][1])
 
     def post_reset(self):
 
@@ -841,9 +843,10 @@ class TofSensorTask(RLTask):
 
         
 
-        for i in range(self.frame_skip):
+        for i in range(10):
             self._env._world.step(render=False)
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
+        
 
     def reset_raytracer(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(clone=True)
