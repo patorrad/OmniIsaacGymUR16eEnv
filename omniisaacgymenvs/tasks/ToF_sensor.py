@@ -414,23 +414,27 @@ class TofSensorTask(RLTask):
             UsdPhysics.CollisionAPI.Apply(cube_prim)
 
     def load_table(self):
-        table_translation = np.array([0.25, 1.0, 1.])
-        table_orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        # table_translation = np.array([0.25, 1.0, 1.])
+        # table_orientation = np.array([1.0, 0.0, 0.0, 0.0])
         
-        table = FixedCuboid(
-            prim_path=self.default_zero_env_path + "/table",
-            name="table",
-            translation=table_translation,
-            orientation=table_orientation,
-            scale=np.array([
-                0.6, 
-                0.6, 
-                0.5,
-            ]),
-            size=1.0,
-            color=np.array([1, 0, 0]),
-        )
-    
+        # table = FixedCuboid(
+        #     prim_path=self.default_zero_env_path + "/table",
+        #     name="table",
+        #     translation=table_translation,
+        #     orientation=table_orientation,
+        #     scale=np.array([
+        #         0.6, 
+        #         0.6, 
+        #         0.5,
+        #     ]),
+        #     size=1.0,
+        #     color=np.array([1, 0, 0]),
+        # )
+
+        table_usd_path = f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
+        prim_utils.create_prim(self.default_zero_env_path + "/table", usd_path=table_usd_path, translation=(0.25, 1.0, 1))
+        #prim_utils.create_prim("/World/Table_2", usd_path=table_usd_path, translation=(0.55, 1.0, 0.0))
+        
     def get_target_object(self):
         target_object_1 = DynamicCuboid(
             prim_path=self.default_zero_env_path + "/manipulated_object_1",
