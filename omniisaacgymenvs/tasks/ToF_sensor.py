@@ -88,7 +88,7 @@ from omni.isaac.core.utils.stage import get_current_stage
 
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
-
+import omniisaacgymenvs.utils.tools.transform_utils as tf
 from cprint import *
 
 DEBUG = True
@@ -414,25 +414,25 @@ class TofSensorTask(RLTask):
             UsdPhysics.CollisionAPI.Apply(cube_prim)
 
     def load_table(self):
-        # table_translation = np.array([0.25, 1.0, 1.])
-        # table_orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        table_translation = np.array([0.25, 1.0, 1.])
+        table_orientation = np.array([1.0, 0.0, 0.0, 0.0])
         
-        # table = FixedCuboid(
-        #     prim_path=self.default_zero_env_path + "/table",
-        #     name="table",
-        #     translation=table_translation,
-        #     orientation=table_orientation,
-        #     scale=np.array([
-        #         0.6, 
-        #         0.6, 
-        #         0.5,
-        #     ]),
-        #     size=1.0,
-        #     color=np.array([1, 0, 0]),
-        # )
+        table = FixedCuboid(
+            prim_path=self.default_zero_env_path + "/table",
+            name="table",
+            translation=table_translation,
+            orientation=table_orientation,
+            scale=np.array([
+                0.6, 
+                0.6, 
+                0.7,
+            ]),
+            size=1.0,
+            color=np.array([1, 0, 0]),
+        )
 
-        table_usd_path = f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
-        prim_utils.create_prim(self.default_zero_env_path + "/table", usd_path=table_usd_path, translation=(0.25, 1.0, 1))
+        # table_usd_path = f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
+        # prim_utils.create_prim(self.default_zero_env_path + "/table", usd_path=table_usd_path, translation=(0.25, 1.0, 1))
         #prim_utils.create_prim("/World/Table_2", usd_path=table_usd_path, translation=(0.55, 1.0, 0.0))
         
     def get_target_object(self):
@@ -795,6 +795,8 @@ class TofSensorTask(RLTask):
         
             
         return [False for i in range(self.num_envs)]
+    
+    
 
 
     def reset_internal(self):
@@ -837,17 +839,25 @@ class TofSensorTask(RLTask):
 
         self.target_position, self.target_orientation = self._end_effector.get_world_poses(
         )  # wxyz
-
+        
+        rand_ori_z = torch.rand(self.num_envs).to(self.device)
+        rand_orientation = torch.zeros((self.num_envs,3)).to(self.device)
+        rand_orientation[:,2] = rand_ori_z*torch.pi/2
+        
+        object_target_quaternion = tf.axis_angle_to_quaternion(rand_orientation)
+        # object_target_quaternion = quaternion_multiply(self.target_orientation,rand_quat)
+      
+   
         object_target_position = self.target_position.clone()
-        object_target_position[:, 1] += 0.6
-        self._manipulated_object.set_world_poses(object_target_position)
+        object_target_position[:, 1] += 0.6 
+        self._manipulated_object.set_world_poses(object_target_position,object_target_quaternion)
         self.default_dof = torch.tensor(target_joint_positions,
                                         dtype=torch.float).repeat(
                                             self.num_envs, 1).clone()
 
         
 
-        for i in range(10):
+        for i in range(1):
             self._env._world.step(render=False)
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
         
