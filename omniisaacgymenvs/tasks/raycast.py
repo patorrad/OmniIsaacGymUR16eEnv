@@ -1,18 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-#############################################################################
-# Example Ray Cast
-#
-# Shows how to use the built-in wp.Mesh data structure and wp.mesh_query_ray()
-# function to implement a basic ray-tracer.
-#
-##############################################################################
-
 import matplotlib.pyplot as plt
 from pxr import Usd, UsdGeom, UsdSkel, Gf
 
@@ -23,19 +8,23 @@ import sys
 import os
 
 import trimesh
+from trimesh import transformations
+from cprint import *
 
-DEVICE = 'cpu'
-# DEVICE = 'cuda:0'
+# DEVICE = 'cpu'
+DEVICE = 'cuda:0'
 wp.init()
 # wp.config.mode = "debug"
 wp.set_device(DEVICE)
+wp.config.print_launches = False
+
+MAX_DIST = 1.2 # meters
 
 @wp.kernel
 def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height: int, pixels: wp.array(dtype=wp.vec3), 
          t_out: wp.array(dtype=wp.float32), ray_dir: wp.array(dtype=wp.vec3), rng_seed: wp.int32):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    # q2 = wp.quat(0., 1., 0., 0.)
     tid = wp.tid()
 
     pi = 3.14159265359
@@ -68,23 +57,23 @@ def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height
     color = wp.vec3(0.0, 0.0, 0.0)
 
     if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
-        if wp.mesh_query_ray(mesh, ro, rd, 1.2, t, u, v, sign, n, f):
+        if wp.mesh_query_ray(mesh, ro, rd, MAX_DIST, t, u, v, sign, n, f):
             color = n * 0.5 + wp.vec3(0.5, 0.5, 0.5)
             
             # ignore this ray if it wouldn't reflect back to the receiver
             ray_dot_product = wp.dot(rd, n)
-            if ray_dot_product < -0.996 or ray_dot_product > -0.866:
-                t = 0.
-            # else:
-            #     print(ray_dot_product)
-            # if distance between [u,v] and ro is in the noise part of the cone
-            if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
-                # use random function to determine whether we should give the reading t or 0
-                # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
-                rng_state = wp.rand_init(rng_seed, tid)
-                if wp.randf(rng_state) <= 9./34.:
-                    t = float(0.)
-                    # t = float(1.)
+            # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
+            #     t = 0.
+            # # else:
+            # #     print(ray_dot_product)
+            # # if distance between [u,v] and ro is in the noise part of the cone
+            # if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
+            #     # use random function to determine whether we should give the reading t or 0
+            #     # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
+            #     rng_state = wp.rand_init(rng_seed, tid)
+            #     if wp.randf(rng_state) <= 9./34.:
+            #         t = float(0.)
+            #         # t = float(1.)
     
     pixels[tid] = color
     t_out[tid] = t
@@ -101,25 +90,7 @@ class Raycast:
         self.result = np.zeros((self.height, self.width, 3))
 
     def set_geom(self, mesh):
-        # # asset_stage = Usd.Stage.Open("/home/aurmr/workspaces/paolo_ws/src/stage_test_1.usd") 
-        # # cube_geom = asset_stage.GetPrimAtPath("/World/Cube")
-        
-        # points = np.array(geom.GetPointsAttr().Get())
-        # indices = np.array(geom.GetFaceVertexIndicesAttr().Get())
-        # # print(points.shape)
-        # # print(indices)
-        # # print(mesh_geom.GetFaceVertexCountsAttr().Get())
-        # # print(mesh_geom.GetFaceVertexIndicesAttr())
-        # # indices_test = np.array([0, 1, 3, 1, 3, 2])
-        # indices_test = np.concatenate((np.delete(indices, np.arange(3, indices.size, 4)), np.delete(indices, np.arange(1, indices.size, 4))))
-        # points_test = np.array([[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=float)
         self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
-
-        # # create wp mesh
-        # self.mesh = wp.Mesh(
-        #     points=wp.array(points, dtype=wp.vec3), velocities=None, indices=wp.array(indices_test, dtype=int)
-        # )
-
         self.mesh = mesh
         self.ray_hit = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
@@ -128,11 +99,6 @@ class Raycast:
         pass
 
     def render(self, rng_seed = 42, cam_pos = (0.0, 1.5, 2.5), cam_dir = np.array([1, 0, 0, 0]), is_live=False):
-        # print('cam_pose', cam_pos)
-        # print('quaternion', cam_dir)
-        # cam_dir = get_forward_direction_vector(cam_dir)
-        # print('cam_dir', cam_dir)
-        # with wp.ScopedTimer("render"):
         wp.launch(
             kernel=draw,
             dim=self.width * self.height,
@@ -145,20 +111,6 @@ class Raycast:
         plt.imshow(
             self.ray_hit.numpy().reshape((self.height, self.width)), origin="lower", interpolation="antialiased"
         )
-        # plt.colorbar(label="Distance", orientation="horizontal")
-        # plt.show()
-        # if self.step % 100 == 0:
-        #     plt.savefig("/home/aurmr/Pictures/raycast_cube_1.png",
-        #     bbox_inches ="tight",
-        #     pad_inches = 1,
-        #     transparent = True,
-        #     facecolor ="g",
-        #     edgecolor ='w',
-        #     orientation ='landscape')
-        
-        # self.step += 1
-        # print("raytracer", self.ray_hit.numpy().shape)
-        # print("raytracer", self.ray_hit)
         return self.ray_hit, self.ray_dir
 
     def save(self):
@@ -203,11 +155,11 @@ def get_support_surfaces_trimesh(mesh: trimesh.Trimesh, for_normal=None, thresho
 
 # relative_pos is the position of the object that this object's position should be relative to. 
 # For example, this can be the position of the first object added to the Isaac Sim environment
-def geom_to_trimesh(geom, relative_pos):
+def geom_to_trimesh(geom, relative_pos, relative_rot):
     if isinstance(geom, UsdGeom.Mesh):
         trimesh = load_trimesh_from_usdgeom(geom)
     elif isinstance(geom, UsdGeom.Cube):
-        trimesh = get_trimesh_for_cube(geom, relative_pos)
+        trimesh = get_trimesh_for_cube(geom, relative_pos, relative_rot)
     elif isinstance(geom, UsdGeom.Cylinder):
         trimesh = get_trimesh_for_cylinder(geom, relative_pos)
     elif isinstance(geom, UsdGeom.Cone):
@@ -220,14 +172,10 @@ def geom_to_trimesh(geom, relative_pos):
 
 # relative_pos is the position of the object that this object's position should be relative to. 
 # For example, this can be the position of the first object added to the Isaac Sim environment
-def get_trimesh_for_cube(cube: UsdGeom.Cube, relative_pos):
-    transform = cube.GetLocalTransformation()
-    translate, rotation, scale = UsdSkel.DecomposeTransform(transform)
-    # maybe we need to incorporate translate into the transform matrix
-    # transform = Gf.Matrix4d(Gf.Vec4d(scale[0], scale[1], scale[2], 1))
-    transform = trimesh.transformations.translation_matrix([translate[0] - relative_pos[0], translate[1] - relative_pos[1], translate[2] - relative_pos[2]])
-    # transform = UsdSkel.MakeTransform(translate, Gf.Quatf(1, 0, 0, 0), scale)
+def get_trimesh_for_cube(cube: UsdGeom.Cube, relative_pos, relative_rot):
     size = cube.GetSizeAttr().Get()
+    transform = transformations.compose_matrix(angles=relative_rot,
+                                                translate=relative_pos)
     baked_trimesh = trimesh.creation.box(extents=(size, size, size))
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
@@ -262,13 +210,6 @@ def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
     baked_trimesh = trimesh.Trimesh(vertices=mesh.GetPointsAttr().Get(), faces=np.array(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1,3))
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
-
-# Method to get direction vector from quaternion (forward direction)
-# Quaternion = w, x, y, z
-def get_forward_direction_vector(q: np.array) -> np.array:
-    # return np.array([2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])])
-    # return np.array([1 - 2 * (q[1] * q[1] + q[2] * q[2]), 2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1])])
-    return np.array([-1,0,0])
 
 if __name__ == "__main__":
     example = Raycast()

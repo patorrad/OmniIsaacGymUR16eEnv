@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: ''
+num_envs: 4 #''
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -45,15 +45,15 @@ enable_livestream: False
 # timeout for MT script
 mt_timeout: 30
 
-wandb_activate: True
-wandb_group: ''
-wandb_name: '${train.params.config.name}_joint'
-wandb_entity: 'Entong'
-wandb_project: 'omniisaacgymenvs_ur10e'
+# wandb_activate: True
+# wandb_group: ''
+# wandb_name: '${train.params.config.name}_joint'
+# wandb_entity: 'Entong'
+# wandb_project: 'omniisaacgymenvs_ur10e'
 
 # set default task and default training config based on task
 defaults:
-  - task: Cartpole
+  - task: TofSensor 
   - train: ${task}PPO
   - hydra/job_logging: disabled
 
@@ -62,4 +62,8 @@ hydra:
   output_subdir: null
   run:
     dir: .
+
+# Debug
+debug: True 
+debug_with_trimesh: False 
 
