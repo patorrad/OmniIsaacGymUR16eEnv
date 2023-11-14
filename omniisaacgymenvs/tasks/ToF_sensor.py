@@ -94,7 +94,7 @@ from cprint import *
 DEBUG = True
 DEBUG_WITH_TRIMESH = False
 SENSORS = 3
-
+import time
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
@@ -150,6 +150,8 @@ class TofSensorTask(RLTask):
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
                                               device=self.device)
+       
+        # self.start_time = time.time()
 
         return
 
@@ -713,8 +715,11 @@ class TofSensorTask(RLTask):
         target_position = pre_position + delta_pose[:, :3]
 
         # frame skip
-        for i in range(10):
+        
+        for i in range(1):
             self._env._world.step(render=False)
+        
+     
 
         current_position, current_orientation = self._end_effector.get_world_poses(
             clone=False)
@@ -856,10 +861,17 @@ class TofSensorTask(RLTask):
                                             self.num_envs, 1).clone()
 
         
+        # import time
+        # end_time = time.time()
+    
+        
+      
 
         for i in range(1):
             self._env._world.step(render=False)
         _, self.init_ee_link_orientation = self._end_effector.get_world_poses()
+        # print(end_time-self.start_time)
+        # self.start_time = time.time()
         
 
     def reset_raytracer(self):
