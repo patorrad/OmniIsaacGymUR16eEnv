@@ -91,6 +91,9 @@ from omni.isaac.core.utils.torch.rotations import *
 import omniisaacgymenvs.utils.tools.transform_utils as tf
 from cprint import *
 
+# 3D transformations functions
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, matrix_to_quaternion, quaternion_multiply
+
 DEBUG = True
 DEBUG_WITH_TRIMESH = False
 SENSORS = 3
@@ -118,6 +121,8 @@ class TofSensorTask(RLTask):
             device=self._device)
         self._robot_dof_targets = self._robot_dof_target.repeat(
             self._num_envs, 1)
+        
+        self.object_category = self._task_cfg['sim']["Object"]["category"]
         # self._manipulated_object_positions = torch.tensor([-0.4, 0.0, 0.9])
         self._manipulated_object_positions = [
             torch.tensor([-0.6, 0.0, 1.9]),
@@ -144,7 +149,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([1.0] * 3 + [1.0] * 3,
+        velocity_limit = torch.as_tensor([3.0] * 3 + [3.0] * 3,
                                          device=self.device)  #slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -190,14 +195,24 @@ class TofSensorTask(RLTask):
             (self._num_envs, 1))
         self.franka_local_grasp_rot = hand_pose[0:3].repeat(
             (self._num_envs, 1))
+        
+        self.init_mesh()
+    
+    def init_mesh(self):
+
+        if self.object_category in ['cube']:
+            cube = trimesh.creation.box()
+          
+            self.mesh_faces = torch.as_tensor(cube.faces[None,:,:]).repeat((self.num_envs,1,1))
+            self.mesh_vertices = torch.as_tensor(cube.vertices[None,:,:],dtype=torch.float32).repeat((self.num_envs,1,1))
 
     def set_up_scene(self, scene) -> None:
 
         self.load_robot()
         # self.load_target()
         #self.load_manipulated_object()
-
-        self.get_target_object()
+        if self.object_category in ['cube']:
+            self.load_cube()
         
         # self.load_pod()
         # Table
@@ -437,7 +452,7 @@ class TofSensorTask(RLTask):
         # prim_utils.create_prim(self.default_zero_env_path + "/table", usd_path=table_usd_path, translation=(0.25, 1.0, 1))
         #prim_utils.create_prim("/World/Table_2", usd_path=table_usd_path, translation=(0.55, 1.0, 0.0))
         
-    def get_target_object(self):
+    def load_cube(self):
         target_object_1 = DynamicCuboid(
             prim_path=self.default_zero_env_path + "/manipulated_object_1",
             name="manipulated_object_1",
@@ -487,6 +502,9 @@ class TofSensorTask(RLTask):
         robot_joint = self._robots.get_joint_positions()
 
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
+
+        bboxes,center_points = self.transform_mesh()
+       
     
         self.obs_buf = torch.cat([
              current_euler_angles[:, 1][:, None],
@@ -728,9 +746,28 @@ class TofSensorTask(RLTask):
                                                  current_position,
                                                  dim=1)
 
-        self.raytrace_step()
+        
+
+        # self.raytrace_step()
 
         #print(self._manipulated_object.get_world_poses()[0][1])
+    
+    def transform_mesh(self):
+        manipulated_object_pose = self._manipulated_object.get_local_poses()
+
+        transform = Transform3d(device=self.device).rotate(
+            quaternion_to_matrix((manipulated_object_pose[1]))).translate(manipulated_object_pose[0])
+        
+        transform_mesh_vertices = transform.transform_points(self.mesh_vertices.to(self.device))
+        max_xyz = torch.max(transform_mesh_vertices,dim=1).values
+        min_xyz = torch.min(transform_mesh_vertices,dim=1).values
+        bboxes = torch.hstack([min_xyz, max_xyz])
+        center_points = (max_xyz+min_xyz)/2
+
+        return bboxes,center_points
+       
+        
+
 
     def post_reset(self):
 

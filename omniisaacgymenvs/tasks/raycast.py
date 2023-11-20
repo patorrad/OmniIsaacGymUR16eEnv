@@ -82,8 +82,8 @@ def draw(mesh: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int, height
 
 class Raycast:
     def __init__(self):
-        self.width = 16 #1024
-        self.height = 16 #1024
+        self.width = 8 #1024
+        self.height = 8 #1024
         self.cam_pos = (0.0, 1.5, 2.5)
         # self.cam_pos = (0.0, 1.50, 1)
         self.step = 0
