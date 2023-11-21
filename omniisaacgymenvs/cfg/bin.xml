@@ -1,10 +1,11 @@
-<group_state name="init_pose_realsense_3F" group="manipulator">
-        <joint name="arm_elbow_joint" value="1.2428181807147425"/>
-        <joint name="arm_shoulder_lift_joint" value="-2.0230733356871546"/>
-        <joint name="arm_shoulder_pan_joint" value="1.9002944231033325"/>
-        <joint name="arm_wrist_1_joint" value="0.7833763796040039"/>
-        <joint name="arm_wrist_2_joint" value="1.8926591873168945"/>
-        <joint name="arm_wrist_3_joint" value="-1.6038387457477015"/>
+<group_states>
+    <group_state name="init_pose_realsense_3F" group="manipulator">
+            <joint name="arm_elbow_joint" value="1.2428181807147425"/>
+            <joint name="arm_shoulder_lift_joint" value="-2.0230733356871546"/>
+            <joint name="arm_shoulder_pan_joint" value="1.9002944231033325"/>
+            <joint name="arm_wrist_1_joint" value="0.7833763796040039"/>
+            <joint name="arm_wrist_2_joint" value="1.8926591873168945"/>
+            <joint name="arm_wrist_3_joint" value="-1.6038387457477015"/>
     </group_state>
     <group_state name="init_pose_realsense_3H" group="manipulator">
         <joint name="arm_elbow_joint" value="2.2199371496783655"/>
@@ -126,3 +127,4 @@
         <joint name="arm_wrist_2_joint" value="-0.5880392233477991"/>
         <joint name="arm_wrist_3_joint" value="1.5808571577072144"/>
     </group_state>
+</group_states>
