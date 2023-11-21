@@ -39,7 +39,7 @@ def demo(fix_root_link, balance_passive_force):
    
     # arm_init_qpos[0] = 1.57
    
-    robot.set_qpos(arm_init_qpos)
+    robot.set_qpos(target_joint_positions)
 
     pinocchio_model = robot.create_pinocchio_model()
 
@@ -49,17 +49,15 @@ def demo(fix_root_link, balance_passive_force):
 
     links = robot.get_links()
     names = [link.get_name() for link in links]
-    robot.set_root_pose(sapien.Pose([0, 0, 0.202],))
+    robot.set_root_pose(sapien.Pose([0, 0, 2.02],[0, 0, 1, 0]))
 
     while not viewer.closed:
-        for _ in range(4):  # render every 4 steps
-            if balance_passive_force:
-                qf = robot.compute_passive_force(
-                    gravity=True, 
-                    coriolis_and_centrifugal=True, 
-                )
-                robot.set_qf(qf)
-            robot.set_qpos(arm_init_qpos)
+        for _ in range(1):  # render every 4 steps
+            # if balance_passive_force:
+            qf = robot.compute_passive_force(
+                    external=False, coriolis_and_centrifugal=False)
+            robot.set_qf(qf)
+            #robot.set_qpos(target_joint_positions)
             scene.step()
         scene.update_render()
         viewer.render()
