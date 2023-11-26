@@ -41,7 +41,7 @@ from omniisaacgymenvs.robots.controller.osc import Controller_osc
 
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import RigidPrimView
-from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim
+from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
 from omni.isaac.core.simulation_context import SimulationContext
 import numpy as np
@@ -69,8 +69,6 @@ from omni.physx.scripts import utils
 from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
 
 from omni.physx import acquire_physx_interface
-# from pxr import Sd
-from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
 
 import carb
 
@@ -232,11 +230,17 @@ class TofSensorTask(RLTask):
 
     def init_mesh(self):
 
-        if self.object_category in ['cube']:
-            cube = trimesh.creation.box()
+        cube = UsdGeom.Cube(
+            get_prim_at_path(self._manipulated_object.prim_paths[0]))
 
-            self.mesh_faces = torch.as_tensor(cube.faces[None, :, :]).repeat(
-                (self.num_envs, 1, 1))
+        if self.object_category in ['cube']:
+            size = cube.GetSizeAttr().Get()
+            cube = trimesh.creation.box(extents=(size, size, size))
+
+            self.mesh_faces = torch.as_tensor(cube.faces[None, :, :],
+                                              dtype=torch.int32).repeat(
+                                                  (self.num_envs, 1,
+                                                   1)).to(self.device)
             self.mesh_vertices = torch.as_tensor(cube.vertices[None, :, :],
                                                  dtype=torch.float32).repeat(
                                                      (self.num_envs, 1, 1))
@@ -573,14 +577,17 @@ class TofSensorTask(RLTask):
                 limitAPI.CreateLowAttr(1.0)
                 limitAPI.CreateHighAttr(-1.0)
 
-            for limit_name in ["rotY"]:
-                limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
-                limit_api.CreateLowAttr(1.0)
-                limit_api.CreateHighAttr(-1.0)
-            # delete_prim(joint_path)
-        else:
+            # for limit_name in ["rotX", "rotY", "rotZ"]:
+            #     limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
 
-            delete_prim(joint_path)
+            #     limit_api.CreateLowAttr(-45.0)
+            #     limit_api.CreateHighAttr(45.0)
+
+    def unlock_motion(self, fixed_joint_path):
+        for i in range(self._num_envs):
+            is_valid = is_prim_path_valid(fixed_joint_path)
+            if is_valid:
+                delete_prim(fixed_joint_path)
 
     def get_observations(self) -> dict:
 
@@ -592,20 +599,22 @@ class TofSensorTask(RLTask):
             current_orientation)
         self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        if self._step == 50:
-            ee_link_pos, ee_link_ori = self._end_effector.get_local_poses()
+        # if self._step == 30:
+        #     ee_link_pos, ee_link_ori = self._end_effector.get_local_poses()
 
-            stage = get_current_stage()
+        #     stage = get_current_stage()
 
-            self.lock_motion(stage, f"/World/envs/env_{0}/robot/ee_link_cube",
-                             f"/World/envs/env_{0}/robot/ee_link",
-                             ee_link_ori[0], 0)
+        #     self.lock_motion(stage, f"/World/envs/env_{0}/robot/ee_link_cube",
+        #                      f"/World/envs/env_{0}/robot/ee_link",
+        #                      ee_link_ori[0], 0)
 
         robot_joint = self._robots.get_joint_positions()
 
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
 
-        bboxes, center_points = self.transform_mesh()
+        bboxes, center_points, self.transformed_vertices = self.transform_mesh(
+        )
+        self.raytrace_step()
 
         self.obs_buf = torch.cat([
             current_euler_angles[:, 1][:, None], self.target_angle[:, None],
@@ -712,6 +721,12 @@ class TofSensorTask(RLTask):
         gripper_pose, gripper_rot = self._end_effector.get_world_poses()
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
         )
+        transform = Transform3d(device=self.device).rotate(
+            quaternion_to_matrix(quaternion_invert(
+                self.target_object_rot))).translate(self.target_object_pose)
+
+        transformed_vertices = transform.transform_points(
+            self.mesh_vertices.clone().to(self.device))
 
         # PT Multiple sensors TODO need to move this to utils file
         normals = find_plane_normal(self.num_envs, gripper_rot)
@@ -725,50 +740,62 @@ class TofSensorTask(RLTask):
                         self.num_envs),
                 torch.arange(self.num_envs).repeat_interleave(
                     self._task_cfg['sim']["URRobot"]['num_sensors'])):
-            trimesh_1 = geom_to_trimesh(
-                UsdGeom.Cube(
-                    get_prim_at_path(
-                        self._manipulated_object.prim_paths[env])),
-                self.target_object_pose[env].cpu(),
-                transformations.euler_from_quaternion(
-                    self.target_object_rot[env].cpu()))  #TODO Why to CPU?
-            warp_mesh = warp_from_trimesh(trimesh_1, self._device)
+
+            # trimesh_1 = geom_to_trimesh(
+            #     UsdGeom.Cube(
+            #         get_prim_at_path(
+            #             self._manipulated_object.prim_paths[env])),
+            #     self.target_object_pose[env].cpu(),
+            #     transformations.euler_from_quaternion(
+            #         self.target_object_rot[env].cpu()))  #TODO Why to CPU?
+            # warp_mesh = warp_from_trimesh(trimesh_1, self._device)
+            import warp as wp
+
+            warp_mesh = wp.Mesh(points=wp.from_torch(
+                transformed_vertices[env],
+                dtype=wp.vec3,
+            ),
+                                indices=wp.from_torch(
+                                    self.mesh_faces[env].flatten(),
+                                    dtype=wp.int32,
+                                ))
+
             self.raytracer.set_geom(warp_mesh)
             ray_t, ray_dir = self.raytracer.render(
                 int(np.random.normal(10, 10)), circle[env][i].cpu(),
                 gripper_rot.cpu()[env])
 
-            if self._cfg[
-                    "debug_with_trimesh"]:  #TODO Update with sensor circle
-                ## Visualization for trimesh
-                # Create axis for visualization
-                axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
-                axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-                # stack axis rays into line segments for visualization as Path3D
-                axis_visualize = trimesh.load_path(np.hstack(
-                    (axis_origins,
-                     axis_origins + axis_directions)).reshape(-1, 2, 3),
-                                                   colors=np.array(
-                                                       [[0, 0, 255, 255],
-                                                        [0, 255, 0, 255],
-                                                        [255, 0, 0, 255]]))
-                # stack rays into line segments for visualization as Path3D
-                ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0],
-                                                       axis=0),
-                                        repeats=256,
-                                        axis=0)
-                ray_visualize = trimesh.load_path(
-                    np.hstack(
-                        (ray_origins,
-                         ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
-                # trimesh_1.apply_transform(matrix)
-                self.j = self.j + 1
-                if self.j % 25 == 0:
-                    scene = trimesh.Scene(
-                        [trimesh_1, ray_visualize, axis_visualize])
+            # if self._cfg[
+            #         "debug_with_trimesh"]:  #TODO Update with sensor circle
+            #     ## Visualization for trimesh
+            #     # Create axis for visualization
+            #     axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+            #     axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+            #     # stack axis rays into line segments for visualization as Path3D
+            #     axis_visualize = trimesh.load_path(np.hstack(
+            #         (axis_origins,
+            #          axis_origins + axis_directions)).reshape(-1, 2, 3),
+            #                                        colors=np.array(
+            #                                            [[0, 0, 255, 255],
+            #                                             [0, 255, 0, 255],
+            #                                             [255, 0, 0, 255]]))
+            #     # stack rays into line segments for visualization as Path3D
+            #     ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0],
+            #                                            axis=0),
+            #                             repeats=256,
+            #                             axis=0)
+            #     ray_visualize = trimesh.load_path(
+            #         np.hstack(
+            #             (ray_origins,
+            #              ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
+            #     # trimesh_1.apply_transform(matrix)
+            #     self.j = self.j + 1
+            #     if self.j % 25 == 0:
+            #         scene = trimesh.Scene(
+            #             [trimesh_1, ray_visualize, axis_visualize])
 
-                    # display the scene
-                    scene.show()
+            #         # display the scene
+            #         scene.show()
 
             if self._cfg["debug"]:
                 sensor_ray_pos_np = circle[env][i].cpu().numpy()
@@ -854,36 +881,24 @@ class TofSensorTask(RLTask):
         for i in range(1):
             self._env._world.step(render=False)
 
-        current_position, current_orientation = self._end_effector.get_world_poses(
-            clone=False)
-
-        self.cartesian_error = torch.linalg.norm(target_position -
-                                                 current_position,
-                                                 dim=1)
-
-        # self.raytrace_step()
-
-        #print(self._manipulated_object.get_world_poses()[0][1])
-
     def transform_mesh(self):
-        manipulated_object_pose = self._manipulated_object.get_local_poses()
+        manipulated_object_pose = self._manipulated_object.get_world_poses()
 
         transform = Transform3d(device=self.device).rotate(
             quaternion_to_matrix((manipulated_object_pose[1]))).translate(
                 manipulated_object_pose[0])
 
-        transform_mesh_vertices = transform.transform_points(
-            self.mesh_vertices.to(self.device))
-        max_xyz = torch.max(transform_mesh_vertices, dim=1).values
-        min_xyz = torch.min(transform_mesh_vertices, dim=1).values
+        transformed_vertices = transform.transform_points(
+            self.mesh_vertices.clone().to(self.device))
+        max_xyz = torch.max(transformed_vertices, dim=1).values
+        min_xyz = torch.min(transformed_vertices, dim=1).values
         bboxes = torch.hstack([min_xyz, max_xyz])
         center_points = (max_xyz + min_xyz) / 2
 
-        return bboxes, center_points
+        return bboxes, center_points, transformed_vertices
 
     def post_reset(self):
 
-        
         self.robot.initialize()
         self.robot.disable_gravity()
 
@@ -989,7 +1004,7 @@ class TofSensorTask(RLTask):
         self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) - 0.5
         rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 * 0
+        rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
         object_target_quaternion = tf.axis_angle_to_quaternion(
             rand_orientation)
 
@@ -1010,14 +1025,9 @@ class TofSensorTask(RLTask):
         for i in range(10):
             self._env._world.step(render=False)
 
-        ee_link_pos, ee_link_ori = self._end_effector.get_local_poses()
-        stage = get_current_stage()
-        self.lock_motion(stage,
-                         f"/World/envs/env_{0}/robot/ee_link_cube",
-                         f"/World/envs/env_{0}/robot/ee_link",
-                         ee_link_ori[0],
-                         0,
-                         lock=False)
+      
+      
+        # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 
     def reset_raytracer(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
