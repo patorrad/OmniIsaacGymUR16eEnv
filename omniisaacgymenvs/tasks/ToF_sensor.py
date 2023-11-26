@@ -573,10 +573,10 @@ class TofSensorTask(RLTask):
                 limitAPI.CreateLowAttr(1.0)
                 limitAPI.CreateHighAttr(-1.0)
 
-            # for limit_name in ["rotX", "rotY", "rotZ"]:
-            #     limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
-            #     limit_api.CreateLowAttr(1.0)
-            #     limit_api.CreateHighAttr(-1.0)
+            for limit_name in ["rotY"]:
+                limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
+                limit_api.CreateLowAttr(1.0)
+                limit_api.CreateHighAttr(-1.0)
             # delete_prim(joint_path)
         else:
 
@@ -592,7 +592,7 @@ class TofSensorTask(RLTask):
             current_orientation)
         self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        if self._step == 40:
+        if self._step == 50:
             ee_link_pos, ee_link_ori = self._end_effector.get_local_poses()
 
             stage = get_current_stage()
