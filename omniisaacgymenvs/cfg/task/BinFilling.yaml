@@ -1,5 +1,5 @@
 # used to create the object
-name: TofSensor
+name: BinFilling
 
 physics_engine: ${..physics_engine}
 

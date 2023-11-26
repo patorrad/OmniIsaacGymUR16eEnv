@@ -48,6 +48,7 @@ def initialize_task(config, env, init_sim=True):
     # from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     # from omniisaacgymenvs.tasks.ur10e import UR10e
     from omniisaacgymenvs.tasks.ToF_sensor import TofSensorTask
+    from omniisaacgymenvs.tasks.bin_filling import BinFilling
     
     # Mappings from strings to environments
    
@@ -69,6 +70,7 @@ def initialize_task(config, env, init_sim=True):
         # "ShadowHandOpenAI_LSTM": ShadowHandTask,
         # "UR10e": UR10e,
         "TofSensor":TofSensorTask,
+        "BinFilling":BinFilling,
     }
     
     

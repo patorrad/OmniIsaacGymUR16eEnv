@@ -2,5 +2,7 @@
     "[python]": {
         "editor.defaultFormatter": "eeyore.yapf"
     },
-    "python.formatting.provider": "none"
+    "python.formatting.provider": "none",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic"
 }

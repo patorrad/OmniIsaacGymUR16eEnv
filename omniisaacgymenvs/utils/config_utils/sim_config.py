@@ -382,6 +382,7 @@ class SimConfig():
                 self.apply_rigid_body_settings(name, prim, cfg, is_articulation)
             if collision_body:
                 self.apply_rigid_shape_settings(name, prim, cfg)
+                
 
             if articulation:
                 articulation_api = UsdPhysics.ArticulationRootAPI.Get(stage, prim.GetPath())
