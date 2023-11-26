@@ -69,7 +69,7 @@ def parse_hydra_configs(cfg: DictConfig):
             if env._task._step % 200 == 0:
                 env._task.post_reset()
                 # env._world.reset(soft=True)
-            start = time.time()
+            # start = time.time()
             actions = torch.tensor(np.array(
                 [env.action_space.sample() for _ in range(env.num_envs)]),
                                    device=task.rl_device)
@@ -78,7 +78,7 @@ def parse_hydra_configs(cfg: DictConfig):
             env._world.step(render=render)
             env.sim_frame_count += 1
             env._task.post_physics_step()
-            print('simulation time', time.time()-start)
+            # print('simulation time', time.time()-start)
 
         else:
             env._world.step(render=render)
