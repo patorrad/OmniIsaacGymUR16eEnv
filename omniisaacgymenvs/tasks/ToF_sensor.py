@@ -287,7 +287,7 @@ class TofSensorTask(RLTask):
         scene.add(self._table)
 
         # Raytracing
-        self.raytracer = Raycast()
+        self.raytracer = Raycast(self._cfg["raycast_width"],self._cfg["raycast_height"])
         self.init_data()
 
         return

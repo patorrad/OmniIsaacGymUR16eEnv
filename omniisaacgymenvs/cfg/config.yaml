@@ -66,4 +66,6 @@ hydra:
 # Debug
 debug: True 
 debug_with_trimesh: False 
+raycast_width: 8
+raycast_height: 8
 
