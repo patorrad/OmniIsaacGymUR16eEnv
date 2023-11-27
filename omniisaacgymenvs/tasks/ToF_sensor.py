@@ -941,6 +941,7 @@ class TofSensorTask(RLTask):
                 self.debug_draw.draw_lines(sensor_ray_pos_list,
                                            ray_hit_points_list, ray_colors,
                                            ray_sizes)
+                pdb.set_trace()
 
                 self.debug_draw.draw_points(ray_hit_points_list,
                                             end_point_colors, point_sizes)
