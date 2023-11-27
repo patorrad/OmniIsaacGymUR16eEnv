@@ -26,6 +26,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+############################################################
+#################  isaac sim   ##############################
+############################################################
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 # from omniisaacgymenvs.robots.articulations.ur10 import UR10
@@ -95,13 +98,50 @@ from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_i
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper_Properties
 from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
 
-DEBUG = True
-DEBUG_WITH_TRIMESH = False
-SENSORS = 3
 import time
+
+############################################################
+#################  curobo  ##############################
+############################################################
+
+from typing import Dict
+
+# Third Party
+import carb
+import numpy as np
+
+from omni.isaac.core import World
+from omni.isaac.core.objects import cuboid, sphere
+
+# CuRobo
+from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+
+# from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+from curobo.geom.sdf.world import CollisionCheckerType
+from curobo.geom.types import WorldConfig
+from curobo.rollout.rollout_base import Goal
+from curobo.types.base import TensorDeviceType
+from curobo.types.math import Pose
+from curobo.types.robot import JointState, RobotConfig
+from curobo.types.state import JointState
+from curobo.util.logger import setup_curobo_logger
+from curobo.util.usd_helper import UsdHelper
+from curobo.util_file import (
+    get_assets_path,
+    get_filename,
+    get_path_of_dir,
+    get_robot_configs_path,
+    get_world_configs_path,
+    join_path,
+    load_yaml,
+)
+from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
 
 
 class TofSensorTask(RLTask):
+
     def __init__(self, name, sim_config, env, offset=None) -> None:
 
         self._sim_config = sim_config
@@ -165,7 +205,72 @@ class TofSensorTask(RLTask):
 
         self.load_bin_yaml('omniisaacgymenvs/cfg/bin.xml')
 
+        # self.curo_ik_solver = self.init_curobo()
+
         return
+
+    def init_curobo(self):
+        robot_cfg = load_yaml(join_path(get_robot_configs_path(),
+                                        "ur16"))["robot_cfg"]
+        j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
+        default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
+
+       
+
+        world_cfg_table = WorldConfig.from_dict(
+            load_yaml(
+                join_path(get_world_configs_path(), "collision_table.yml")))
+        world_cfg_table.cuboid[0].pose[2] -= 0.002
+        world_cfg1 = WorldConfig.from_dict(
+            load_yaml(
+                join_path(get_world_configs_path(),
+                          "collision_table.yml"))).get_mesh_world()
+        world_cfg1.mesh[0].name += "_mesh"
+        world_cfg1.mesh[0].pose[2] = -10.5
+
+        tensor_args = TensorDeviceType()
+        n_obstacle_cuboids = 30
+        n_obstacle_mesh = 10
+
+        world_cfg = WorldConfig(cuboid=world_cfg_table.cuboid,
+                                mesh=world_cfg1.mesh)
+
+        ik_config = IKSolverConfig.load_from_robot_config(
+            robot_cfg,
+            world_cfg,
+            rotation_threshold=0.05,
+            position_threshold=0.005,
+            num_seeds=20,
+            self_collision_check=True,
+            self_collision_opt=True,
+            tensor_args=tensor_args,
+            use_cuda_graph=True,
+            collision_checker_type=CollisionCheckerType.MESH,
+            collision_cache={
+                "obb": n_obstacle_cuboids,
+                "mesh": n_obstacle_mesh
+            },
+            # use_fixed_samples=True,
+        )
+        ik_solver = IKSolver(ik_config)
+
+        self.position_grid_offset = tensor_args.to_device(
+            self.get_pose_grid(10, 10, 5, 0.5, 0.5, 0.5))
+
+        return ik_solver
+
+    def get_pose_grid(self, n_x, n_y, n_z, max_x, max_y, max_z):
+        x = np.linspace(-max_x, max_x, n_x)
+        y = np.linspace(-max_y, max_y, n_y)
+        z = np.linspace(0, max_z, n_z)
+        x, y, z = np.meshgrid(x, y, z, indexing="ij")
+
+        position_arr = np.zeros((n_x * n_y * n_z, 3))
+        position_arr[:, 0] = x.flatten()
+        position_arr[:, 1] = y.flatten()
+        position_arr[:, 2] = z.flatten()
+
+        return position_arr
 
     def load_bin_yaml(self, file):
         tree = ET.parse(file)
@@ -192,6 +297,7 @@ class TofSensorTask(RLTask):
         self.init_robot_joints = torch.as_tensor(self.init_robot_joints)
 
     def init_data(self) -> None:
+
         def get_env_local_pose(env_pos, xformable, device):
             """Compute pose in env-local coordinates"""
             world_transform = xformable.ComputeLocalToWorldTransform(0)
@@ -287,7 +393,8 @@ class TofSensorTask(RLTask):
         scene.add(self._table)
 
         # Raytracing
-        self.raytracer = Raycast(self._cfg["raycast_width"],self._cfg["raycast_height"])
+        self.raytracer = Raycast(self._cfg["raycast_width"],
+                                 self._cfg["raycast_height"])
         self.init_data()
 
         return
@@ -759,7 +866,7 @@ class TofSensorTask(RLTask):
                                     self.mesh_faces[env].flatten(),
                                     dtype=wp.int32,
                                 ))
-
+           
             self.raytracer.set_geom(warp_mesh)
             ray_t, ray_dir = self.raytracer.render(
                 int(np.random.normal(10, 10)), circle[env][i].cpu(),
@@ -1025,8 +1132,6 @@ class TofSensorTask(RLTask):
         for i in range(10):
             self._env._world.step(render=False)
 
-      
-      
         # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 
     def reset_raytracer(self):
