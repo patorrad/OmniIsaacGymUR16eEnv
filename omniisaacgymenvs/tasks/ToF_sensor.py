@@ -215,8 +215,6 @@ class TofSensorTask(RLTask):
         j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
         default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
 
-       
-
         world_cfg_table = WorldConfig.from_dict(
             load_yaml(
                 join_path(get_world_configs_path(), "collision_table.yml")))
@@ -841,6 +839,15 @@ class TofSensorTask(RLTask):
             self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
             normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
 
+        debug_sensor_ray_pos_list = []
+        debug_ray_hit_points_list = []
+        debug_ray_colors = []
+        debug_ray_sizes = []
+        debug_point_sizes = []
+        debug_end_point_colors = []
+        debug_start_point_colors = []
+        debug_circle = []
+
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -866,43 +873,11 @@ class TofSensorTask(RLTask):
                                     self.mesh_faces[env].flatten(),
                                     dtype=wp.int32,
                                 ))
-           
+
             self.raytracer.set_geom(warp_mesh)
             ray_t, ray_dir = self.raytracer.render(
                 int(np.random.normal(10, 10)), circle[env][i].cpu(),
                 gripper_rot.cpu()[env])
-
-            # if self._cfg[
-            #         "debug_with_trimesh"]:  #TODO Update with sensor circle
-            #     ## Visualization for trimesh
-            #     # Create axis for visualization
-            #     axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
-            #     axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-            #     # stack axis rays into line segments for visualization as Path3D
-            #     axis_visualize = trimesh.load_path(np.hstack(
-            #         (axis_origins,
-            #          axis_origins + axis_directions)).reshape(-1, 2, 3),
-            #                                        colors=np.array(
-            #                                            [[0, 0, 255, 255],
-            #                                             [0, 255, 0, 255],
-            #                                             [255, 0, 0, 255]]))
-            #     # stack rays into line segments for visualization as Path3D
-            #     ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0],
-            #                                            axis=0),
-            #                             repeats=256,
-            #                             axis=0)
-            #     ray_visualize = trimesh.load_path(
-            #         np.hstack(
-            #             (ray_origins,
-            #              ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
-            #     # trimesh_1.apply_transform(matrix)
-            #     self.j = self.j + 1
-            #     if self.j % 25 == 0:
-            #         scene = trimesh.Scene(
-            #             [trimesh_1, ray_visualize, axis_visualize])
-
-            #         # display the scene
-            #         scene.show()
 
             if self._cfg["debug"]:
                 sensor_ray_pos_np = circle[env][i].cpu().numpy()
@@ -927,29 +902,89 @@ class TofSensorTask(RLTask):
                 line_vec = line_vec[np.any(line_vec, axis=1)]
                 ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
                 hits_len = len(ray_hit_points_list)
-                sensor_ray_pos_list = [
-                    sensor_ray_pos_tuple for _ in range(hits_len)
-                ]
-                ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                ray_sizes = [2 for _ in range(hits_len)]
-                point_sizes = [7 for _ in range(hits_len)]
-                start_point_colors = [(0, 0.75, 0, 1) for _ in range(hits_len)
-                                      ]  # start (camera) points: green
-                end_point_colors = [
-                    (1, i, 1, 1) for _ in range(hits_len)
-                ]  # end (ray hit) points: sensor 1 purple, sensor 2 white
-                self.debug_draw.draw_lines(sensor_ray_pos_list,
-                                           ray_hit_points_list, ray_colors,
-                                           ray_sizes)
-                pdb.set_trace()
 
-                self.debug_draw.draw_points(ray_hit_points_list,
-                                            end_point_colors, point_sizes)
-                self.debug_draw.draw_points(sensor_ray_pos_list,
-                                            start_point_colors, point_sizes)
-                # Debug draw the gripper pose
-                self.debug_draw.draw_points([circle[env][i].cpu().numpy()],
-                                            [(1, 0, 0, 1)], [10])
+                if hits_len > 0:
+                    sensor_ray_pos_list = [
+                        sensor_ray_pos_tuple for _ in range(hits_len)
+                    ]
+                    ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+                    ray_sizes = [2 for _ in range(hits_len)]
+                    point_sizes = [7 for _ in range(hits_len)]
+                    start_point_colors = [
+                        (0, 0.75, 0, 1) for _ in range(hits_len)
+                    ]  # start (camera) points: green
+                    end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
+
+                    debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
+                    debug_ray_hit_points_list.append(ray_hit_points_list)
+                    debug_ray_colors.append(ray_colors)
+                    debug_ray_sizes.append(ray_sizes)
+
+                    debug_end_point_colors.append(end_point_colors)
+                    debug_point_sizes.append(point_sizes)
+                    debug_start_point_colors.append(start_point_colors)
+
+                    debug_circle.append([circle[env][i].cpu().numpy()])
+
+        if len(debug_sensor_ray_pos_list) > 0:
+
+            debug_sensor_ray_pos_list = np.concatenate(
+                debug_sensor_ray_pos_list, axis=0)
+            debug_ray_hit_points_list = np.concatenate(
+                debug_ray_hit_points_list, axis=0)
+            debug_ray_colors = np.concatenate(debug_ray_colors, axis=0)
+            debug_ray_sizes = np.concatenate(debug_ray_sizes, axis=0)
+            debug_end_point_colors = np.concatenate(debug_end_point_colors,
+                                                    axis=0)
+            debug_point_sizes = np.concatenate(debug_point_sizes, axis=0)
+            debug_start_point_colors = np.concatenate(debug_start_point_colors,
+                                                      axis=0)
+            debug_circle = np.concatenate(debug_circle, axis=0)
+
+            self.debug_draw.draw_lines(debug_sensor_ray_pos_list,
+                                       debug_ray_hit_points_list,
+                                       debug_ray_colors, debug_ray_sizes)
+            self.debug_draw.draw_points(debug_ray_hit_points_list,
+                                        debug_end_point_colors,
+                                        debug_point_sizes)
+            self.debug_draw.draw_points(debug_sensor_ray_pos_list,
+                                        debug_start_point_colors,
+                                        debug_point_sizes)
+            # Debug draw the gripper pose
+            self.debug_draw.draw_points(debug_circle,
+                                        [(1, 0, 0, 1)], [10])
+
+        # if self._cfg[
+        #         "debug_with_trimesh"]:  #TODO Update with sensor circle
+        #     ## Visualization for trimesh
+        #     # Create axis for visualization
+        #     axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        #     axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        #     # stack axis rays into line segments for visualization as Path3D
+        #     axis_visualize = trimesh.load_path(np.hstack(
+        #         (axis_origins,
+        #          axis_origins + axis_directions)).reshape(-1, 2, 3),
+        #                                        colors=np.array(
+        #                                            [[0, 0, 255, 255],
+        #                                             [0, 255, 0, 255],
+        #                                             [255, 0, 0, 255]]))
+        #     # stack rays into line segments for visualization as Path3D
+        #     ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0],
+        #                                            axis=0),
+        #                             repeats=256,
+        #                             axis=0)
+        #     ray_visualize = trimesh.load_path(
+        #         np.hstack(
+        #             (ray_origins,
+        #              ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
+        #     # trimesh_1.apply_transform(matrix)
+        #     self.j = self.j + 1
+        #     if self.j % 25 == 0:
+        #         scene = trimesh.Scene(
+        #             [trimesh_1, ray_visualize, axis_visualize])
+
+        #         # display the scene
+        #         scene.show()
 
     def pre_physics_step(self, actions) -> None:
 
