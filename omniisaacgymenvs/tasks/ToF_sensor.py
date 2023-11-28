@@ -82,10 +82,9 @@ import omni.isaac.core.utils.nucleus as nucleus_utils
 
 # ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
 from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
-from omni.isaac.core.simulation_context import SimulationContext
 
 from omniisaacgymenvs.utils.tools.rotation_conversions import *
-from omni.isaac.core.simulation_context import SimulationContext
+
 from omni.isaac.core.utils.stage import get_current_stage
 
 from omni.isaac.core.utils.torch.transformations import *
@@ -141,7 +140,6 @@ from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
 
 
 class TofSensorTask(RLTask):
-
     def __init__(self, name, sim_config, env, offset=None) -> None:
 
         self._sim_config = sim_config
@@ -205,13 +203,13 @@ class TofSensorTask(RLTask):
 
         self.load_bin_yaml('omniisaacgymenvs/cfg/bin.xml')
 
-        # self.curo_ik_solver = self.init_curobo()
-
         return
 
     def init_curobo(self):
+
+        self.tensor_args = TensorDeviceType()
         robot_cfg = load_yaml(join_path(get_robot_configs_path(),
-                                        "ur16"))["robot_cfg"]
+                                        "ur16e.yml"))["robot_cfg"]
         j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
         default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
 
@@ -226,7 +224,6 @@ class TofSensorTask(RLTask):
         world_cfg1.mesh[0].name += "_mesh"
         world_cfg1.mesh[0].pose[2] = -10.5
 
-        tensor_args = TensorDeviceType()
         n_obstacle_cuboids = 30
         n_obstacle_mesh = 10
 
@@ -241,7 +238,7 @@ class TofSensorTask(RLTask):
             num_seeds=20,
             self_collision_check=True,
             self_collision_opt=True,
-            tensor_args=tensor_args,
+            tensor_args=self.tensor_args,
             use_cuda_graph=True,
             collision_checker_type=CollisionCheckerType.MESH,
             collision_cache={
@@ -252,8 +249,14 @@ class TofSensorTask(RLTask):
         )
         ik_solver = IKSolver(ik_config)
 
-        self.position_grid_offset = tensor_args.to_device(
+        self.position_grid_offset = self.tensor_args.to_device(
             self.get_pose_grid(10, 10, 5, 0.5, 0.5, 0.5))
+
+        fk_state = ik_solver.fk(ik_solver.get_retract_config().view(1, -1))
+        self.goal_pose = fk_state.ee_pose
+        self.goal_pose = self.goal_pose.repeat(
+            self.position_grid_offset.shape[0])
+        self.goal_pose.position += self.position_grid_offset
 
         return ik_solver
 
@@ -295,7 +298,6 @@ class TofSensorTask(RLTask):
         self.init_robot_joints = torch.as_tensor(self.init_robot_joints)
 
     def init_data(self) -> None:
-
         def get_env_local_pose(env_pos, xformable, device):
             """Compute pose in env-local coordinates"""
             world_transform = xformable.ComputeLocalToWorldTransform(0)
@@ -394,6 +396,7 @@ class TofSensorTask(RLTask):
         self.raytracer = Raycast(self._cfg["raycast_width"],
                                  self._cfg["raycast_height"])
         self.init_data()
+        self.curo_ik_solver = self.init_curobo()
 
         return
 
@@ -719,7 +722,9 @@ class TofSensorTask(RLTask):
 
         bboxes, center_points, self.transformed_vertices = self.transform_mesh(
         )
-        self.raytrace_step()
+        # self.raytrace_step()
+
+        self.render_curobo()
 
         self.obs_buf = torch.cat([
             current_euler_angles[:, 1][:, None], self.target_angle[:, None],
@@ -951,8 +956,7 @@ class TofSensorTask(RLTask):
                                         debug_start_point_colors,
                                         debug_point_sizes)
             # Debug draw the gripper pose
-            self.debug_draw.draw_points(debug_circle,
-                                        [(1, 0, 0, 1)], [10])
+            self.debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
         # if self._cfg[
         #         "debug_with_trimesh"]:  #TODO Update with sensor circle
@@ -1019,10 +1023,85 @@ class TofSensorTask(RLTask):
             clone=False)
         target_position = pre_position + delta_pose[:, :3]
 
-        # frame skip
-
         for i in range(1):
             self._env._world.step(render=False)
+
+    def render_curobo(self):
+
+        # frame skip
+        ee_translation_goal, ee_orientation_teleop_goal = self._manipulated_object.get_local_poses(
+        )
+        # print(ee_translation_goal)
+        ee_world_pose, _ = self._manipulated_object.get_world_poses()
+
+        # ik_goal = Pose(
+        #     position=self.tensor_args.to_device(ee_translation_goal[0]),
+        #     quaternion=self.tensor_args.to_device(
+        #         ee_orientation_teleop_goal[0]),
+        # )
+
+        self.goal_pose.position[:] = torch.as_tensor([-0.4, 0.8, 1.4]).to(
+            self.device) + self.position_grid_offset
+        self.goal_pose.quaternion[:] = torch.as_tensor([1, 0, 0, 0]).to(
+            self.device)  #ik_goal.quaternion[:]
+        # tranformed
+        pre_transoform_goal_pose = self.goal_pose.clone()
+
+        pre_transoform_goal_pose.position[:, 0] += ee_world_pose[
+            0, 0] - ee_translation_goal[0, 0]
+
+        transform = Transform3d(device=self.device).rotate(
+            quaternion_to_matrix((torch.as_tensor(
+                self._robot_rotations).to(device=self.device))))
+
+        # rotation_matrix = quaternion_to_matrix(
+        #     (torch.as_tensor(orientation).to(device)))
+
+        self.goal_pose.position[:] -= torch.as_tensor(
+            [self._robot_positions]).to(device=self.device)
+
+        self.goal_pose.position[:] = transform.transform_points(
+            self.goal_pose.position[:].clone().to(device=self.device))
+
+        self.goal_pose.quaternion[:] = quaternion_multiply(
+            quaternion_invert(
+                torch.as_tensor(self._robot_rotations).to(device=self.device)),
+            self.goal_pose.quaternion[:])
+
+        result = self.curo_ik_solver.solve_batch(self.goal_pose)
+
+        # succ = torch.any(result.success)
+
+        # get spheres and flags:
+
+        # transform back
+
+        self.draw_points(pre_transoform_goal_pose, result.success)
+
+    def draw_points(self, pose, success):
+        # Third Party
+        from omni.isaac.debug_draw import _debug_draw
+
+        draw = _debug_draw.acquire_debug_draw_interface()
+        N = 100
+        # if draw.get_num_points() > 0:
+        draw.clear_points()
+        cpu_pos = pose.position.cpu().numpy()
+        b, _ = cpu_pos.shape
+        point_list = []
+        colors = []
+        for i in range(b):
+            # get list of points:
+           
+            if success[i].item():
+                colors += [(0, 1, 0, 0.25)]
+                point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
+            # else:
+            #     colors += [(1, 0, 0, 0.25)]
+            #     point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
+        sizes = [60.0 for _ in range(len(colors))]
+
+        draw.draw_points(point_list, colors, sizes)
 
     def transform_mesh(self):
         manipulated_object_pose = self._manipulated_object.get_world_poses()
@@ -1154,6 +1233,8 @@ class TofSensorTask(RLTask):
         # init position
         object_target_position = self.target_position.clone()
         object_target_position[:, 1] += 0.4
+        object_target_position[:, 0] += 0.1
+
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
         self.default_dof = torch.tensor(target_joint_positions,
