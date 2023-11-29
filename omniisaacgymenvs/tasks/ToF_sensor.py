@@ -104,7 +104,7 @@ import time
 ############################################################
 
 from typing import Dict
-
+import warp as wp
 # Third Party
 import carb
 import numpy as np
@@ -334,6 +334,10 @@ class TofSensorTask(RLTask):
 
         self.init_mesh()
 
+        self.raytracer = Raycast(self._cfg["raycast_width"],
+                                 self._cfg["raycast_height"],
+                                 [self.mesh_vertices[0]], [self.mesh_faces[0]])
+
     def init_mesh(self):
 
         cube = UsdGeom.Cube(
@@ -349,7 +353,8 @@ class TofSensorTask(RLTask):
                                                    1)).to(self.device)
             self.mesh_vertices = torch.as_tensor(cube.vertices[None, :, :],
                                                  dtype=torch.float32).repeat(
-                                                     (self.num_envs, 1, 1))
+                                                     (self.num_envs, 1,
+                                                      1)).to(self.device)
 
     def set_up_scene(self, scene) -> None:
 
@@ -393,8 +398,7 @@ class TofSensorTask(RLTask):
         scene.add(self._table)
 
         # Raytracing
-        self.raytracer = Raycast(self._cfg["raycast_width"],
-                                 self._cfg["raycast_height"])
+
         self.init_data()
         self.curo_ik_solver = self.init_curobo()
 
@@ -722,9 +726,9 @@ class TofSensorTask(RLTask):
 
         bboxes, center_points, self.transformed_vertices = self.transform_mesh(
         )
-        # self.raytrace_step()
+        self.raytrace_step()
 
-        self.render_curobo()
+        # self.render_curobo()
 
         self.obs_buf = torch.cat([
             current_euler_angles[:, 1][:, None], self.target_angle[:, None],
@@ -793,7 +797,7 @@ class TofSensorTask(RLTask):
 
         # delta pose
         action = torch.clip(action, -1, 1)
-        self.pre_action[:, 1] = action.reshape(-1) * 0 + 0.08
+        self.pre_action[:, 1] = action.reshape(-1) * 0 + 0.15
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -844,6 +848,7 @@ class TofSensorTask(RLTask):
             self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
             normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
 
+        # for draw point
         debug_sensor_ray_pos_list = []
         debug_ray_hit_points_list = []
         debug_ray_colors = []
@@ -868,18 +873,11 @@ class TofSensorTask(RLTask):
             #     transformations.euler_from_quaternion(
             #         self.target_object_rot[env].cpu()))  #TODO Why to CPU?
             # warp_mesh = warp_from_trimesh(trimesh_1, self._device)
-            import warp as wp
 
-            warp_mesh = wp.Mesh(points=wp.from_torch(
-                transformed_vertices[env],
-                dtype=wp.vec3,
-            ),
-                                indices=wp.from_torch(
-                                    self.mesh_faces[env].flatten(),
-                                    dtype=wp.int32,
-                                ))
+         
 
-            self.raytracer.set_geom(warp_mesh)
+            self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
+                                    mesh_index=0)
             ray_t, ray_dir = self.raytracer.render(
                 int(np.random.normal(10, 10)), circle[env][i].cpu(),
                 gripper_rot.cpu()[env])
@@ -1092,7 +1090,7 @@ class TofSensorTask(RLTask):
         colors = []
         for i in range(b):
             # get list of points:
-           
+
             if success[i].item():
                 colors += [(0, 1, 0, 0.25)]
                 point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
@@ -1233,7 +1231,7 @@ class TofSensorTask(RLTask):
         # init position
         object_target_position = self.target_position.clone()
         object_target_position[:, 1] += 0.4
-        object_target_position[:, 0] += 0.1
+        # object_target_position[:, 0] += 0.1
 
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
