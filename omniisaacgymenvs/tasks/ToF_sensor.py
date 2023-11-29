@@ -745,13 +745,24 @@ class TofSensorTask(RLTask):
         #     self.lock_motion(stage, f"/World/envs/env_{0}/robot/ee_link_cube",
         #                      f"/World/envs/env_{0}/robot/ee_link",
         #                      ee_link_ori[0], 0)
+        target_x = 0.4*torch.sin(
+            torch.as_tensor(self.target_angle)).to(
+                self.device)
 
-        robot_joint = self._robots.get_joint_positions()
+        target_y = 0.4*(
+            1 -
+            torch.cos(torch.as_tensor(self.target_angle))).to(self.device)
 
+        cur_pos, _ = self._manipulated_object.get_local_poses()
+
+        cur_xy = cur_pos[:, :2]
+        target_xy = torch.concat([target_x, target_y], dim=1)
+        
+        self.dist_dev = cur_xy - target_xy
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
 
-        bboxes, center_points, self.transformed_vertices = self.transform_mesh(
-        )
+        # bboxes, center_points, self.transformed_vertices = self.transform_mesh(
+        # )
         if self._cfg["raycast"]:
             self.raytrace_step()
 
@@ -791,7 +802,7 @@ class TofSensorTask(RLTask):
 
         # delta pose
         action = torch.clip(action, -1, 1)
-        self.pre_action[:, 5] = action.reshape(-1) 
+        self.pre_action[:, 5] = action.reshape(-1)
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
