@@ -625,12 +625,36 @@ class TofSensorTask(RLTask):
             orientation=table_orientation,
             scale=np.array(self._task_cfg['sim']["Table"]["scale"]),
             size=1.0,
-            color=np.array([1, 0, 0]),
+            color=np.array([1, 197/255, 197/255]),
         )
+        table_usd_path = f"{nucleus_utils.get_assets_root_path()}/NVIDIA/Assets/ArchVis/Residential/Furniture/Tables/Whittershins.usd"
         # fix table base
+        # table = prim_utils.create_prim(self.default_zero_env_path + "/table",
+        #                                usd_path=table_usd_path,
+        #                                translation=table_translation,
+        #                                scale=(0.005, 0.005, 0.0202))
+        table_prim = get_prim_at_path(self.default_zero_env_path + "/table")
+
+        # utils.setRigidBody(table_prim, "convexHull", True)
+        # UsdPhysics.CollisionAPI.Apply(table_prim)
+        
+        # x = UsdShade.MaterialBindingAPI.Apply(table_prim)
+        # from omni.isaac.core.materials.physics_material import PhysicsMaterial
+        # material = PhysicsMaterial(
+        #     prim_path="/World/PhysicsMaterials/FrankaFingerMaterial",
+        #     name="franka_finger_material_physics",
+        #     static_friction=0.7,
+        #     dynamic_friction=0.0,
+        # )
+        # x.Bind(
+        #     material.material,
+        #     bindingStrength="weakerThanDescendants",
+        #     materialPurpose="physics",
+        # )
+
         self._sim_config.apply_rigid_body_settings(
-            "manipulated_object__1",
-            get_prim_at_path(table.prim_path),
+            "table",
+            table_prim,
             self._sim_config.parse_actor_config("table"),
             is_articulation=False)
 
@@ -641,11 +665,10 @@ class TofSensorTask(RLTask):
                 name="manipulated_object_1",
                 position=[0, 0, 2.02],
                 size=.2,
-                color=torch.tensor([0, 0, 1]))
+                color=torch.tensor([0, 169/255, 1]))
 
             self._sim_config.apply_articulation_settings(
-                "manipulated_object__1",
-                get_prim_at_path(target_object_1.prim_path),
+                "table", get_prim_at_path(target_object_1.prim_path),
                 self._sim_config.parse_actor_config("manipulated_object_1"))
 
     def load_manipulated_object(self):
@@ -873,8 +896,6 @@ class TofSensorTask(RLTask):
             #     transformations.euler_from_quaternion(
             #         self.target_object_rot[env].cpu()))  #TODO Why to CPU?
             # warp_mesh = warp_from_trimesh(trimesh_1, self._device)
-
-         
 
             self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
                                     mesh_index=0)
