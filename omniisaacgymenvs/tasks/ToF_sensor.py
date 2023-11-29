@@ -77,7 +77,7 @@ import carb
 
 import gym
 
-# import warp as wp
+import warp as wp
 import omni.isaac.core.utils.nucleus as nucleus_utils
 
 # ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
@@ -103,40 +103,40 @@ import time
 #################  curobo  ##############################
 ############################################################
 
-from typing import Dict
-import warp as wp
-# Third Party
-import carb
-import numpy as np
+# from typing import Dict
+# import warp as wp
+# # Third Party
+# import carb
+# import numpy as np
 
-from omni.isaac.core import World
-from omni.isaac.core.objects import cuboid, sphere
+# from omni.isaac.core import World
+# from omni.isaac.core.objects import cuboid, sphere
 
-# CuRobo
-from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+# # CuRobo
+# from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
 
+# # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+# from curobo.geom.sdf.world import CollisionCheckerType
+# from curobo.geom.types import WorldConfig
+# from curobo.rollout.rollout_base import Goal
+# from curobo.types.base import TensorDeviceType
+# from curobo.types.math import Pose
+# from curobo.types.robot import JointState, RobotConfig
+# from curobo.types.state import JointState
+# from curobo.util.logger import setup_curobo_logger
+# from curobo.util.usd_helper import UsdHelper
+# from curobo.util_file import (
+#     get_assets_path,
+#     get_filename,
+#     get_path_of_dir,
+#     get_robot_configs_path,
+#     get_world_configs_path,
+#     join_path,
+#     load_yaml,
+# )
 # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-from curobo.geom.sdf.world import CollisionCheckerType
-from curobo.geom.types import WorldConfig
-from curobo.rollout.rollout_base import Goal
-from curobo.types.base import TensorDeviceType
-from curobo.types.math import Pose
-from curobo.types.robot import JointState, RobotConfig
-from curobo.types.state import JointState
-from curobo.util.logger import setup_curobo_logger
-from curobo.util.usd_helper import UsdHelper
-from curobo.util_file import (
-    get_assets_path,
-    get_filename,
-    get_path_of_dir,
-    get_robot_configs_path,
-    get_world_configs_path,
-    join_path,
-    load_yaml,
-)
-from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
+# from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+# from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
 
 
 class TofSensorTask(RLTask):
@@ -193,11 +193,11 @@ class TofSensorTask(RLTask):
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
         velocity_limit = torch.as_tensor([3.0] * 3 + [3.0] * 3,
-                                         device=self.device)  #slow down
+                                         device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-                                              device=self.device)
+            device=self.device)
 
         # self.start_time = time.time()
 
@@ -362,7 +362,7 @@ class TofSensorTask(RLTask):
         self.add_gripper()
 
         # self.load_sphere()
-        #self.load_manipulated_object()
+        # self.load_manipulated_object()
         if self.object_category in ['cube']:
             self.load_cube()
 
@@ -400,17 +400,15 @@ class TofSensorTask(RLTask):
         # Raytracing
 
         self.init_data()
-        self.curo_ik_solver = self.init_curobo()
+        # self.curo_ik_solver = self.init_curobo()
 
         return
 
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
+            robot_description_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            urdf_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
         )
         from omni.isaac.core.articulations import Articulation
 
@@ -661,7 +659,7 @@ class TofSensorTask(RLTask):
     def load_cube(self):
         self.scale_size = torch.as_tensor(
             self._task_cfg["sim"]["Object"]["scale"]).repeat(self.num_envs,
-                                                            1).to(self.device)
+                                                             1).to(self.device)
         for i in range(self.num_envs):
 
             target_object_1 = DynamicCuboid(
@@ -683,7 +681,7 @@ class TofSensorTask(RLTask):
         object_list = os.listdir(object_dir)
 
         for i in range(self.num_envs):
-            object_name = object_list[i]  #np.random.choice(object_list)
+            object_name = object_list[i]  # np.random.choice(object_list)
 
             object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
             self.load_object(usd_path=object_path, env_index=i, object_index=1)
@@ -754,7 +752,8 @@ class TofSensorTask(RLTask):
 
         bboxes, center_points, self.transformed_vertices = self.transform_mesh(
         )
-        self.raytrace_step()
+        if self._cfg["raycast"]:
+            self.raytrace_step()
 
         # self.render_curobo()
 
@@ -762,7 +761,7 @@ class TofSensorTask(RLTask):
             current_euler_angles[:, 1][:, None], self.target_angle[:, None],
             self.angle_dev[:, None]
         ],
-                                 dim=1)
+            dim=1)
 
         return self.obs_buf
 
@@ -785,14 +784,14 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-                                    dim=1)
+            dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def recover_action(self, action, limit):
 
         # delta pose
         action = torch.clip(action, -1, 1)
-        self.pre_action[:, 1] = action.reshape(-1) * 0 + 0.15
+        self.pre_action[:, 5] = action.reshape(-1) 
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -818,7 +817,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 **2)
+                                                                 ** 2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -1037,7 +1036,7 @@ class TofSensorTask(RLTask):
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  #* self.control_time * 2
+                                                  6]  # * self.control_time * 2
 
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
@@ -1069,7 +1068,7 @@ class TofSensorTask(RLTask):
         self.goal_pose.position[:] = torch.as_tensor([-0.4, 0.8, 1.4]).to(
             self.device) + self.position_grid_offset
         self.goal_pose.quaternion[:] = torch.as_tensor([1, 0, 0, 0]).to(
-            self.device)  #ik_goal.quaternion[:]
+            self.device)  # ik_goal.quaternion[:]
         # tranformed
         pre_transoform_goal_pose = self.goal_pose.clone()
 
@@ -1160,14 +1159,15 @@ class TofSensorTask(RLTask):
 
         self.target_angle = torch.zeros(self.num_envs, device=self.device)
 
-        self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
-            np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
-            np.pi,
-            device=self.device)
-        self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
-            np.random.uniform(low=-0.5, high=-0.1, size=int(
-                self.num_envs / 2)) * np.pi,
-            device=self.device)
+        # self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
+        #     np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
+        #     np.pi,
+        #     device=self.device)
+        # self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
+        #     np.random.uniform(low=-0.5, high=-0.1, size=int(
+        #         self.num_envs / 2)) * np.pi,
+        #     device=self.device)
+        self.target_angle = -self.rand_orientation[:, 2].clone()
         self.init_angle_dev = -self.target_angle.clone()
         self.stop_index = None
 
@@ -1186,7 +1186,7 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
+            dim=1) * -0.0
 
         self.rew_buf = (1 - torch.clamp(dev_percentage, 0, 1.2)) * 5
 
@@ -1248,13 +1248,13 @@ class TofSensorTask(RLTask):
         )
 
         # init object location
-        ## random orientation
+        # random orientation
         self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) - 0.5
-        rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
+        self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
+        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
         object_target_quaternion = tf.axis_angle_to_quaternion(
-            rand_orientation)
+            self.rand_orientation)
 
         # init position
         object_target_position = self.target_position.clone()
@@ -1284,7 +1284,7 @@ class TofSensorTask(RLTask):
             UsdGeom.Cube(
                 get_prim_at_path(self._manipulated_object.prim_paths[0])),
             self.target_object_pose[0].cpu(),
-            self.target_object_rot[0].cpu())  #TODO Why to CPU?
+            self.target_object_rot[0].cpu())  # TODO Why to CPU?
         warp_mesh = warp_from_trimesh(trimesh_1, self._device)
 
         if self._cfg["debug_with_trimesh"]:
