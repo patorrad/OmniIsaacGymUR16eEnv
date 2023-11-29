@@ -345,7 +345,7 @@ class TofSensorTask(RLTask):
 
         if self.object_category in ['cube']:
             size = cube.GetSizeAttr().Get()
-            cube = trimesh.creation.box(extents=(size, size, size))
+            cube = trimesh.creation.box(extents=(1, 1, 1))
 
             self.mesh_faces = torch.as_tensor(cube.faces[None, :, :],
                                               dtype=torch.int32).repeat(
@@ -659,12 +659,17 @@ class TofSensorTask(RLTask):
             is_articulation=False)
 
     def load_cube(self):
+        self.scale_size = torch.as_tensor(
+            self._task_cfg["sim"]["Object"]["scale"]).repeat(self.num_envs,
+                                                            1).to(self.device)
         for i in range(self.num_envs):
+
             target_object_1 = DynamicCuboid(
                 prim_path=f"/World/envs/env_{i}/manipulated_object_1",
                 name="manipulated_object_1",
                 position=[0, 0, 2.02],
-                size=.2,
+                # size=0.2,
+                scale=np.array([0.1, 0.1, 0.2]),
                 color=torch.tensor([0, 169 / 255, 1]))
 
             self._sim_config.apply_articulation_settings(
@@ -825,9 +830,11 @@ class TofSensorTask(RLTask):
         gripper_pose, gripper_rot = self._end_effector.get_world_poses()
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
         )
-        transform = Transform3d(device=self.device).rotate(
-            quaternion_to_matrix(quaternion_invert(
-                self.target_object_rot))).translate(self.target_object_pose)
+        transform = Transform3d(device=self.device).scale(
+            self.scale_size).rotate(
+                quaternion_to_matrix(quaternion_invert(
+                    self.target_object_rot))).translate(
+                        self.target_object_pose)
 
         transformed_vertices = transform.transform_points(
             self.mesh_vertices.clone().to(self.device))
@@ -993,11 +1000,10 @@ class TofSensorTask(RLTask):
             torch.cos(torch.as_tensor(torch.pi / 200 / 2 *
                                       (self._step + 1)))).to(self.device)
 
-       
-        delta_pose[:, 0] = 0.2 * (now_x - prev_x)
-        delta_pose[:, 1] = 0.2 * (now_y - pre_y)
-        delta_pose[:, 5] = torch.as_tensor(torch.pi//2/200)
-       
+        delta_pose[:, 0] = 0.4 * (now_x - prev_x)
+        delta_pose[:, 1] = 0.4 * (now_y - pre_y)
+        delta_pose[:, 5] = torch.as_tensor(torch.pi // 2 / 200)
+
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
                                                                      6, :, :],
