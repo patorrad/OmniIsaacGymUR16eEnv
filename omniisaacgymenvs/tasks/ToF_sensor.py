@@ -625,7 +625,7 @@ class TofSensorTask(RLTask):
             orientation=table_orientation,
             scale=np.array(self._task_cfg['sim']["Table"]["scale"]),
             size=1.0,
-            color=np.array([1, 197/255, 197/255]),
+            color=np.array([1, 197 / 255, 197 / 255]),
         )
         table_usd_path = f"{nucleus_utils.get_assets_root_path()}/NVIDIA/Assets/ArchVis/Residential/Furniture/Tables/Whittershins.usd"
         # fix table base
@@ -637,7 +637,7 @@ class TofSensorTask(RLTask):
 
         # utils.setRigidBody(table_prim, "convexHull", True)
         # UsdPhysics.CollisionAPI.Apply(table_prim)
-        
+
         # x = UsdShade.MaterialBindingAPI.Apply(table_prim)
         # from omni.isaac.core.materials.physics_material import PhysicsMaterial
         # material = PhysicsMaterial(
@@ -665,7 +665,7 @@ class TofSensorTask(RLTask):
                 name="manipulated_object_1",
                 position=[0, 0, 2.02],
                 size=.2,
-                color=torch.tensor([0, 169/255, 1]))
+                color=torch.tensor([0, 169 / 255, 1]))
 
             self._sim_config.apply_articulation_settings(
                 "table", get_prim_at_path(target_object_1.prim_path),
@@ -783,40 +783,7 @@ class TofSensorTask(RLTask):
                                     dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
-    def _compute_osc_torques(self, dpose):
-        self.update_cache_state()
-        # Solve for Operational Space Control # Paper: khatib.stanford.edu/publications/pdfs/Khatib_1987_RA.pdf
-        # Helpful resource: studywolf.wordpress.com/2013/09/17/robot-control-4-operation-space-control/
-        q, qd = self._q[:, :6], self._qd[:, :6]
-        mm_inv = torch.inverse(self._mm)
-        m_eef_inv = self._j_eef @ mm_inv @ torch.transpose(self._j_eef, 1, 2)
-        m_eef = torch.inverse(m_eef_inv)
-
-        # Transform our cartesian action `dpose` into joint torques `u`
-        u = torch.transpose(self._j_eef, 1, 2) @ m_eef @ (
-            self.kp * dpose[:, :6] - self.kd * self._ee_vel).unsqueeze(-1)
-
-        # Nullspace control torques `u_null` prevents large changes in joint configuration
-        # They are added into the nullspace of OSC so that the end effector orientation remains constant
-        # roboticsproceedings.org/rss07/p31.pdf
-        j_eef_inv = m_eef @ self._j_eef @ mm_inv
-        u_null = self.kd_null * -qd + self.kp_null * (
-            (self.ur16e_default_dof_pos[:6] - q + np.pi) % (2 * np.pi) - np.pi)
-        u_null[:, self.num_ur16e_dofs:] *= 0
-        u_null = self._mm @ u_null.unsqueeze(-1)
-        u += (torch.eye((6), device=self.device).unsqueeze(0) -
-              torch.transpose(self._j_eef, 1, 2) @ j_eef_inv) @ u_null
-
-        # Clip the values to be within valid effort range
-        u = torch.clamp(u.squeeze(-1),
-                        -self._ur16e_effort_limits[:6].unsqueeze(0),
-                        self._ur16e_effort_limits[:6].unsqueeze(0))
-
-        return u
-
     def recover_action(self, action, limit):
-
-        self.control_time = self._env._world.get_physics_dt() * self.frame_skip
 
         # delta pose
         action = torch.clip(action, -1, 1)
@@ -1009,6 +976,36 @@ class TofSensorTask(RLTask):
         #         # display the scene
         #         scene.show()
 
+    def recover_rule_based_action(self):
+
+        delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
+
+        prev_x = torch.sin(torch.as_tensor(torch.pi / 200 / 2 *
+                                           self._step)).to(self.device)
+        now_x = torch.sin(
+            torch.as_tensor(torch.pi / 200 / 2 * (self._step + 1))).to(
+                self.device)
+
+        pre_y = (1 - torch.cos(torch.as_tensor(
+            torch.pi / 200 / 2 * self._step))).to(self.device)
+        now_y = (
+            1 -
+            torch.cos(torch.as_tensor(torch.pi / 200 / 2 *
+                                      (self._step + 1)))).to(self.device)
+
+       
+        delta_pose[:, 0] = 0.2 * (now_x - prev_x)
+        delta_pose[:, 1] = 0.2 * (now_y - pre_y)
+        delta_pose[:, 5] = torch.as_tensor(torch.pi//2/200)
+       
+        self.jacobians = self._robots.get_jacobians(clone=False)
+        delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
+                                                                     6, :, :],
+                                delta_pose=delta_pose)
+        delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
+
+        return delta_dof_pos, delta_pose
+
     def pre_physics_step(self, actions) -> None:
 
         dof_limits = self._robots.get_dof_limits()
@@ -1021,26 +1018,30 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        actions = actions.to(self._device)
-        delta_dof_pos, delta_pose = self.recover_action(
-            actions, self.velocity_limit)
+        if not self._task_cfg["sim"]["Control"]["rule-base"]:
+
+            actions = actions.to(self._device)
+            delta_dof_pos, delta_pose = self.recover_action(
+                actions, self.velocity_limit)
+        else:
+            delta_dof_pos, delta_pose = self.recover_rule_based_action()
+
+        self.control_time = self._env._world.get_physics_dt() * self.frame_skip
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time * 2
+        targets_dof = current_dof + delta_dof_pos[:, :
+                                                  6]  #* self.control_time * 2
 
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
 
         targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi / 2)
-        # set target dof and target velocity
+
         self._robots.set_joint_position_targets(targets_dof)
-        #self._robots.set_joint_position_targets(self.target_joint_positions)
-        # self._robots.set_joint_velocity_targets(delta_dof_pos)
 
         pre_position, pre_orientation = self._end_effector.get_world_poses(
             clone=False)
-        target_position = pre_position + delta_pose[:, :3]
 
         for i in range(1):
             self._env._world.step(render=False)
