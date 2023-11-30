@@ -103,40 +103,40 @@ import time
 #################  curobo  ##############################
 ############################################################
 
-# from typing import Dict
-# import warp as wp
-# # Third Party
-# import carb
-# import numpy as np
+from typing import Dict
+import warp as wp
+# Third Party
+import carb
+import numpy as np
 
-# from omni.isaac.core import World
-# from omni.isaac.core.objects import cuboid, sphere
+from omni.isaac.core import World
+from omni.isaac.core.objects import cuboid, sphere
 
-# # CuRobo
-# from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+# CuRobo
+from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
 
-# # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-# from curobo.geom.sdf.world import CollisionCheckerType
-# from curobo.geom.types import WorldConfig
-# from curobo.rollout.rollout_base import Goal
-# from curobo.types.base import TensorDeviceType
-# from curobo.types.math import Pose
-# from curobo.types.robot import JointState, RobotConfig
-# from curobo.types.state import JointState
-# from curobo.util.logger import setup_curobo_logger
-# from curobo.util.usd_helper import UsdHelper
-# from curobo.util_file import (
-#     get_assets_path,
-#     get_filename,
-#     get_path_of_dir,
-#     get_robot_configs_path,
-#     get_world_configs_path,
-#     join_path,
-#     load_yaml,
-# )
 # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-# from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-# from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
+from curobo.geom.sdf.world import CollisionCheckerType
+from curobo.geom.types import WorldConfig
+from curobo.rollout.rollout_base import Goal
+from curobo.types.base import TensorDeviceType
+from curobo.types.math import Pose
+from curobo.types.robot import JointState, RobotConfig
+from curobo.types.state import JointState
+from curobo.util.logger import setup_curobo_logger
+from curobo.util.usd_helper import UsdHelper
+from curobo.util_file import (
+    get_assets_path,
+    get_filename,
+    get_path_of_dir,
+    get_robot_configs_path,
+    get_world_configs_path,
+    join_path,
+    load_yaml,
+)
+from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
 
 
 class TofSensorTask(RLTask):
@@ -671,7 +671,7 @@ class TofSensorTask(RLTask):
                 name="manipulated_object_1",
                 position=[0, 0, 2.02],
                 # size=0.2,
-                scale=np.array([0.1, 0.1, 0.2]),
+                scale=np.array(self._task_cfg["sim"]["Object"]["scale"]),
                 color=torch.tensor([0, 169 / 255, 1]))
 
             self._sim_config.apply_articulation_settings(
@@ -907,7 +907,7 @@ class TofSensorTask(RLTask):
                     max(average_distance * 100 * 0.4795 - 3.2018, 0))
                 noise_distance = np.random.normal(average_distance * 1000,
                                                   standard_deviation)
-                # print(f'distance with noise sensor {i}: , {noise_distance}')
+                print(f'distance with noise sensor {i}: , {noise_distance}')
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1000,28 +1000,42 @@ class TofSensorTask(RLTask):
 
         delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
 
-        prev_x = torch.sin(torch.as_tensor(torch.pi / 200 / 2 *
-                                           self._step)).to(self.device)
-        now_x = torch.sin(
-            torch.as_tensor(torch.pi / 200 / 2 * (self._step + 1))).to(
-                self.device)
+        # prev_x = torch.sin(torch.as_tensor(torch.pi / 200 / 2 *
+        #                                    self._step)).to(self.device)
+        # now_x = torch.sin(
+        #     torch.as_tensor(torch.pi / 200 / 2 * (self._step + 1))).to(
+        #         self.device)
 
-        pre_y = (1 - torch.cos(torch.as_tensor(
-            torch.pi / 200 / 2 * self._step))).to(self.device)
-        now_y = (
-            1 -
-            torch.cos(torch.as_tensor(torch.pi / 200 / 2 *
-                                      (self._step + 1)))).to(self.device)
+        # pre_y = (1 - torch.cos(torch.as_tensor(
+        #     torch.pi / 200 / 2 * self._step))).to(self.device)
+        # now_y = (
+        #     1 -
+        #     torch.cos(torch.as_tensor(torch.pi / 200 / 2 *
+        #                               (self._step + 1)))).to(self.device)
 
-        delta_pose[:, 0] = 0.4 * (now_x - prev_x)
-        delta_pose[:, 1] = 0.4 * (now_y - pre_y)
-        delta_pose[:, 5] = torch.as_tensor(torch.pi // 2 / 200)
+        # delta_pose[:, 0] = 0.4 * (now_x - prev_x)
+        # delta_pose[:, 1] = 0.4 * (now_y - pre_y)
+        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
+
+        target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
+            self.device) + self.init_ee_local_pos[:, 0]
+
+        target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
+            self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
+
+        cur_pos, _ = self._end_effector.get_local_poses()
+
+        delta_pose[:, 0] = cur_pos[:, 0] - target_x
+        delta_pose[:, 1] = target_y - cur_pos[:, 1]
+
+        if abs(self.angle_dev) < 0.02:
+            delta_pose[:, 5] = 0
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
-                                                                     6, :, :],
+                                                                     8, :, :],
                                 delta_pose=delta_pose)
-        delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
+        # delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
 
         return delta_dof_pos, delta_pose
 
@@ -1049,13 +1063,16 @@ class TofSensorTask(RLTask):
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time * 2
+        targets_dof = current_dof + delta_dof_pos[:, :
+                                                  6]  #* self.control_time * 2
 
-        targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
-                                  self.robot_dof_upper_limits)
+        # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
+        #                           self.robot_dof_upper_limits)
 
-        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2,
-                                         torch.pi / 2)
+        # targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2,
+        #                                  torch.pi / 2)
+
+        targets_dof[:, -1] = 0
 
         self._robots.set_joint_position_targets(targets_dof)
 
@@ -1064,6 +1081,10 @@ class TofSensorTask(RLTask):
 
         for i in range(1):
             self._env._world.step(render=False)
+
+        cur_position, _ = self._end_effector.get_world_poses(clone=False)
+        # print(torch.linalg.norm(cur_position - pre_position),
+        #       delta_pose[:, :3])
 
     def render_curobo(self):
 
@@ -1247,8 +1268,8 @@ class TofSensorTask(RLTask):
         target_joint_positions = torch.zeros(6, device=self.device)
         target_joint_positions[0] = 0
         target_joint_positions[1] = -1.57
-        target_joint_positions[2] = 1.57
-        target_joint_positions[3] = 0
+        target_joint_positions[2] = 1.57 / 2
+        target_joint_positions[3] = 0.0
         target_joint_positions[4] = 0
         random_values = torch.randint(low=0,
                                       high=len(self.init_robot_joints),
@@ -1271,9 +1292,9 @@ class TofSensorTask(RLTask):
         # init object location
         # random orientation
         self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
-        rand_ori_z = torch.rand(self.num_envs).to(self.device) - 0.5
+        rand_ori_z = torch.rand(self.num_envs).to(self.device) /2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi
+        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 
@@ -1295,6 +1316,9 @@ class TofSensorTask(RLTask):
 
         for i in range(10):
             self._env._world.step(render=False)
+
+        self.init_ee_local_pos, _ = self._end_effector.get_local_poses()
+        
 
         # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 

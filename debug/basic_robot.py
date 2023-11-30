@@ -33,7 +33,7 @@ def demo(fix_root_link, balance_passive_force):
     target_joint_positions[1] = -1.57
     target_joint_positions[2] = 1.57
     target_joint_positions[3] = 0
-    target_joint_positions[4] = 0
+    target_joint_positions[4] = 1.57
     
     arm_init_qpos = np.zeros(6)
    
@@ -48,7 +48,7 @@ def demo(fix_root_link, balance_passive_force):
     links = robot.get_links()
     names = [link.get_name() for link in links]
     robot.set_root_pose(sapien.Pose([0, 0, 0]))
-
+    index = 0
     while not viewer.closed:
         for _ in range(1):  # render every 4 steps
             # if balance_passive_force:
@@ -58,11 +58,16 @@ def demo(fix_root_link, balance_passive_force):
             #robot.set_qpos(target_joint_positions)
             scene.step()
         
-        result, success, error = pinocchio_model.compute_inverse_kinematics(
-            ee_link.get_index(), target_pose, robot.get_qpos(),
-            [1] * 6 + [0] * 6)
+        if index%200==0:
+            robot.set_qpos(target_joint_positions)
+            
+        
+        # result, success, error = pinocchio_model.compute_inverse_kinematics(
+        #     ee_link.get_index(), target_pose, robot.get_qpos(),
+        #     [1] * 6 + [0] * 6)
         scene.update_render()
         viewer.render()
+        index+=1
 
 
 def main():
