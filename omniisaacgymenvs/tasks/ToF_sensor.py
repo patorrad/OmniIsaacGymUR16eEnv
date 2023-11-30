@@ -181,7 +181,7 @@ class TofSensorTask(RLTask):
         self.current_directory = os.getcwd()
 
         self._step = 0
-        self.angle_dev = None
+        self.angle_dev = 1
         self.current_euler_angles = torch.zeros((self.num_envs, 3))
 
         # control parameter
@@ -756,9 +756,9 @@ class TofSensorTask(RLTask):
         cur_pos, _ = self._manipulated_object.get_local_poses()
 
         cur_xy = cur_pos[:, :2]
-        target_xy = torch.concat([target_x, target_y], dim=1)
-        
-        self.dist_dev = cur_xy - target_xy
+        # target_xy = torch.concat([target_x, target_y], dim=1)
+
+        # self.dist_dev = cur_xy - target_xy
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
 
         # bboxes, center_points, self.transformed_vertices = self.transform_mesh(
@@ -1047,12 +1047,13 @@ class TofSensorTask(RLTask):
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  # * self.control_time * 2
+                                                  6] * self.control_time * 2
 
         targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
                                   self.robot_dof_upper_limits)
 
-        targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], 0, torch.pi / 2)
+        targets_dof[:, -
+                    2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2, torch.pi / 2)
 
         self._robots.set_joint_position_targets(targets_dof)
 
@@ -1185,8 +1186,7 @@ class TofSensorTask(RLTask):
     def calculate_metrics(self) -> None:
 
         dev_percentage = self.angle_dev / self.init_angle_dev
-
-        index_list = []
+        # print(dev_percentage,self.angle_dev/torch.pi*180)
 
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
@@ -1199,7 +1199,15 @@ class TofSensorTask(RLTask):
             self._robots.get_joint_velocities() - 1, 1),
             dim=1) * -0.0
 
-        self.rew_buf = (1 - torch.clamp(dev_percentage, 0, 1.2)) * 5
+        dev = torch.clamp(dev_percentage, 0, 1.8)
+
+        self.rew_buf = abs((1-dev)**2)*5
+
+        negative_index = torch.where(dev > 1)[0]
+
+        self.rew_buf[negative_index] = -abs((1-dev[negative_index])**2)*5
+
+        # self.rew_buf = (1 - torch.clamp(dev_percentage, 0, 1.8)) * 5
 
         return self.rew_buf
 
@@ -1207,7 +1215,7 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step + 1) % 200 == 0:
+        if (self._step) % 200 == 0:
             self._step = 0
             self.post_reset()
             return [True for i in range(self.num_envs)]
@@ -1263,7 +1271,7 @@ class TofSensorTask(RLTask):
         self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) - 0.5
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
+        self.rand_orientation[:, 2] = rand_ori_z * torch.pi
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 

@@ -76,16 +76,16 @@ def parse_hydra_configs(cfg: DictConfig):
     
 
     
-    policy = PPO.load("results/1129/TofSensor/model/model_200.zip",env,"cuda")
+    policy = PPO.load("results/1129/TofSensor/model/model_30.zip",env,"cuda")
   
     
     while True:
         reward_sum = 0
         obs = env.reset()
         print('===============')
-        print("init deviation:",abs(env._task.angle_dev).sum().cpu().detach().item()/20/np.pi*180)
+        print("init deviation:",abs(env._task.angle_dev).sum().cpu().detach().item()/env._num_envs/np.pi*180)
         
-        for i in range(200):
+        for i in range(180):
         
         
             action = policy.predict(observation=obs, deterministic=True)[0]
