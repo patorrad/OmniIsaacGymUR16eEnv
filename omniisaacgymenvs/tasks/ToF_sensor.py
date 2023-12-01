@@ -198,7 +198,7 @@ class TofSensorTask(RLTask):
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-                                              device=self.device)
+            device=self.device)
 
         # self.start_time = time.time()
 
@@ -386,6 +386,12 @@ class TofSensorTask(RLTask):
             reset_xform_properties=False)
         scene.add(self._end_effector)
 
+        self.wrist_2_link = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/robot/wrist_2_link",
+            name="wrist_2_link_view",
+            reset_xform_properties=False)
+        scene.add(self.wrist_2_link)
+
         # manipulated object
         self._manipulated_object = RigidPrimView(
             prim_paths_expr="/World/envs/.*/manipulated_object_1",
@@ -409,10 +415,8 @@ class TofSensorTask(RLTask):
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
+            robot_description_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            urdf_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
         )
         from omni.isaac.core.articulations import Articulation
 
@@ -758,9 +762,7 @@ class TofSensorTask(RLTask):
         cur_pos, _ = self._manipulated_object.get_local_poses()
 
         cur_xy = cur_pos[:, :2]
-        # target_xy = torch.concat([target_x, target_y], dim=1)
 
-        # self.dist_dev = cur_xy - target_xy
         self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
 
         # bboxes, center_points, self.transformed_vertices = self.transform_mesh(
@@ -775,7 +777,7 @@ class TofSensorTask(RLTask):
             current_euler_angles[:, 1][:, None], self.target_angle[:, None],
             self.angle_dev[:, None], joint_angle
         ],
-                                 dim=1)
+            dim=1)
 
         return self.obs_buf
 
@@ -798,7 +800,7 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-                                    dim=1)
+            dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def recover_action(self, action, limit):
@@ -831,7 +833,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 **2)
+                                                                 ** 2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -907,7 +909,7 @@ class TofSensorTask(RLTask):
                     max(average_distance * 100 * 0.4795 - 3.2018, 0))
                 noise_distance = np.random.normal(average_distance * 1000,
                                                   standard_deviation)
-                print(f'distance with noise sensor {i}: , {noise_distance}')
+                # print(f'distance with noise sensor {i}: , {noise_distance}')
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1000,22 +1002,21 @@ class TofSensorTask(RLTask):
 
         delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
 
-        # prev_x = torch.sin(torch.as_tensor(torch.pi / 200 / 2 *
-        #                                    self._step)).to(self.device)
-        # now_x = torch.sin(
-        #     torch.as_tensor(torch.pi / 200 / 2 * (self._step + 1))).to(
-        #         self.device)
+        _wrist3_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses()
+        _ee_local_pos, _ee_local_quat = self._end_effector.get_local_poses()
+        # print(torch.linalg.norm(_ee_local_pos[0, :3]-_wrist3_local_pos[0, :3]))
 
-        # pre_y = (1 - torch.cos(torch.as_tensor(
-        #     torch.pi / 200 / 2 * self._step))).to(self.device)
-        # now_y = (
-        #     1 -
-        #     torch.cos(torch.as_tensor(torch.pi / 200 / 2 *
-        #                               (self._step + 1)))).to(self.device)
+        # transform = Transform3d(device=self.device).rotate(quaternion_to_matrix((quaternion_multiply(
+        #     quaternion_invert(self.init_ee_link_orientation), _ee_local_quat)))).to(device=self.device)
 
-        # delta_pose[:, 0] = 0.4 * (now_x - prev_x)
-        # delta_pose[:, 1] = 0.4 * (now_y - pre_y)
-        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
+        # transform_end_effector_points = transform.transform_points(
+        #     self._end_effector_points.clone().to(device=self.device))
+
+        self.angle = torch.atan2(_ee_local_pos[0, 1]-_wrist3_local_pos[0, 1],
+                                 _ee_local_pos[0, 0]-_wrist3_local_pos[0, 0])
+       
+
+        delta_pose[:, 5] = -torch.as_tensor(torch.pi / 200)
 
         target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_local_pos[:, 0]
@@ -1025,11 +1026,11 @@ class TofSensorTask(RLTask):
 
         cur_pos, _ = self._end_effector.get_local_poses()
 
-        delta_pose[:, 0] = cur_pos[:, 0] - target_x
-        delta_pose[:, 1] = target_y - cur_pos[:, 1]
+        # delta_pose[:, 0] = cur_pos[:, 0] - target_x
+        # delta_pose[:, 1] = target_y - cur_pos[:, 1]
 
-        if abs(self.angle_dev) < 0.02:
-            delta_pose[:, 5] = 0
+        # if abs(self.angle_dev) < 0.01:
+        #     delta_pose[:, 5] = 0
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
@@ -1064,7 +1065,7 @@ class TofSensorTask(RLTask):
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  #* self.control_time * 2
+                                                  6]  # * self.control_time * 2
 
         # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
         #                           self.robot_dof_upper_limits)
@@ -1220,7 +1221,7 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
+            dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
@@ -1259,11 +1260,6 @@ class TofSensorTask(RLTask):
         self.scene.add(self._robots)
 
     def reset(self):
-
-        # self._end_effector.get_world_poses()
-
-        # target_joint_positions, _  = self.compute_ik(target_position=np.array([-0.0, 0.8, 1.3]),target_orientation=np.array([0.707,0.,0,0.707]))
-        # target_joint_positions = target_joint_positions.joint_positions.astype(np.float)
         # # initial robot
         target_joint_positions = torch.zeros(6, device=self.device)
         target_joint_positions[0] = 0
@@ -1277,9 +1273,7 @@ class TofSensorTask(RLTask):
 
         self.target_joint_positions = torch.tensor(
             self.init_robot_joints[random_values], dtype=torch.float)
-        # [-1.29522039  3.66315136 -0.13982686  5.29926468 -0.22134689 -0.44278792] #
-        # print(target_joint_positions)
-        # target_joint_positions[5] = -1.57
+
         self._robots.set_joint_positions(
             torch.tensor(target_joint_positions,
                          dtype=torch.float).repeat(self.num_envs, 1))
@@ -1292,7 +1286,7 @@ class TofSensorTask(RLTask):
         # init object location
         # random orientation
         self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
-        rand_ori_z = torch.rand(self.num_envs).to(self.device) /2
+        rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
         self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
         object_target_quaternion = tf.axis_angle_to_quaternion(
@@ -1318,7 +1312,11 @@ class TofSensorTask(RLTask):
             self._env._world.step(render=False)
 
         self.init_ee_local_pos, _ = self._end_effector.get_local_poses()
-        
+
+        top_ee_local_pose = self.init_ee_local_pos.clone()
+        top_ee_local_pose[:, 1] += 0.16
+        self._end_effector_points = torch.cat(
+            [self.init_ee_local_pos[None], top_ee_local_pose[None]], dim=1)
 
         # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 
