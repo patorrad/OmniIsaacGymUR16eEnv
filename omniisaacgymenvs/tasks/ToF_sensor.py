@@ -745,26 +745,14 @@ class TofSensorTask(RLTask):
             current_orientation)
         self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        # if self._step == 30:
-        #     ee_link_pos, ee_link_ori = self._end_effector.get_local_poses()
+        _wrist2_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses()
+        _ee_local_pos, _ee_local_quat = self._end_effector.get_local_poses()
 
-        #     stage = get_current_stage()
+        current_euler_angles = torch.atan2(_ee_local_pos[:, 1]-_wrist2_local_pos[:, 1],
+                                           _ee_local_pos[:, 0]-_wrist2_local_pos[:, 0])
 
-        #     self.lock_motion(stage, f"/World/envs/env_{0}/robot/ee_link_cube",
-        #                      f"/World/envs/env_{0}/robot/ee_link",
-        #                      ee_link_ori[0], 0)
-        target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
-            self.device)
-
-        target_y = 0.4 * (
-            1 - torch.cos(torch.as_tensor(self.target_angle))).to(self.device)
-
-        cur_pos, _ = self._manipulated_object.get_local_poses()
-
-        cur_xy = cur_pos[:, :2]
-
-        self.angle_dev = self.current_euler_angles[:, 1] - self.target_angle
-
+        self.angle_dev = (current_euler_angles-torch.pi/2) - self.target_angle
+        
         # bboxes, center_points, self.transformed_vertices = self.transform_mesh(
         # )
         if self._cfg["raycast"]:
@@ -773,11 +761,12 @@ class TofSensorTask(RLTask):
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()
 
-        self.obs_buf = torch.cat([
-            current_euler_angles[:, 1][:, None], self.target_angle[:, None],
-            self.angle_dev[:, None], joint_angle
-        ],
-            dim=1)
+        # self.obs_buf = torch.cat([
+        #     current_euler_angles[:, None], self.target_angle[:, None],
+        #     self.angle_dev[:, None], joint_angle
+        # ],
+        #     dim=1)
+        self.obs_buf = []
 
         return self.obs_buf
 
@@ -1002,21 +991,7 @@ class TofSensorTask(RLTask):
 
         delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
 
-        _wrist3_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses()
-        _ee_local_pos, _ee_local_quat = self._end_effector.get_local_poses()
-        # print(torch.linalg.norm(_ee_local_pos[0, :3]-_wrist3_local_pos[0, :3]))
-
-        # transform = Transform3d(device=self.device).rotate(quaternion_to_matrix((quaternion_multiply(
-        #     quaternion_invert(self.init_ee_link_orientation), _ee_local_quat)))).to(device=self.device)
-
-        # transform_end_effector_points = transform.transform_points(
-        #     self._end_effector_points.clone().to(device=self.device))
-
-        self.angle = torch.atan2(_ee_local_pos[0, 1]-_wrist3_local_pos[0, 1],
-                                 _ee_local_pos[0, 0]-_wrist3_local_pos[0, 0])
-       
-
-        delta_pose[:, 5] = -torch.as_tensor(torch.pi / 200)
+        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
 
         target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_local_pos[:, 0]
@@ -1026,11 +1001,11 @@ class TofSensorTask(RLTask):
 
         cur_pos, _ = self._end_effector.get_local_poses()
 
-        # delta_pose[:, 0] = cur_pos[:, 0] - target_x
-        # delta_pose[:, 1] = target_y - cur_pos[:, 1]
+        delta_pose[:, 0] = cur_pos[:, 0] - target_x
+        delta_pose[:, 1] = target_y - cur_pos[:, 1]
 
-        # if abs(self.angle_dev) < 0.01:
-        #     delta_pose[:, 5] = 0
+        if abs(self.angle_dev) < 0.02:
+            delta_pose[:, 5] = 0
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
