@@ -1204,12 +1204,12 @@ class TofSensorTask(RLTask):
         self.target_angle = -self.rand_orientation[:, 2].clone()
         self.init_angle_dev = -self.target_angle.clone()
         self.stop_index = None
-
-    def calculate_metrics(self) -> None:
-
+    
+    
+    def calculate_angledev_reward(self) -> None:
+        
         dev_percentage = self.angle_dev / self.init_angle_dev
-        # print(dev_percentage,self.angle_dev/torch.pi*180)
-
+        
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
         if not negative_index.size()[0] == 0:
@@ -1223,13 +1223,18 @@ class TofSensorTask(RLTask):
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        self.rew_buf = abs((1 - dev)**2) * 5
+        angle_reward = abs((1 - dev)**2) * 5
 
         negative_index = torch.where(dev > 1)[0]
 
-        self.rew_buf[negative_index] = -abs((1 - dev[negative_index])**2) * 5
+        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 5
+        return angle_reward
 
-        # self.rew_buf = (1 - torch.clamp(dev_percentage, 0, 1.8)) * 5
+        
+
+    def calculate_metrics(self) -> None:
+
+        self.rew_buf=self.calculate_angledev_reward()
 
         return self.rew_buf
 
