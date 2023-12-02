@@ -198,7 +198,7 @@ class TofSensorTask(RLTask):
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-            device=self.device)
+                                              device=self.device)
 
         # self.start_time = time.time()
 
@@ -415,8 +415,10 @@ class TofSensorTask(RLTask):
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
+            robot_description_path=
+            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            urdf_path=
+            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
         )
         from omni.isaac.core.articulations import Articulation
 
@@ -745,27 +747,28 @@ class TofSensorTask(RLTask):
             current_orientation)
         self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        _wrist2_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses()
+        _wrist2_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses(
+        )
         _ee_local_pos, _ee_local_quat = self._end_effector.get_local_poses()
 
-        current_euler_angles = torch.atan2(_ee_local_pos[:, 1]-_wrist2_local_pos[:, 1],
-                                           _ee_local_pos[:, 0]-_wrist2_local_pos[:, 0])
+        current_euler_angles = torch.atan2(
+            _ee_local_pos[:, 1] - _wrist2_local_pos[:, 1],
+            _ee_local_pos[:, 0] - _wrist2_local_pos[:, 0])
 
-        self.angle_dev = (current_euler_angles-torch.pi/2) - self.target_angle
-        
-        
+        self.angle_dev = (current_euler_angles -
+                          torch.pi / 2) - self.target_angle
+
         if self._cfg["raycast"]:
             self.raytrace_step()
 
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()
-       
+
         self.obs_buf = torch.cat([
             current_euler_angles[:, None], self.target_angle[:, None],
             self.angle_dev[:, None], joint_angle
         ],
-            dim=1)
-       
+                                 dim=1)
 
         return self.obs_buf
 
@@ -788,7 +791,7 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-            dim=1)
+                                    dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def recover_action(self, action, limit):
@@ -821,7 +824,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 ** 2)
+                                                                 **2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -842,7 +845,7 @@ class TofSensorTask(RLTask):
 
         # transformed_vertices = transform.transform_points(
         #     self.mesh_vertices.clone().to(self.device))
-        _,_,transformed_vertices=self.transform_mesh()
+        _, _, transformed_vertices = self.transform_mesh()
 
         # PT Multiple sensors TODO need to move this to utils file
         normals = find_plane_normal(self.num_envs, gripper_rot)
@@ -899,7 +902,7 @@ class TofSensorTask(RLTask):
                     max(average_distance * 100 * 0.4795 - 3.2018, 0))
                 noise_distance = np.random.normal(average_distance * 1000,
                                                   standard_deviation)
-                # print(f'distance with noise sensor {i}: , {noise_distance}')
+                #print(f'distance with noise sensor {i}: , {noise_distance}')
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -988,11 +991,7 @@ class TofSensorTask(RLTask):
         #         # display the scene
         #         scene.show()
 
-    def recover_rule_based_action(self):
-
-        delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
-
-        # delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
+    def get_target_pose(self):
 
         target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_local_pos[:, 0]
@@ -1000,15 +999,33 @@ class TofSensorTask(RLTask):
         target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
             self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
+        self.target_position = torch.cat([target_x[None], target_y[None]],
+                                         dim=1)
+
+    def recover_rule_based_action(self):
+
+        delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
+
+        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
+
+        # target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
+        #     self.device) + self.init_ee_local_pos[:, 0]
+
+        # target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
+        #     self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
+
         cur_pos, _ = self._end_effector.get_local_poses()
+        self.get_target_pose()
 
-        # delta_pose[:, 0] = cur_pos[:, 0] - target_x
-        # delta_pose[:, 1] = target_y - cur_pos[:, 1]
+        delta_pose[:, 0] = cur_pos[:, 0] - self.target_position[:, 0]
+        delta_pose[:, 1] = self.target_position[:, 1] - cur_pos[:, 1]
 
-       
+        # self.target_position = torch.cat([target_x[None], target_y[None]],
+        #                                  dim=1)
+
         satified_index = torch.where(abs(self.angle_dev) < 0.02)[0]
-    
-        if torch.numel(satified_index) !=0:
+
+        if torch.numel(satified_index) != 0:
             delta_pose[satified_index, 5] = 0
 
         self.jacobians = self._robots.get_jacobians(clone=False)
@@ -1044,7 +1061,7 @@ class TofSensorTask(RLTask):
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  * self.control_time * 2
+                                                  6]  #* self.control_time * 2
 
         # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
         #                           self.robot_dof_upper_limits)
@@ -1056,15 +1073,14 @@ class TofSensorTask(RLTask):
 
         self._robots.set_joint_position_targets(targets_dof)
 
-        pre_position, pre_orientation = self._end_effector.get_world_poses(
-            clone=False)
+        pre_position, pre_orientation = self._end_effector.get_local_poses()
 
         for i in range(1):
             self._env._world.step(render=False)
 
-        cur_position, _ = self._end_effector.get_world_poses(clone=False)
-        # print(torch.linalg.norm(cur_position - pre_position),
-        #       delta_pose[:, :3])
+        cur_position, _ = self._end_effector.get_local_poses()
+        # print(torch.linalg.norm(self.target_position[0] -
+        #                         cur_position[0, :2]), )
 
     def render_curobo(self):
 
@@ -1203,7 +1219,7 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-            dim=1) * -0.0
+                                   dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
@@ -1221,9 +1237,9 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step+1) % 201 == 0:
+        if (self._step + 1) % 201 == 0:
             self._step = 0
-            
+
             self.post_reset()
             return [True for i in range(self.num_envs)]
 
@@ -1268,7 +1284,7 @@ class TofSensorTask(RLTask):
 
         # init object location
         # random orientation
-        self.target_position, _ = self._end_effector.get_world_poses()  # wxyz
+        target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
         self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
@@ -1276,7 +1292,7 @@ class TofSensorTask(RLTask):
             self.rand_orientation)
 
         # init position
-        object_target_position = self.target_position.clone()
+        object_target_position = target_obj_position.clone()
         object_target_position[:, 1] += 0.4
         # object_target_position[:, 0] += 0.1
 
