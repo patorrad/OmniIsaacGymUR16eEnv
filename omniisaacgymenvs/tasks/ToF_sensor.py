@@ -774,13 +774,15 @@ class TofSensorTask(RLTask):
         #     self.angle_dev[:, None], joint_angle
         # ],
         #                          dim=1)
-        self.obs_buf = torch.cat([
-            current_euler_angles[:, None], self.target_angle[:, None],
-            self.angle_dev[:, None], cur_position[:, :2],
-            self.target_position[:, :2],
-            self.target_position[:, :2] - cur_position[:, :2], joint_angle
-        ],
-                                 dim=1)
+        
+        if self._task_cfg['Training']["use_oracle"]:
+            self.obs_buf = torch.cat([
+                current_euler_angles[:, None], self.target_angle[:, None],
+                self.angle_dev[:, None], cur_position[:, :2],
+                self.target_position[:, :2],
+                self.target_position[:, :2] - cur_position[:, :2], joint_angle
+            ],
+                                    dim=1)
 
         return self.obs_buf
 
@@ -811,7 +813,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 5]] = action
+        self.pre_action[:, [0, 1, 5]] = action*0
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -915,7 +917,7 @@ class TofSensorTask(RLTask):
                     max(average_distance * 100 * 0.4795 - 3.2018, 0))
                 noise_distance = np.random.normal(average_distance * 1000,
                                                   standard_deviation)
-                #print(f'distance with noise sensor {i}: , {noise_distance}')
+                print(f'distance with noise sensor {i}: , {noise_distance}')
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1308,7 +1310,8 @@ class TofSensorTask(RLTask):
         target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2
+        self.rand_orientation[:,
+                              2] = rand_ori_z * torch.pi / 2 * 0 + torch.pi / 4
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 
