@@ -39,7 +39,7 @@ test: False
 checkpoint: ''
 
 # disables rendering
-headless: True
+headless: False
 # enables native livestream
 enable_livestream: False
 # timeout for MT script

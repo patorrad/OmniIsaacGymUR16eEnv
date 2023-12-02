@@ -150,8 +150,8 @@ class TofSensorTask(RLTask):
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._num_observations = 9
-        self._num_actions = 1
+        self._num_observations = self._task_cfg["env"]["num_observations"]
+        self._num_actions = self._task_cfg["env"]["num_actions"]
 
         RLTask.__init__(self, name, env)
 
@@ -757,6 +757,11 @@ class TofSensorTask(RLTask):
 
         self.angle_dev = (current_euler_angles -
                           torch.pi / 2) - self.target_angle
+        cur_position, _ = self._end_effector.get_local_poses()
+
+        self.dist_dev = torch.linalg.norm(self.target_position[:, :2] -
+                                          cur_position[:, :2],
+                                          dim=1)
 
         if self._cfg["raycast"]:
             self.raytrace_step()
@@ -764,9 +769,16 @@ class TofSensorTask(RLTask):
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()
 
+        # self.obs_buf = torch.cat([
+        #     current_euler_angles[:, None], self.target_angle[:, None],
+        #     self.angle_dev[:, None], joint_angle
+        # ],
+        #                          dim=1)
         self.obs_buf = torch.cat([
             current_euler_angles[:, None], self.target_angle[:, None],
-            self.angle_dev[:, None], joint_angle
+            self.angle_dev[:, None], cur_position[:, :2],
+            self.target_position[:, :2],
+            self.target_position[:, :2] - cur_position[:, :2], joint_angle
         ],
                                  dim=1)
 
@@ -798,7 +810,8 @@ class TofSensorTask(RLTask):
 
         # delta pose
         action = torch.clip(action, -1, 1)
-        self.pre_action[:, 5] = action.reshape(-1)
+        # self.pre_action[:, 5] = action.reshape(-1) * 0
+        self.pre_action[:, [0, 1, 5]] = action
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -999,8 +1012,12 @@ class TofSensorTask(RLTask):
         target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
             self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
-        self.target_position = torch.cat([target_x[None], target_y[None]],
-                                         dim=1)
+        self.target_position = torch.cat(
+            [target_x[:, None], target_y[:, None]], dim=1)
+
+        self.init_dist = torch.linalg.norm(self.target_position -
+                                           self.init_ee_local_pos[:, :2],
+                                           dim=1)
 
     def recover_rule_based_action(self):
 
@@ -1015,7 +1032,6 @@ class TofSensorTask(RLTask):
         #     self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
         cur_pos, _ = self._end_effector.get_local_poses()
-        self.get_target_pose()
 
         delta_pose[:, 0] = cur_pos[:, 0] - self.target_position[:, 0]
         delta_pose[:, 1] = self.target_position[:, 1] - cur_pos[:, 1]
@@ -1060,8 +1076,7 @@ class TofSensorTask(RLTask):
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  * self.control_time * 2
+        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time * 2
 
         # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
         #                           self.robot_dof_upper_limits)
@@ -1077,10 +1092,6 @@ class TofSensorTask(RLTask):
 
         for i in range(1):
             self._env._world.step(render=False)
-
-        cur_position, _ = self._end_effector.get_local_poses()
-        # print(torch.linalg.norm(self.target_position[0] -
-        #                         cur_position[0, :2]), )
 
     def render_curobo(self):
 
@@ -1189,50 +1200,57 @@ class TofSensorTask(RLTask):
         self.reset()
         self.reset_raytracer()
 
-        # reset goal orientation
-
-        self.target_angle = torch.zeros(self.num_envs, device=self.device)
-
-        # self.target_angle[:int(self.num_envs / 2)] = torch.as_tensor(
-        #     np.random.uniform(low=0.1, high=0.5, size=int(self.num_envs / 2)) *
-        #     np.pi,
-        #     device=self.device)
-        # self.target_angle[int(self.num_envs / 2):] = torch.as_tensor(
-        #     np.random.uniform(low=-0.5, high=-0.1, size=int(
-        #         self.num_envs / 2)) * np.pi,
-        #     device=self.device)
-        self.target_angle = -self.rand_orientation[:, 2].clone()
-        self.init_angle_dev = -self.target_angle.clone()
-     
-    
     def calculate_angledev_reward(self) -> None:
-        
+
         dev_percentage = self.angle_dev / self.init_angle_dev
-        
+
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
         if not negative_index.size()[0] == 0:
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
-            
+
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
                                    dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        angle_reward = abs((1 - dev)**2) * 5
+        angle_reward = abs((1 - dev)**2) * 3
 
         negative_index = torch.where(dev > 1)[0]
 
-        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 5
+        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 3
         return angle_reward
 
-        
+    def calculate_dist_reward(self) -> None:
+
+        dev_percentage = self.dist_dev / self.init_dist
+
+        # exceed the target
+        negative_index = torch.where(dev_percentage < 0)[0]
+        if not negative_index.size()[0] == 0:
+            dev_percentage[negative_index] = abs(
+                dev_percentage[negative_index]) + 1
+
+        action_penalty = torch.sum(torch.clamp(
+            self._robots.get_joint_velocities() - 1, 1),
+                                   dim=1) * -0.0
+
+        dev = torch.clamp(dev_percentage, 0, 1.8)
+
+        dist_reward = abs((1 - dev)**2) * 3
+
+        negative_index = torch.where(dev > 1)[0]
+
+        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 3
+        # print(torch.max(dist_reward), torch.min(dist_reward))
+        return dist_reward
 
     def calculate_metrics(self) -> None:
 
-        self.rew_buf=self.calculate_angledev_reward()
+        self.rew_buf = self.calculate_dist_reward()
+        self.rew_buf += self.calculate_angledev_reward()
 
         return self.rew_buf
 
@@ -1319,6 +1337,13 @@ class TofSensorTask(RLTask):
         top_ee_local_pose[:, 1] += 0.16
         self._end_effector_points = torch.cat(
             [self.init_ee_local_pos[None], top_ee_local_pose[None]], dim=1)
+
+        # reset goal orientation
+
+        self.target_angle = torch.zeros(self.num_envs, device=self.device)
+        self.target_angle = -self.rand_orientation[:, 2].clone()
+        self.init_angle_dev = -self.target_angle.clone()
+        self.get_target_pose()
 
         # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 
