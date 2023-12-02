@@ -832,16 +832,18 @@ class TofSensorTask(RLTask):
         self.debug_draw.clear_points()
 
         gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
         )
-        transform = Transform3d(device=self.device).scale(
-            self.scale_size).rotate(
-                quaternion_to_matrix(quaternion_invert(
-                    self.target_object_rot))).translate(
-                        self.target_object_pose)
+        # transform = Transform3d(device=self.device).scale(
+        #     self.scale_size).rotate(
+        #         quaternion_to_matrix(quaternion_invert(
+        #             self.target_object_rot))).translate(
+        #                 self.target_object_pose)
 
-        transformed_vertices = transform.transform_points(
-            self.mesh_vertices.clone().to(self.device))
+        # transformed_vertices = transform.transform_points(
+        #     self.mesh_vertices.clone().to(self.device))
+        _,_,transformed_vertices=self.transform_mesh()
 
         # PT Multiple sensors TODO need to move this to utils file
         normals = find_plane_normal(self.num_envs, gripper_rot)
@@ -1140,14 +1142,17 @@ class TofSensorTask(RLTask):
         draw.draw_points(point_list, colors, sizes)
 
     def transform_mesh(self):
-        manipulated_object_pose = self._manipulated_object.get_world_poses()
-
-        transform = Transform3d(device=self.device).rotate(
-            quaternion_to_matrix((manipulated_object_pose[1]))).translate(
-                manipulated_object_pose[0])
+        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
+        )
+        transform = Transform3d(device=self.device).scale(
+            self.scale_size).rotate(
+                quaternion_to_matrix(quaternion_invert(
+                    self.target_object_rot))).translate(
+                        self.target_object_pose)
 
         transformed_vertices = transform.transform_points(
             self.mesh_vertices.clone().to(self.device))
+
         max_xyz = torch.max(transformed_vertices, dim=1).values
         min_xyz = torch.min(transformed_vertices, dim=1).values
         bboxes = torch.hstack([min_xyz, max_xyz])
