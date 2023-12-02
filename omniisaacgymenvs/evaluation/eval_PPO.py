@@ -76,7 +76,7 @@ def parse_hydra_configs(cfg: DictConfig):
     
 
     
-    policy = PPO.load("results/1129/TofSensor/model/model_30.zip",env,"cuda")
+    policy = PPO.load("results/121/TofSensor/model/model_130.zip",env,"cuda")
   
     
     while True:

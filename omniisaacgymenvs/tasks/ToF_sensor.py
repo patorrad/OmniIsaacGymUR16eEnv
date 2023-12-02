@@ -1061,7 +1061,7 @@ class TofSensorTask(RLTask):
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :
-                                                  6]  #* self.control_time * 2
+                                                  6]  * self.control_time * 2
 
         # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
         #                           self.robot_dof_upper_limits)
@@ -1203,8 +1203,7 @@ class TofSensorTask(RLTask):
         #     device=self.device)
         self.target_angle = -self.rand_orientation[:, 2].clone()
         self.init_angle_dev = -self.target_angle.clone()
-        self.stop_index = None
-    
+     
     
     def calculate_angledev_reward(self) -> None:
         
@@ -1215,8 +1214,7 @@ class TofSensorTask(RLTask):
         if not negative_index.size()[0] == 0:
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
-            self.stop_index = negative_index
-
+            
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
                                    dim=1) * -0.0
