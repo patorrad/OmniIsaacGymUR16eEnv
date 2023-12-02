@@ -182,7 +182,7 @@ class TofSensorTask(RLTask):
         self.current_directory = os.getcwd()
 
         self._step = 0
-        self.angle_dev = 1
+        self.angle_dev = torch.ones(self.num_envs)
         self.current_euler_angles = torch.zeros((self.num_envs, 3))
 
         # control parameter
@@ -753,20 +753,19 @@ class TofSensorTask(RLTask):
 
         self.angle_dev = (current_euler_angles-torch.pi/2) - self.target_angle
         
-        # bboxes, center_points, self.transformed_vertices = self.transform_mesh(
-        # )
+        
         if self._cfg["raycast"]:
             self.raytrace_step()
 
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()
-
-        # self.obs_buf = torch.cat([
-        #     current_euler_angles[:, None], self.target_angle[:, None],
-        #     self.angle_dev[:, None], joint_angle
-        # ],
-        #     dim=1)
-        self.obs_buf = []
+       
+        self.obs_buf = torch.cat([
+            current_euler_angles[:, None], self.target_angle[:, None],
+            self.angle_dev[:, None], joint_angle
+        ],
+            dim=1)
+       
 
         return self.obs_buf
 
@@ -993,7 +992,7 @@ class TofSensorTask(RLTask):
 
         delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
 
-        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
+        # delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
 
         target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_local_pos[:, 0]
@@ -1003,11 +1002,14 @@ class TofSensorTask(RLTask):
 
         cur_pos, _ = self._end_effector.get_local_poses()
 
-        delta_pose[:, 0] = cur_pos[:, 0] - target_x
-        delta_pose[:, 1] = target_y - cur_pos[:, 1]
+        # delta_pose[:, 0] = cur_pos[:, 0] - target_x
+        # delta_pose[:, 1] = target_y - cur_pos[:, 1]
 
-        if abs(self.angle_dev) < 0.02:
-            delta_pose[:, 5] = 0
+       
+        satified_index = torch.where(abs(self.angle_dev) < 0.02)[0]
+    
+        if torch.numel(satified_index) !=0:
+            delta_pose[satified_index, 5] = 0
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
@@ -1219,8 +1221,9 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step) % 200 == 0:
+        if (self._step+1) % 201 == 0:
             self._step = 0
+            
             self.post_reset()
             return [True for i in range(self.num_envs)]
 
