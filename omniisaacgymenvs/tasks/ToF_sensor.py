@@ -758,12 +758,14 @@ class TofSensorTask(RLTask):
                               dim=1))
 
         self.angle_dev = (current_euler_angles_x -
-                              torch.pi / 2) - self.target_angle
+                          torch.pi / 2) - self.target_angle
         cur_position, _ = self._end_effector.get_local_poses()
+
+        cur_position[:, 0] = -cur_position[:, 0]
 
         self.dist_dev = torch.linalg.norm(self.target_position - cur_position,
                                           dim=1)
-       
+     
         # start = time.time()
         if self._cfg["raycast"]:
             self.raytrace_step()
@@ -817,7 +819,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action 
+        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -1032,7 +1034,7 @@ class TofSensorTask(RLTask):
             self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
         self.target_position = torch.cat([
-            target_x[:, None], target_y[:, None],
+            -target_x[:, None], target_y[:, None],
             self.init_ee_local_pos[:, 2][:, None]
         ],
                                          dim=1)
@@ -1054,14 +1056,13 @@ class TofSensorTask(RLTask):
         #     self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
         cur_pos, _ = self._end_effector.get_local_poses()
+        cur_pos[:, 0] = -cur_pos[:, 0]
 
-        delta_pose[:, 0] = cur_pos[:, 0] - self.target_position[:, 0]
+        delta_pose[:, 0] = self.target_position[:, 0] - cur_pos[:, 0]
         delta_pose[:, 1] = self.target_position[:, 1] - cur_pos[:, 1]
 
-        # self.target_position = torch.cat([target_x[None], target_y[None]],
-        #                                  dim=1)
-
         satified_index = torch.where(abs(self.angle_dev) < 0.02)[0]
+      
 
         if torch.numel(satified_index) != 0:
             delta_pose[satified_index, 5] = 0
@@ -1070,7 +1071,6 @@ class TofSensorTask(RLTask):
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
                                                                      8, :, :],
                                 delta_pose=delta_pose)
-        # delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
 
         return delta_dof_pos, delta_pose
 
@@ -1118,14 +1118,8 @@ class TofSensorTask(RLTask):
         # frame skip
         ee_translation_goal, ee_orientation_teleop_goal = self._manipulated_object.get_local_poses(
         )
-        # print(ee_translation_goal)
-        ee_world_pose, _ = self._manipulated_object.get_world_poses()
 
-        # ik_goal = Pose(
-        #     position=self.tensor_args.to_device(ee_translation_goal[0]),
-        #     quaternion=self.tensor_args.to_device(
-        #         ee_orientation_teleop_goal[0]),
-        # )
+        ee_world_pose, _ = self._manipulated_object.get_world_poses()
 
         self.goal_pose.position[:] = torch.as_tensor([-0.4, 0.8, 1.4]).to(
             self.device) + self.position_grid_offset
@@ -1222,7 +1216,7 @@ class TofSensorTask(RLTask):
 
     def calculate_angledev_reward(self) -> None:
 
-        dev_percentage =self.angle_dev / self.init_angle_dev
+        dev_percentage = self.angle_dev / self.init_angle_dev
 
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
@@ -1246,7 +1240,7 @@ class TofSensorTask(RLTask):
     def calculate_targetangledev_reward(self) -> None:
 
         angle_reward = -abs(self.angle_dev_target) * 7
-      
+
         return angle_reward
 
     def calculate_dist_reward(self) -> None:
@@ -1270,7 +1264,7 @@ class TofSensorTask(RLTask):
         negative_index = torch.where(dev > 1)[0]
 
         dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 3
-        # print(torch.max(dist_reward), torch.min(dist_reward))
+
         return dist_reward
 
     def calculate_metrics(self) -> None:
@@ -1278,7 +1272,6 @@ class TofSensorTask(RLTask):
         self.rew_buf = self.calculate_dist_reward()
         self.rew_buf += self.calculate_angledev_reward()
         self.rew_buf += self.calculate_targetangledev_reward()
-
 
         return self.rew_buf
 
