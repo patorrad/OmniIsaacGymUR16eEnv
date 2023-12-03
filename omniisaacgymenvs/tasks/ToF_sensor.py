@@ -770,9 +770,8 @@ class TofSensorTask(RLTask):
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles[:, None], self.target_angle[:, None],
-                self.angle_dev[:, None], cur_position[:, :2],
-                self.target_position[:, :2],
-                self.target_position[:, :2] - cur_position[:, :2], joint_angle
+                self.angle_dev[:, None], cur_position, self.target_position,
+                self.target_position - cur_position, joint_angle
             ],
                                      dim=1)
 
@@ -1025,10 +1024,13 @@ class TofSensorTask(RLTask):
         target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
             self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
-        self.target_position = torch.cat(
-            [target_x[:, None], target_y[:, None]], dim=1)
+        self.target_position = torch.cat([
+            target_x[:, None], target_y[:, None],
+            self.init_ee_local_pos[:, 2][:, None]
+        ],
+                                         dim=1)
 
-        self.init_dist = torch.linalg.norm(self.target_position -
+        self.init_dist = torch.linalg.norm(self.target_position[:, :2] -
                                            self.init_ee_local_pos[:, :2],
                                            dim=1)
 

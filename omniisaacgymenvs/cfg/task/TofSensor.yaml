@@ -10,7 +10,7 @@ env:
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 3
-  num_observations: 15 #15
+  num_observations: 18 #15
 
   clipObservations: 5.0
   clipActions: 1.0
