@@ -5,12 +5,12 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: 20 #${resolve_default:30,${...num_envs}}
+  numEnvs: 60 #${resolve_default:30,${...num_envs}}
   envSpacing: 4.0
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 3
-  num_observations: 14 #15
+  num_observations: 15 #15
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -110,4 +110,4 @@ sim:
     rule-base: False
 
 Training:
-  use_oracle: False
+  use_oracle: True

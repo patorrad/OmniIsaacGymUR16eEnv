@@ -416,10 +416,8 @@ class TofSensorTask(RLTask):
 
         self._kinematics_solver = LulaKinematicsSolver(
             robot_description_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path=
-            "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf"
-        )
+            "/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            urdf_path="/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf")
         from omni.isaac.core.articulations import Articulation
 
         # robot_prim_path = "/panda"
@@ -1321,10 +1319,9 @@ class TofSensorTask(RLTask):
         # init object location
         # random orientation
         target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
-        rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2
+        rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2 + 0.2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        self.rand_orientation[:,
-                              2] = rand_ori_z * torch.pi / 2 * 0 + torch.pi / 4
+        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 

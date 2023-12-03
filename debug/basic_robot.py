@@ -33,8 +33,7 @@ def demo(fix_root_link, balance_passive_force):
     target_joint_positions[1] = -1.57
     target_joint_positions[2] = 1.57
     target_joint_positions[3] = 0
-    target_joint_positions[4] = 1.57
-    
+    target_joint_positions[4] = 0
     arm_init_qpos = np.zeros(6)
    
     # arm_init_qpos[0] = 1.57
@@ -60,6 +59,11 @@ def demo(fix_root_link, balance_passive_force):
         
         if index%200==0:
             robot.set_qpos(target_joint_positions)
+            qf = robot.compute_passive_force(
+                    external=False, coriolis_and_centrifugal=False)
+            robot.set_qf(qf)
+            #robot.set_qpos(target_joint_positions)
+            scene.step()
             
         
         # result, success, error = pinocchio_model.compute_inverse_kinematics(
