@@ -64,8 +64,8 @@ hydra:
     dir: .
 
 # Debug
-raycast: True
-debug: True 
+raycast: False
+debug: False 
 debug_with_trimesh: False 
 raycast_width: 8
 raycast_height: 8

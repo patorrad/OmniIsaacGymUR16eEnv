@@ -756,8 +756,8 @@ class TofSensorTask(RLTask):
                           torch.pi / 2) - self.target_angle
         cur_position, _ = self._end_effector.get_local_poses()
 
-        self.dist_dev = torch.linalg.norm(self.target_position[:, :2] -
-                                          cur_position[:, :2],
+        self.dist_dev = torch.linalg.norm(self.target_position -
+                                          cur_position,
                                           dim=1)
         # start = time.time()
         if self._cfg["raycast"]:
