@@ -774,7 +774,7 @@ class TofSensorTask(RLTask):
         #     self.angle_dev[:, None], joint_angle
         # ],
         #                          dim=1)
-        
+
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles[:, None], self.target_angle[:, None],
@@ -782,8 +782,16 @@ class TofSensorTask(RLTask):
                 self.target_position[:, :2],
                 self.target_position[:, :2] - cur_position[:, :2], joint_angle
             ],
-                                    dim=1)
+                                     dim=1)
 
+        elif self._cfg["raycast"]:
+            self.obs_buf = torch.cat([
+                self.raytrace_dist, cur_position[:, :2],
+                self.target_position[:, :2],
+                self.target_position[:, :2] - cur_position[:, :2], joint_angle
+            ],
+                                     dim=1)
+        
         return self.obs_buf
 
     def update_cache_state(self):
@@ -813,7 +821,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 5]] = action*0
+        self.pre_action[:, [0, 1, 5]] = action 
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -878,6 +886,8 @@ class TofSensorTask(RLTask):
         debug_start_point_colors = []
         debug_circle = []
 
+        self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
+
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -896,28 +906,36 @@ class TofSensorTask(RLTask):
 
             self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
                                     mesh_index=0)
-            ray_t, ray_dir = self.raytracer.render(
+            ray_t, ray_dir, normal = self.raytracer.render(
                 int(np.random.normal(10, 10)), circle[env][i].cpu(),
                 gripper_rot.cpu()[env])
+
+            ray_t = wp.torch.to_torch(ray_t)
+
+            if len(torch.where(ray_t > 0)[0]) > 0:
+                average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
+            else:
+                average_distance = -0.01
+            self.raytrace_dist[env][i] = average_distance * 100
+            # standard_deviation = math.sqrt(
+            #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
+            # noise_distance = np.random.normal(average_distance * 1000,
+            #                                     standard_deviation)
 
             if self._cfg["debug"]:
                 sensor_ray_pos_np = circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
-
+                ray_t = ray_t.cpu().numpy()
                 ray_dir = ray_dir.numpy()
-                ray_t = ray_t.numpy()
+
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
 
-                ray_t_nonzero = ray_t[np.nonzero(ray_t)]
-                average_distance = np.average(ray_t_nonzero)
-                standard_deviation = math.sqrt(
-                    max(average_distance * 100 * 0.4795 - 3.2018, 0))
-                noise_distance = np.random.normal(average_distance * 1000,
-                                                  standard_deviation)
-                print(f'distance with noise sensor {i}: , {noise_distance}')
+                print(
+                    f'distance with noise sensor {i}: , {average_distance*100}'
+                )
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]

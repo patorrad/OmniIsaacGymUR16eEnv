@@ -25,7 +25,8 @@ MAX_DIST = 1.2  # meters
 def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          height: int, pixels: wp.array(dtype=wp.vec3),
          ray_dist: wp.array(dtype=wp.float32),
-         ray_dir: wp.array(dtype=wp.vec3)):
+         ray_dir: wp.array(dtype=wp.vec3),
+         normal_vec: wp.array(dtype=wp.vec3)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
     tid = wp.tid()
@@ -66,8 +67,8 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
                              sign, normal, face):
             color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
 
-            # ignore this ray if it wouldn't reflect back to the receiver
-            ray_dot_product = wp.dot(dir, normal)
+            # # ignore this ray if it wouldn't reflect back to the receiver
+            # ray_dot_product = wp.dot(dir, normal)
             # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
             #     t = 0.
             # # else:
@@ -84,9 +85,11 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     pixels[tid] = color
     ray_dist[tid] = t
     ray_dir[tid] = dir
+    normal_vec[tid] = normal
 
 
 class Raycast:
+
     def __init__(self, width, height, vertices, faces):
         self.width = width  #1024
         self.height = height  #1024
@@ -98,6 +101,7 @@ class Raycast:
         self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
         self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
 
         self.init_buffer(vertices, faces)
 
@@ -123,6 +127,7 @@ class Raycast:
         self.pixels.zero_()
         self.ray_dist.zero_()
         self.ray_dir.zero_()
+        self.normal_vec.zero_()
 
     def update(self):
         pass
@@ -132,12 +137,13 @@ class Raycast:
                cam_pos=(0.0, 1.5, 2.5),
                cam_dir=np.array([1, 0, 0, 0]),
                is_live=False):
+        
 
         wp.launch(kernel=draw,
                   dim=self.width * self.height,
                   inputs=[
                       self.mesh.id, cam_pos, cam_dir, self.width, self.height,
-                      self.pixels, self.ray_dist, self.ray_dir
+                      self.pixels, self.ray_dist, self.ray_dir, self.normal_vec
                   ])
 
         wp.synchronize_device()
@@ -145,7 +151,7 @@ class Raycast:
         plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)),
                    origin="lower",
                    interpolation="antialiased")
-        return self.ray_dist, self.ray_dir
+        return self.ray_dist, self.ray_dir, self.normal_vec
 
     def save(self):
         for i in self.result.shape[0]:
