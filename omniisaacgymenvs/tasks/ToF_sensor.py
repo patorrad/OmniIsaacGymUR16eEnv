@@ -193,7 +193,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([3.0] * 3 + [3.0] * 3,
+        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -812,12 +812,14 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 5]] = action
+        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
         delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] -
                                                   limit[:, 0]) + limit[:, 0]
+        self.control_time = self._env._world.get_physics_dt() 
+        delta_pose = delta_pose * self.control_time
 
         self.jacobians = self._robots.get_jacobians(clone=False)
         delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
@@ -1018,10 +1020,10 @@ class TofSensorTask(RLTask):
 
     def get_target_pose(self):
 
-        target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
+        target_x = 0.3 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_local_pos[:, 0]
 
-        target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
+        target_y = 0.3 * (1 - torch.cos(torch.as_tensor(
             self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
         self.target_position = torch.cat([
@@ -1087,11 +1089,11 @@ class TofSensorTask(RLTask):
         else:
             delta_dof_pos, delta_pose = self.recover_rule_based_action()
 
-        self.control_time = self._env._world.get_physics_dt() * self.frame_skip
+        
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6] * self.control_time * 2
+        targets_dof = current_dof + delta_dof_pos[:, :6]
 
         # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
         #                           self.robot_dof_upper_limits)
