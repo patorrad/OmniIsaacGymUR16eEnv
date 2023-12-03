@@ -29,6 +29,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          normal_vec: wp.array(dtype=wp.vec3)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
+    
     tid = wp.tid()
 
     pi = 3.14159265359
@@ -117,6 +118,7 @@ class Raycast:
             self.warp_mesh_list.append(warp_mesh)
 
     def set_geom(self, vertices, mesh_index):
+        wp.build.clear_kernel_cache()
 
         wp.copy(self.warp_mesh_list[mesh_index].points, vertices)
         self.warp_mesh_list[mesh_index].refit()
@@ -133,11 +135,9 @@ class Raycast:
         pass
 
     def render(self,
-               rng_seed=42,
                cam_pos=(0.0, 1.5, 2.5),
                cam_dir=np.array([1, 0, 0, 0]),
                is_live=False):
-        
 
         wp.launch(kernel=draw,
                   dim=self.width * self.height,

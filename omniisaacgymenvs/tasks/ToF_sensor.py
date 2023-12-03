@@ -747,9 +747,8 @@ class TofSensorTask(RLTask):
             current_orientation)
         self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        _wrist2_local_pos, _wrist3_local_quat = self.wrist_2_link.get_local_poses(
-        )
-        _ee_local_pos, _ee_local_quat = self._end_effector.get_local_poses()
+        _wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
+        _ee_local_pos, _ = self._end_effector.get_local_poses()
 
         current_euler_angles = torch.atan2(
             _ee_local_pos[:, 1] - _wrist2_local_pos[:, 1],
@@ -769,12 +768,6 @@ class TofSensorTask(RLTask):
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()
 
-        # self.obs_buf = torch.cat([
-        #     current_euler_angles[:, None], self.target_angle[:, None],
-        #     self.angle_dev[:, None], joint_angle
-        # ],
-        #                          dim=1)
-
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles[:, None], self.target_angle[:, None],
@@ -791,7 +784,7 @@ class TofSensorTask(RLTask):
                 self.target_position[:, :2] - cur_position[:, :2], joint_angle
             ],
                                      dim=1)
-        
+
         return self.obs_buf
 
     def update_cache_state(self):
@@ -821,7 +814,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 5]] = action 
+        self.pre_action[:, [0, 1, 5]] = action
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -907,8 +900,7 @@ class TofSensorTask(RLTask):
             self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
                                     mesh_index=0)
             ray_t, ray_dir, normal = self.raytracer.render(
-                int(np.random.normal(10, 10)), circle[env][i].cpu(),
-                gripper_rot.cpu()[env])
+                circle[env][i], gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
 
@@ -965,32 +957,34 @@ class TofSensorTask(RLTask):
 
                     debug_circle.append([circle[env][i].cpu().numpy()])
 
-        if len(debug_sensor_ray_pos_list) > 0:
+        if self._cfg["debug"]:
 
-            debug_sensor_ray_pos_list = np.concatenate(
-                debug_sensor_ray_pos_list, axis=0)
-            debug_ray_hit_points_list = np.concatenate(
-                debug_ray_hit_points_list, axis=0)
-            debug_ray_colors = np.concatenate(debug_ray_colors, axis=0)
-            debug_ray_sizes = np.concatenate(debug_ray_sizes, axis=0)
-            debug_end_point_colors = np.concatenate(debug_end_point_colors,
-                                                    axis=0)
-            debug_point_sizes = np.concatenate(debug_point_sizes, axis=0)
-            debug_start_point_colors = np.concatenate(debug_start_point_colors,
-                                                      axis=0)
-            debug_circle = np.concatenate(debug_circle, axis=0)
+            if len(debug_sensor_ray_pos_list) > 0:
 
-            self.debug_draw.draw_lines(debug_sensor_ray_pos_list,
-                                       debug_ray_hit_points_list,
-                                       debug_ray_colors, debug_ray_sizes)
-            self.debug_draw.draw_points(debug_ray_hit_points_list,
-                                        debug_end_point_colors,
-                                        debug_point_sizes)
-            self.debug_draw.draw_points(debug_sensor_ray_pos_list,
-                                        debug_start_point_colors,
-                                        debug_point_sizes)
-            # Debug draw the gripper pose
-            self.debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
+                debug_sensor_ray_pos_list = np.concatenate(
+                    debug_sensor_ray_pos_list, axis=0)
+                debug_ray_hit_points_list = np.concatenate(
+                    debug_ray_hit_points_list, axis=0)
+                debug_ray_colors = np.concatenate(debug_ray_colors, axis=0)
+                debug_ray_sizes = np.concatenate(debug_ray_sizes, axis=0)
+                debug_end_point_colors = np.concatenate(debug_end_point_colors,
+                                                        axis=0)
+                debug_point_sizes = np.concatenate(debug_point_sizes, axis=0)
+                debug_start_point_colors = np.concatenate(
+                    debug_start_point_colors, axis=0)
+                debug_circle = np.concatenate(debug_circle, axis=0)
+
+                self.debug_draw.draw_lines(debug_sensor_ray_pos_list,
+                                           debug_ray_hit_points_list,
+                                           debug_ray_colors, debug_ray_sizes)
+                self.debug_draw.draw_points(debug_ray_hit_points_list,
+                                            debug_end_point_colors,
+                                            debug_point_sizes)
+                self.debug_draw.draw_points(debug_sensor_ray_pos_list,
+                                            debug_start_point_colors,
+                                            debug_point_sizes)
+                # Debug draw the gripper pose
+                self.debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
         # if self._cfg[
         #         "debug_with_trimesh"]:  #TODO Update with sensor circle
