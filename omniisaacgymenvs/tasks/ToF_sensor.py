@@ -761,9 +761,10 @@ class TofSensorTask(RLTask):
         self.dist_dev = torch.linalg.norm(self.target_position[:, :2] -
                                           cur_position[:, :2],
                                           dim=1)
-
+        # start = time.time()
         if self._cfg["raycast"]:
             self.raytrace_step()
+        # print("time",time.time()-start)
 
         # self.render_curobo()
         joint_angle = self._robots.get_joint_positions()

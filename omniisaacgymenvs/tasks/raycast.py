@@ -10,7 +10,7 @@ import os
 import trimesh
 from trimesh import transformations
 from cprint import *
-
+import time
 # DEVICE = 'cpu'
 DEVICE = 'cuda:0'
 wp.init()
@@ -62,7 +62,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     face = int(0)
 
     color = wp.vec3(0.0, 0.0, 0.0)
-
+    
     if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
         if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
                              sign, normal, face):
@@ -87,6 +87,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     ray_dist[tid] = t
     ray_dir[tid] = dir
     normal_vec[tid] = normal
+   
 
 
 class Raycast:
@@ -148,24 +149,24 @@ class Raycast:
 
         wp.synchronize_device()
 
-        plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)),
-                   origin="lower",
-                   interpolation="antialiased")
+        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)),
+        #            origin="lower",
+        #            interpolation="antialiased")
         return self.ray_dist, self.ray_dir, self.normal_vec
 
-    def save(self):
-        for i in self.result.shape[0]:
-            plt.imshow(self.result.shape[i].numpy().reshape(
-                (self.height, self.width, 3)),
-                       origin="lower",
-                       interpolation="antialiased")
-            plt.savefig("/home/aurmr/Pictures/raycast_cube_{}.png".format(i),
-                        bbox_inches="tight",
-                        pad_inches=1,
-                        transparent=True,
-                        facecolor="g",
-                        edgecolor='w',
-                        orientation='landscape')
+    # def save(self):
+    #     for i in self.result.shape[0]:
+    #         plt.imshow(self.result.shape[i].numpy().reshape(
+    #             (self.height, self.width, 3)),
+    #                    origin="lower",
+    #                    interpolation="antialiased")
+    #         plt.savefig("/home/aurmr/Pictures/raycast_cube_{}.png".format(i),
+    #                     bbox_inches="tight",
+    #                     pad_inches=1,
+    #                     transparent=True,
+    #                     facecolor="g",
+    #                     edgecolor='w',
+    #                     orientation='landscape')
 
 
 def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
