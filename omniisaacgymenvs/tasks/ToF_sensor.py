@@ -788,9 +788,9 @@ class TofSensorTask(RLTask):
 
         elif self._cfg["raycast"]:
             self.obs_buf = torch.cat([
-                self.raytrace_dist, cur_position[:, :2],
-                self.target_position[:, :2],
-                self.target_position[:, :2] - cur_position[:, :2], joint_angle
+                self.raytrace_dist, cur_position,
+                self.target_position,
+                self.target_position - cur_position, joint_angle
             ],
                                      dim=1)
 
@@ -919,7 +919,7 @@ class TofSensorTask(RLTask):
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
             else:
                 average_distance = -0.01
-            self.raytrace_dist[env][i] = average_distance * 100
+            self.raytrace_dist[env][i] = average_distance 
             # standard_deviation = math.sqrt(
             #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
             # noise_distance = np.random.normal(average_distance * 1000,
