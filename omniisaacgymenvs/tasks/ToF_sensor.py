@@ -783,12 +783,8 @@ class TofSensorTask(RLTask):
                                      dim=1)
 
         elif self._cfg["raycast"]:
-            self.obs_buf = torch.cat([
-                self.raytrace_dist,
-                cur_position,
-                self.target_position,joint_angle
-            ],
-                                     dim=1)
+            self.obs_buf = torch.cat(
+                [self.raytrace_dist, self.target_position, joint_angle], dim=1)
 
         return self.obs_buf
 
@@ -887,6 +883,8 @@ class TofSensorTask(RLTask):
         debug_circle = []
 
         self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
+        self.raytrace_cover_range = torch.zeros(
+            (self.num_envs, 2)).to(self.device)
 
         for i, env in zip(
                 torch.arange(
@@ -913,9 +911,12 @@ class TofSensorTask(RLTask):
 
             if len(torch.where(ray_t > 0)[0]) > 0:
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
+                cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
             else:
                 average_distance = -0.01
+                cover_percentage = 0
             self.raytrace_dist[env][i] = average_distance
+            self.raytrace_cover_range[env][i] = cover_percentage
             # standard_deviation = math.sqrt(
             #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
             # noise_distance = np.random.normal(average_distance * 1000,
@@ -1211,7 +1212,6 @@ class TofSensorTask(RLTask):
             self.grippers[i].initialize(
                 articulation_num_dofs=self._robots.num_dof)
         self.reset()
-      
 
     def calculate_angledev_reward(self) -> None:
 
@@ -1242,6 +1242,16 @@ class TofSensorTask(RLTask):
 
         return angle_reward
 
+    def calculate_raytrace_reward(self) -> None:
+
+        dev_percentage = torch.sum(self.raytrace_cover_range / 1, dim=1)
+    
+        positive_reward = torch.where(dev_percentage > 1)[0]
+        raytrace_range_reward = -(1 - dev_percentage) * 1
+        raytrace_range_reward[positive_reward] = (dev_percentage - 1) * 1
+
+        return raytrace_range_reward
+
     def calculate_dist_reward(self) -> None:
 
         dev_percentage = self.dist_dev / self.init_dist
@@ -1258,11 +1268,11 @@ class TofSensorTask(RLTask):
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        dist_reward = abs((1 - dev)**2) * 3
+        dist_reward = abs((1 - dev)**2) * 2
 
         negative_index = torch.where(dev > 1)[0]
 
-        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 3
+        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 2
 
         return dist_reward
 
@@ -1271,13 +1281,13 @@ class TofSensorTask(RLTask):
         self.rew_buf = self.calculate_dist_reward()
         self.rew_buf += self.calculate_angledev_reward()
         self.rew_buf += self.calculate_targetangledev_reward()
+        self.rew_buf += self.calculate_raytrace_reward()
 
         return self.rew_buf
 
     def is_done(self) -> None:
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
-        
 
         if (self._step + 1) % 201 == 0:
             self._step = 0
