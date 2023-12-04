@@ -936,9 +936,9 @@ class TofSensorTask(RLTask):
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
 
-                print(
-                    f'distance with noise sensor {i}: , {average_distance*100}'
-                )
+                # print(
+                #     f'distance with noise sensor {i}: , {average_distance*100}'
+                # )
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
