@@ -112,31 +112,6 @@ import numpy as np
 from omni.isaac.core import World
 from omni.isaac.core.objects import cuboid, sphere
 
-# # CuRobo
-# from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
-
-# # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-# from curobo.geom.sdf.world import CollisionCheckerType
-# from curobo.geom.types import WorldConfig
-# from curobo.rollout.rollout_base import Goal
-# from curobo.types.base import TensorDeviceType
-# from curobo.types.math import Pose
-# from curobo.types.robot import JointState, RobotConfig
-# from curobo.types.state import JointState
-# from curobo.util.logger import setup_curobo_logger
-# from curobo.util.usd_helper import UsdHelper
-# from curobo.util_file import (
-#     get_assets_path,
-#     get_filename,
-#     get_path_of_dir,
-#     get_robot_configs_path,
-#     get_world_configs_path,
-#     join_path,
-#     load_yaml,
-# )
-# from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-# from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-# from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
 
 
 class TofSensorTask(RLTask):
@@ -207,6 +182,34 @@ class TofSensorTask(RLTask):
         return
 
     def init_curobo(self):
+        
+        
+        # # CuRobo
+        from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+
+        # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+        from curobo.geom.sdf.world import CollisionCheckerType
+        from curobo.geom.types import WorldConfig
+        from curobo.rollout.rollout_base import Goal
+        from curobo.types.base import TensorDeviceType
+        from curobo.types.math import Pose
+        from curobo.types.robot import JointState, RobotConfig
+        from curobo.types.state import JointState
+        from curobo.util.logger import setup_curobo_logger
+        from curobo.util.usd_helper import UsdHelper
+        from curobo.util_file import (
+            get_assets_path,
+            get_filename,
+            get_path_of_dir,
+            get_robot_configs_path,
+            get_world_configs_path,
+            join_path,
+            load_yaml,
+        )
+        from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+        from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+        from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
+
 
         self.tensor_args = TensorDeviceType()
         robot_cfg = load_yaml(join_path(get_robot_configs_path(),
@@ -765,6 +768,7 @@ class TofSensorTask(RLTask):
 
         self.dist_dev = torch.linalg.norm(self.target_position - cur_position,
                                           dim=1)
+        
      
         # start = time.time()
         if self._cfg["raycast"]:
@@ -1305,8 +1309,8 @@ class TofSensorTask(RLTask):
         target_joint_positions = torch.zeros(6, device=self.device)
         target_joint_positions[0] = 0
         target_joint_positions[1] = -1.57
-        target_joint_positions[2] = 1.57 / 2
-        target_joint_positions[3] = 0.0
+        target_joint_positions[2] = 1.57 / 2*2
+        target_joint_positions[3] = -1.57*2
         target_joint_positions[4] = 0
         random_values = torch.randint(low=0,
                                       high=len(self.init_robot_joints),
@@ -1335,7 +1339,7 @@ class TofSensorTask(RLTask):
 
         # init position
         object_target_position = target_obj_position.clone()
-        object_target_position[:, 1] += 0.4
+        object_target_position[:, 1] += 0.3
         # object_target_position[:, 0] += 0.1
 
         self._manipulated_object.set_world_poses(object_target_position,
