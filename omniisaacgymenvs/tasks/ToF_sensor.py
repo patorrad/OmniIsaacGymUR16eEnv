@@ -113,7 +113,6 @@ from omni.isaac.core import World
 from omni.isaac.core.objects import cuboid, sphere
 
 
-
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
@@ -182,8 +181,7 @@ class TofSensorTask(RLTask):
         return
 
     def init_curobo(self):
-        
-        
+
         # # CuRobo
         from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
 
@@ -209,7 +207,6 @@ class TofSensorTask(RLTask):
         from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
         from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
         from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
-
 
         self.tensor_args = TensorDeviceType()
         robot_cfg = load_yaml(join_path(get_robot_configs_path(),
@@ -768,8 +765,7 @@ class TofSensorTask(RLTask):
 
         self.dist_dev = torch.linalg.norm(self.target_position - cur_position,
                                           dim=1)
-        
-     
+
         # start = time.time()
         if self._cfg["raycast"]:
             self.raytrace_step()
@@ -788,9 +784,9 @@ class TofSensorTask(RLTask):
 
         elif self._cfg["raycast"]:
             self.obs_buf = torch.cat([
-                self.raytrace_dist, cur_position,
-                self.target_position,
-                self.target_position - cur_position, joint_angle
+                self.raytrace_dist,
+                cur_position,
+                self.target_position,joint_angle
             ],
                                      dim=1)
 
@@ -919,7 +915,7 @@ class TofSensorTask(RLTask):
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
             else:
                 average_distance = -0.01
-            self.raytrace_dist[env][i] = average_distance 
+            self.raytrace_dist[env][i] = average_distance
             # standard_deviation = math.sqrt(
             #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
             # noise_distance = np.random.normal(average_distance * 1000,
@@ -1066,7 +1062,6 @@ class TofSensorTask(RLTask):
         delta_pose[:, 1] = self.target_position[:, 1] - cur_pos[:, 1]
 
         satified_index = torch.where(abs(self.angle_dev) < 0.02)[0]
-      
 
         if torch.numel(satified_index) != 0:
             delta_pose[satified_index, 5] = 0
@@ -1216,7 +1211,7 @@ class TofSensorTask(RLTask):
             self.grippers[i].initialize(
                 articulation_num_dofs=self._robots.num_dof)
         self.reset()
-        self.reset_raytracer()
+      
 
     def calculate_angledev_reward(self) -> None:
 
@@ -1282,10 +1277,10 @@ class TofSensorTask(RLTask):
     def is_done(self) -> None:
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
+        
 
         if (self._step + 1) % 201 == 0:
             self._step = 0
-
             self.post_reset()
             return [True for i in range(self.num_envs)]
 
@@ -1309,8 +1304,8 @@ class TofSensorTask(RLTask):
         target_joint_positions = torch.zeros(6, device=self.device)
         target_joint_positions[0] = 0
         target_joint_positions[1] = -1.57
-        target_joint_positions[2] = 1.57 / 2*2
-        target_joint_positions[3] = -1.57*2
+        target_joint_positions[2] = 1.57 / 2 * 2
+        target_joint_positions[3] = -1.57 * 2
         target_joint_positions[4] = 0
         random_values = torch.randint(low=0,
                                       high=len(self.init_robot_joints),
@@ -1369,6 +1364,7 @@ class TofSensorTask(RLTask):
         self.target_angle = -self.rand_orientation[:, 2].clone()
         self.init_angle_dev = -self.target_angle.clone()
         self.get_target_pose()
+        self._step = 0
 
         # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
 
