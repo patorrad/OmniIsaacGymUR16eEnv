@@ -70,7 +70,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     task = initialize_task(cfg_dict, env)
 
-    policy = PPO.load("results/124/TofSensor/model/model_280.zip", env, "cuda")
+    policy = PPO.load("results/124/TofSensor/model/model_210.zip", env, "cuda")
 
     while True:
         reward_sum = 0

@@ -1244,11 +1244,13 @@ class TofSensorTask(RLTask):
 
     def calculate_raytrace_reward(self) -> None:
 
-        dev_percentage = torch.sum(self.raytrace_cover_range / 1, dim=1)
+        dev_percentage = torch.sum(self.raytrace_cover_range / 0.8, dim=1)
     
         positive_reward = torch.where(dev_percentage > 1)[0]
         raytrace_range_reward = -(1 - dev_percentage) * 1
-        raytrace_range_reward[positive_reward] = (dev_percentage - 1) * 1
+
+        if torch.numel(positive_reward) != 0:
+            raytrace_range_reward[positive_reward] = (dev_percentage[positive_reward] - 1) * 1
 
         return raytrace_range_reward
 
