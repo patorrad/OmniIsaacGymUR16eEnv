@@ -11,6 +11,8 @@ import trimesh
 from trimesh import transformations
 from cprint import *
 import time
+
+import cv2
 # DEVICE = 'cpu'
 DEVICE = 'cuda:0'
 wp.init()
@@ -148,10 +150,18 @@ class Raycast:
                   ])
 
         wp.synchronize_device()
+        # import pdb
+        # pdb.set_trace()
 
-        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)),
-        #            origin="lower",
-        #            interpolation="antialiased")
+        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
+        # plt.show()
+        
+        # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
+        # print(np.unique(ray))
+        # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
+        # cv2.imshow("image",ray*255)
+        # cv2.waitKey(1)
+        
         return self.ray_dist, self.ray_dir, self.normal_vec
 
     # def save(self):

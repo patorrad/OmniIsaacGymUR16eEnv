@@ -76,7 +76,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     import datetime
     current_time = datetime.datetime.now()
-    result_path = Path("results/"+str(current_time.month)+str(current_time.day)+"/TofSensor")
+    result_path = Path("results/"+str(current_time.month)+str(current_time.day)+"/TofSensor2")
     result_path.mkdir(exist_ok=True, parents=True)
 
 

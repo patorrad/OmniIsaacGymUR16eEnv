@@ -172,7 +172,7 @@ class TofSensorTask(RLTask):
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-                                              device=self.device)
+            device=self.device)
 
         # self.start_time = time.time()
 
@@ -415,8 +415,7 @@ class TofSensorTask(RLTask):
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path=
-            "/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            robot_description_path="/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
             urdf_path="/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf")
         from omni.isaac.core.articulations import Articulation
 
@@ -780,11 +779,11 @@ class TofSensorTask(RLTask):
                 self.angle_dev[:, None], cur_position, self.target_position,
                 self.target_position - cur_position, joint_angle
             ],
-                                     dim=1)
+                dim=1)
 
         elif self._cfg["raycast"]:
             self.obs_buf = torch.cat(
-                [self.raytrace_dist, self.target_position, joint_angle], dim=1)
+                [self.raytrace_dist, joint_angle], dim=1)
 
         return self.obs_buf
 
@@ -807,7 +806,7 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-                                    dim=1)
+            dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def recover_action(self, action, limit):
@@ -843,7 +842,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 **2)
+                                                                 ** 2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -927,15 +926,19 @@ class TofSensorTask(RLTask):
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
+
+                if len(torch.where(ray_t > 0)[0]) > 0:
+                    index = torch.where(ray_t <= 0)[0]
+                    ray_t[index] = torch.max(ray_t)
                 ray_t = ray_t.cpu().numpy()
                 ray_dir = ray_dir.numpy()
 
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
 
-                # print(
-                #     f'distance with noise sensor {i}: , {average_distance*100}'
-                # )
+                print(
+                    f'distance with noise sensor {i}: , {average_distance*100}',np.max(ray_t)-np.min(ray_t)
+                )
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1038,7 +1041,7 @@ class TofSensorTask(RLTask):
             -target_x[:, None], target_y[:, None],
             self.init_ee_local_pos[:, 2][:, None]
         ],
-                                         dim=1)
+            dim=1)
 
         self.init_dist = torch.linalg.norm(self.target_position[:, :2] -
                                            self.init_ee_local_pos[:, :2],
@@ -1225,7 +1228,7 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
+            dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
@@ -1245,12 +1248,13 @@ class TofSensorTask(RLTask):
     def calculate_raytrace_reward(self) -> None:
 
         dev_percentage = torch.sum(self.raytrace_cover_range / 0.8, dim=1)
-    
+
         positive_reward = torch.where(dev_percentage > 1)[0]
         raytrace_range_reward = -(1 - dev_percentage) * 1
 
         if torch.numel(positive_reward) != 0:
-            raytrace_range_reward[positive_reward] = (dev_percentage[positive_reward] - 1) * 1
+            raytrace_range_reward[positive_reward] = (
+                dev_percentage[positive_reward] - 1) * 1
 
         return raytrace_range_reward
 
@@ -1266,7 +1270,7 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
+            dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
