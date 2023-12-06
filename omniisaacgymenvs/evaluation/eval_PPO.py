@@ -72,7 +72,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     policy = PPO.load("results/125/TofSensor2/model/model_40.zip", env, "cuda")
 
-    while True:
+    while env._simulation_app.is_running():
         reward_sum = 0
         obs = env.reset()
         print('===============')
@@ -104,7 +104,7 @@ def parse_hydra_configs(cfg: DictConfig):
             "angle deviation:",
             abs(env._task.angle_dev).sum().cpu().detach().item() /
             env._num_envs/ torch.pi * 180,env._task.raytrace_dist,env._task.raytrace_dev)
-
+    env._simulation_app.close()
 
 if __name__ == '__main__':
 
