@@ -172,7 +172,7 @@ class TofSensorTask(RLTask):
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
-            device=self.device)
+                                              device=self.device)
 
         # self.start_time = time.time()
 
@@ -415,7 +415,8 @@ class TofSensorTask(RLTask):
     def compute_ik(self, target_position, target_orientation):
 
         self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path="/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
+            robot_description_path=
+            "/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
             urdf_path="/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf")
         from omni.isaac.core.articulations import Articulation
 
@@ -779,11 +780,12 @@ class TofSensorTask(RLTask):
                 self.angle_dev[:, None], cur_position, self.target_position,
                 self.target_position - cur_position, joint_angle
             ],
-                dim=1)
+                                     dim=1)
 
         elif self._cfg["raycast"]:
             self.obs_buf = torch.cat(
-                [self.raytrace_dist, joint_angle], dim=1)
+                [self.raytrace_dist, self.raytrace_dev * 10, joint_angle],
+                dim=1)
 
         return self.obs_buf
 
@@ -806,7 +808,7 @@ class TofSensorTask(RLTask):
             self._robots.get_linear_velocities(),
             self._robots.get_angular_velocities()
         ],
-            dim=1)
+                                    dim=1)
         self._ur16e_effort_limits = self._robots.get_max_efforts()
 
     def recover_action(self, action, limit):
@@ -842,7 +844,7 @@ class TofSensorTask(RLTask):
         # solve damped least squares (dO = J.T * V)
         transpose = torch.transpose(jacobian_end_effector, 1, 2)
         lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 ** 2)
+                                                                 **2)
         return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
                                           lmbda) @ delta_pose).squeeze(dim=2)
 
@@ -881,9 +883,18 @@ class TofSensorTask(RLTask):
         debug_start_point_colors = []
         debug_circle = []
 
+        # ray average distance
         self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
+        # ray tracing reading
+        self.raytrace_reading = torch.zeros(
+            (self.num_envs,
+             self._cfg["raycast_width"] * self._cfg["raycast_height"],
+             2)).to(self.device)
+        # ray trace coverage
         self.raytrace_cover_range = torch.zeros(
             (self.num_envs, 2)).to(self.device)
+        # ray trace max min dist
+        self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
 
         for i, env in zip(
                 torch.arange(
@@ -916,6 +927,19 @@ class TofSensorTask(RLTask):
                 cover_percentage = 0
             self.raytrace_dist[env][i] = average_distance
             self.raytrace_cover_range[env][i] = cover_percentage
+            self.raytrace_reading[env, :, i] = ray_t
+
+            # replace the zero value
+            ray_t_copy = ray_t.clone()
+            if len(torch.where(ray_t <= 0)[0]) > 0:
+                index = torch.where(ray_t <= 0)[0]
+                ray_t[index] = torch.max(ray_t)
+
+            if torch.max(ray_t) < 1e-2:
+                self.raytrace_dev[env][i] = 10
+            else:
+                self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
+
             # standard_deviation = math.sqrt(
             #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
             # noise_distance = np.random.normal(average_distance * 1000,
@@ -927,18 +951,15 @@ class TofSensorTask(RLTask):
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
 
-                if len(torch.where(ray_t > 0)[0]) > 0:
-                    index = torch.where(ray_t <= 0)[0]
-                    ray_t[index] = torch.max(ray_t)
-                ray_t = ray_t.cpu().numpy()
+                ray_t = ray_t_copy.cpu().numpy()
                 ray_dir = ray_dir.numpy()
 
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
 
-                print(
-                    f'distance with noise sensor {i}: , {average_distance*100}',np.max(ray_t)-np.min(ray_t)
-                )
+                # print(
+                #     f'distance with noise sensor {i}: , {average_distance*100}',
+                #     np.max(ray_t) - np.min(ray_t))
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1041,7 +1062,7 @@ class TofSensorTask(RLTask):
             -target_x[:, None], target_y[:, None],
             self.init_ee_local_pos[:, 2][:, None]
         ],
-            dim=1)
+                                         dim=1)
 
         self.init_dist = torch.linalg.norm(self.target_position[:, :2] -
                                            self.init_ee_local_pos[:, :2],
@@ -1228,26 +1249,26 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-            dim=1) * -0.0
+                                   dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        angle_reward = abs((1 - dev)**2) * 3
+        angle_reward = abs((1 - dev)**2) * 5
 
         negative_index = torch.where(dev > 1)[0]
 
-        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 3
+        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 5
         return angle_reward
 
     def calculate_targetangledev_reward(self) -> None:
 
-        angle_reward = -abs(self.angle_dev_target) * 7
+        angle_reward = -abs(self.angle_dev_target) * 3
 
         return angle_reward
 
     def calculate_raytrace_reward(self) -> None:
 
-        dev_percentage = torch.sum(self.raytrace_cover_range / 0.8, dim=1)
+        dev_percentage = torch.sum(self.raytrace_cover_range / 0.5, dim=1)
 
         positive_reward = torch.where(dev_percentage > 1)[0]
         raytrace_range_reward = -(1 - dev_percentage) * 1
@@ -1270,24 +1291,31 @@ class TofSensorTask(RLTask):
 
         action_penalty = torch.sum(torch.clamp(
             self._robots.get_joint_velocities() - 1, 1),
-            dim=1) * -0.0
+                                   dim=1) * -0.0
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        dist_reward = abs((1 - dev)**2) * 2
+        dist_reward = abs((1 - dev)**2) * 1
 
         negative_index = torch.where(dev > 1)[0]
 
-        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 2
+        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 1
 
         return dist_reward
+
+    def calculate_raytrace_dev_reward(self):
+        dev = torch.mean(self.raytrace_dev / 0.04, axis=1)
+        dev_reward = torch.clip(1 - dev, -0.5, 1) * 5
+        return dev_reward
 
     def calculate_metrics(self) -> None:
 
         self.rew_buf = self.calculate_dist_reward()
+
         self.rew_buf += self.calculate_angledev_reward()
         self.rew_buf += self.calculate_targetangledev_reward()
         self.rew_buf += self.calculate_raytrace_reward()
+        self.rew_buf += self.calculate_raytrace_dev_reward()
 
         return self.rew_buf
 

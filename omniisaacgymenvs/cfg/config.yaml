@@ -39,7 +39,7 @@ test: False
 checkpoint: ''
 
 # disables rendering
-headless: False
+headless: True
 # enables native livestream
 enable_livestream: False
 # timeout for MT script
@@ -65,7 +65,7 @@ hydra:
 
 # Debug
 raycast: True
-debug: True 
+debug: False 
 debug_with_trimesh: False 
 raycast_width: 8
 raycast_height: 8
