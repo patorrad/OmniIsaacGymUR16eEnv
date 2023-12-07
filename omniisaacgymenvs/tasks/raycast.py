@@ -31,7 +31,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          normal_vec: wp.array(dtype=wp.vec3)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-    
+
     tid = wp.tid()
 
     pi = 3.14159265359
@@ -64,7 +64,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     face = int(0)
 
     color = wp.vec3(0.0, 0.0, 0.0)
-    
+
     if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
         if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
                              sign, normal, face):
@@ -89,7 +89,6 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     ray_dist[tid] = t
     ray_dir[tid] = dir
     normal_vec[tid] = normal
-   
 
 
 class Raycast:
@@ -150,18 +149,23 @@ class Raycast:
                   ])
 
         wp.synchronize_device()
-        # import pdb
-        # pdb.set_trace()
 
         # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
         # plt.show()
-        
+
         # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
         # print(np.unique(ray))
         # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
-        # cv2.imshow("image",ray*255)
+        # plt.plot(
+        #     np.arange(7),
+        #     np.diff(self.ray_dist.numpy().reshape(
+        #         (self.height, self.width))[3, :].reshape(-1)))
+        # plt.savefig("image.png")
+        # plt.cla()
+        # image = cv2.imread("image.png")
+        # cv2.imshow("image",image)
         # cv2.waitKey(1)
-        
+
         return self.ray_dist, self.ray_dir, self.normal_vec
 
     # def save(self):

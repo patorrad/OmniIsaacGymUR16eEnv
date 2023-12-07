@@ -39,8 +39,7 @@ from omni.isaac.core.objects import DynamicSphere
 from omni.isaac.core.objects import DynamicCuboid
 from omni.isaac.core.objects import DynamicCylinder
 from omni.isaac.core.objects import FixedCuboid
-from omniisaacgymenvs.robots.controller.ocs2 import Controller_ocs2
-from omniisaacgymenvs.robots.controller.osc import Controller_osc
+
 
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import RigidPrimView
@@ -57,6 +56,8 @@ from trimesh import creation, transformations
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage, clear_stage
+from omni.isaac.core.utils.extensions import enable_extension
+enable_extension("omni.isaac.debug_draw")
 from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.dynamic_control import _dynamic_control
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
@@ -176,7 +177,7 @@ class TofSensorTask(RLTask):
 
         # self.start_time = time.time()
 
-        self.load_bin_yaml('omniisaacgymenvs/cfg/bin.xml')
+        # self.load_bin_yaml('omniisaacgymenvs/cfg/bin.xml')
 
         return
 
@@ -467,14 +468,14 @@ class TofSensorTask(RLTask):
     def load_robot(self):
 
         from omniisaacgymenvs.robots.articulations.ur10 import UR10
+       
 
         self.robot = UR10(prim_path=self.default_zero_env_path + "/robot",
                           name="robot",
                           position=self._robot_positions,
                           orientation=self._robot_rotations,
                           attach_gripper=False,
-                          usd_path=self.current_directory +
-                          self._task_cfg['sim']["URRobot"]['robot_path'])
+                          usd_path=self.current_directory +self._task_cfg['sim']["URRobot"]['robot_path'])
 
         self.robot.set_joint_positions(self._robot_dof_target)
         self.robot.set_joints_default_state(self._robot_dof_target)
@@ -783,6 +784,7 @@ class TofSensorTask(RLTask):
                                      dim=1)
 
         elif self._cfg["raycast"]:
+            
             self.obs_buf = torch.cat(
                 [self.raytrace_dist, self.raytrace_dev * 10, joint_angle],
                 dim=1)
@@ -816,7 +818,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
+        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action*0
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -850,8 +852,7 @@ class TofSensorTask(RLTask):
 
     def raytrace_step(self) -> None:
 
-        self.debug_draw.clear_lines()
-        self.debug_draw.clear_points()
+        
 
         gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -946,6 +947,8 @@ class TofSensorTask(RLTask):
             #                                     standard_deviation)
 
             if self._cfg["debug"]:
+                self.debug_draw.clear_lines()
+                self.debug_draw.clear_points()
                 sensor_ray_pos_np = circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
@@ -960,6 +963,7 @@ class TofSensorTask(RLTask):
                 # print(
                 #     f'distance with noise sensor {i}: , {average_distance*100}',
                 #     np.max(ray_t) - np.min(ray_t))
+                # print(ray_t.reshape(8, 8)[3:5, :])
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1351,12 +1355,12 @@ class TofSensorTask(RLTask):
         target_joint_positions[2] = 1.57 / 2 * 2
         target_joint_positions[3] = -1.57 * 2
         target_joint_positions[4] = 0
-        random_values = torch.randint(low=0,
-                                      high=len(self.init_robot_joints),
-                                      size=(self.num_envs, ))
+        # random_values = torch.randint(low=0,
+        #                               high=len(self.init_robot_joints),
+        #                               size=(self.num_envs, ))
 
-        self.target_joint_positions = torch.tensor(
-            self.init_robot_joints[random_values], dtype=torch.float)
+        # self.target_joint_positions = torch.tensor(
+            # self.init_robot_joints[random_values], dtype=torch.float)
 
         self._robots.set_joint_positions(
             torch.tensor(target_joint_positions,

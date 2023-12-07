@@ -54,8 +54,9 @@ from typing import Optional
 import numpy as np
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.prims.rigid_prim import RigidPrim
-from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper_Properties
+# from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper, Surface_Gripper_Properties
 from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
+from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.nucleus import get_assets_root_path

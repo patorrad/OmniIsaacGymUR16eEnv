@@ -5,7 +5,7 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: 60 #${resolve_default:30,${...num_envs}}
+  numEnvs: 1 #${resolve_default:30,${...num_envs}}
   envSpacing: 4.0
   resetDist: 3.0
   maxEffort: 400.0
@@ -81,7 +81,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -98,7 +98,7 @@ sim:
     quaternion: [0, 0, 1, 0]
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
     num_sensors: 2
-    sensor_radius: 0.04
+    sensor_radius: 0.045
   Object:
     category: "cube"
     scale: [0.1, 0.1, 0.3]
