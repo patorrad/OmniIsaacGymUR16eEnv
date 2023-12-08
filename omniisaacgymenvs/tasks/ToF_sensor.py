@@ -29,6 +29,12 @@
 ############################################################
 #################  isaac sim   ##############################
 ############################################################
+
+from omni.isaac.core.utils.extensions import enable_extension
+enable_extension("omni.isaac.debug_draw")
+enable_extension("omni.isaac.manipulators")
+enable_extension("omni.isaac.motion_generation")
+
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
 # from omniisaacgymenvs.robots.articulations.ur10 import UR10
@@ -56,8 +62,7 @@ from trimesh import creation, transformations
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage, clear_stage
-from omni.isaac.core.utils.extensions import enable_extension
-enable_extension("omni.isaac.debug_draw")
+
 from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.dynamic_control import _dynamic_control
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
@@ -1364,7 +1369,7 @@ class TofSensorTask(RLTask):
 
         self._robots.set_joint_positions(
             torch.tensor(target_joint_positions,
-                         dtype=torch.float).repeat(self.num_envs, 1))
+                         dtype=torch.float).repeat(self.num_envs, 1).clone().detach())
 
         for i in range(1):
             self._env._world.step(render=False)
@@ -1387,10 +1392,7 @@ class TofSensorTask(RLTask):
 
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
-        self.default_dof = torch.tensor(target_joint_positions,
-                                        dtype=torch.float).repeat(
-                                            self.num_envs, 1).clone()
-
+    
         # init table position
         table_position, _ = self._table.get_world_poses()
         table_position[:, 0] = self.init_ee_link_position[:, 0]

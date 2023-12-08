@@ -107,7 +107,7 @@ sim:
     quaternion: [1.0, 0.0, 0.0, 0.0]
     scale: [0.6, 0.6, 1.04]
   Control:
-    rule-base: False
+    rule-base: True
 
 Training:
   use_oracle: False

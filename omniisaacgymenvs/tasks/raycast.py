@@ -39,7 +39,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     z = tid % width
 
     # For 25 degree cone
-    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 2.
+    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 4.
 
     # For inner edge of noise cone
     NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
@@ -48,7 +48,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
                              1.) * float(y) - float(EMITTER_DIAMETER) / 2.
     sz = EMITTER_DIAMETER / (float(width) -
                              1.) * float(z) - float(EMITTER_DIAMETER) / 2.
-
+    
     # compute view ray
     start = cam_pos
     # rd = wp.normalize(output)
@@ -65,25 +65,25 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
     color = wp.vec3(0.0, 0.0, 0.0)
 
-    if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
-        if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
-                             sign, normal, face):
-            color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+    # if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
+    if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
+                            sign, normal, face):
+        color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
 
-            # # ignore this ray if it wouldn't reflect back to the receiver
-            # ray_dot_product = wp.dot(dir, normal)
-            # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
-            #     t = 0.
-            # # else:
-            # #     print(ray_dot_product)
-            # # if distance between [u,v] and ro is in the noise part of the cone
-            # if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
-            #     # use random function to determine whether we should give the reading t or 0
-            #     # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
-            #     rng_state = wp.rand_init(rng_seed, tid)
-            #     if wp.randf(rng_state) <= 9./34.:
-            #         t = float(0.)
-            #         # t = float(1.)
+        # # ignore this ray if it wouldn't reflect back to the receiver
+        # ray_dot_product = wp.dot(dir, normal)
+        # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
+        #     t = 0.
+        # # else:
+        # #     print(ray_dot_product)
+        # # if distance between [u,v] and ro is in the noise part of the cone
+        # if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
+        #     # use random function to determine whether we should give the reading t or 0
+        #     # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
+        #     rng_state = wp.rand_init(rng_seed, tid)
+        #     if wp.randf(rng_state) <= 9./34.:
+        #         t = float(0.)
+        #         # t = float(1.)
 
     pixels[tid] = color
     ray_dist[tid] = t
@@ -150,21 +150,20 @@ class Raycast:
 
         wp.synchronize_device()
 
-        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
-        # plt.show()
+        plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
+        plt.show()
 
         # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
-        # print(np.unique(ray))
         # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
         # plt.plot(
-        #     np.arange(7),
+        #     np.arange(6),
         #     np.diff(self.ray_dist.numpy().reshape(
-        #         (self.height, self.width))[3, :].reshape(-1)))
-        # plt.savefig("image.png")
-        # plt.cla()
-        # image = cv2.imread("image.png")
-        # cv2.imshow("image",image)
-        # cv2.waitKey(1)
+        #         (self.height, self.width))[3, 1:].reshape(-1)))
+        plt.savefig("image.png")
+        plt.cla()
+        image = cv2.imread("image.png")
+        cv2.imshow("image",image)
+        cv2.waitKey(1)
 
         return self.ray_dist, self.ray_dir, self.normal_vec
 
