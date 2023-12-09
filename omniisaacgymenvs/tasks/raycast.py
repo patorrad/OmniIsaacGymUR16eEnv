@@ -150,20 +150,20 @@ class Raycast:
 
         wp.synchronize_device()
 
-        plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
-        plt.show()
+        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
+        # plt.show()
 
-        # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
-        # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
-        # plt.plot(
-        #     np.arange(6),
-        #     np.diff(self.ray_dist.numpy().reshape(
-        #         (self.height, self.width))[3, 1:].reshape(-1)))
-        plt.savefig("image.png")
-        plt.cla()
-        image = cv2.imread("image.png")
-        cv2.imshow("image",image)
-        cv2.waitKey(1)
+        # # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
+        # # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
+        # # plt.plot(
+        # #     np.arange(6),
+        # #     np.diff(self.ray_dist.numpy().reshape(
+        # #         (self.height, self.width))[3, 1:].reshape(-1)))
+        # plt.savefig("image.png")
+        # plt.cla()
+        # image = cv2.imread("image.png")
+        # cv2.imshow("image",image)
+        # cv2.waitKey(1)
 
         return self.ray_dist, self.ray_dir, self.normal_vec
 

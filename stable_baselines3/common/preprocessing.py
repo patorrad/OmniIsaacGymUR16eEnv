@@ -3,7 +3,7 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch as th
-from gymnasium import spaces
+from gym import spaces
 from torch.nn import functional as F
 
 
@@ -105,6 +105,7 @@ def preprocess_obs(
         (True by default)
     :return:
     """
+   
     if isinstance(observation_space, spaces.Box):
         if normalize_images and is_image_space(observation_space):
             return obs.float() / 255.0
@@ -148,6 +149,7 @@ def get_obs_shape(
     :param observation_space:
     :return:
     """
+    
     if isinstance(observation_space, spaces.Box):
         return observation_space.shape
     elif isinstance(observation_space, spaces.Discrete):

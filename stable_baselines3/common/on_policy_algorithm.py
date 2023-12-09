@@ -177,6 +177,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 # Convert to pytorch tensor or to TensorDict
                 # obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 obs_tensor = self._last_obs
+                
 
                 actions, values, log_probs = self.policy(obs_tensor)
 
@@ -205,6 +206,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                         device=self.device))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
+           
             
             
     

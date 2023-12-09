@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 import torch as th
-from gymnasium import spaces
+from gym import spaces
 from torch import nn
 from torch.distributions import Bernoulli, Categorical, Normal
 

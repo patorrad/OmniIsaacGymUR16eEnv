@@ -473,14 +473,15 @@ class TofSensorTask(RLTask):
     def load_robot(self):
 
         from omniisaacgymenvs.robots.articulations.ur10 import UR10
+        
        
-
+       
         self.robot = UR10(prim_path=self.default_zero_env_path + "/robot",
                           name="robot",
                           position=self._robot_positions,
                           orientation=self._robot_rotations,
                           attach_gripper=False,
-                          usd_path=self.current_directory +self._task_cfg['sim']["URRobot"]['robot_path'])
+                          usd_path=self._task_cfg['sim']["URRobot"]['robot_path'])
 
         self.robot.set_joint_positions(self._robot_dof_target)
         self.robot.set_joints_default_state(self._robot_dof_target)
