@@ -81,7 +81,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "../../../omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -107,7 +107,7 @@ sim:
     quaternion: [1.0, 0.0, 0.0, 0.0]
     scale: [0.6, 0.6, 1.04]
   Control:
-    rule-base: True
+    rule-base: False
 
 Training:
   use_oracle: False
