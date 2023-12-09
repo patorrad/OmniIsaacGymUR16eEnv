@@ -57,7 +57,7 @@ def parse_hydra_configs(cfg: DictConfig):
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
 
-    from omni.isaac.gym.vec_env import VecEnvBase
+    from omniisaacgymenvs.utils.vec_env_base import VecEnvBase
 
     env = VecEnvBase(headless=headless,
                      sim_device=cfg.device_id,
@@ -74,7 +74,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     while env._simulation_app.is_running():
         reward_sum = 0
-        obs = env.reset()
+        obs,_ = env.reset()
         print('===============')
         print(
             "init dist deviation:",
@@ -90,7 +90,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
             action = policy.predict(observation=obs, deterministic=True)[0]
 
-            obs, reward, done, info = env.step(action)
+            obs, reward,_, done, info = env.step(action)
             reward_sum += reward.sum().cpu().detach().item() / env._num_envs
             # print((env._task.angle_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
 
