@@ -205,7 +205,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         torch.as_tensor(self.action_space.high,
                                         device=self.device))
 
-            new_obs, rewards, dones, infos = env.step(clipped_actions)
+            new_obs, rewards, dones, truncated, infos = env.step(clipped_actions)
            
             
             

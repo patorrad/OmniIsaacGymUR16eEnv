@@ -62,7 +62,7 @@ def parse_hydra_configs(cfg: DictConfig):
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
 
-    from omni.isaac.gym.vec_env import VecEnvBase
+    from omniisaacgymenvs.utils.vec_env_base import VecEnvBase
    
     env = VecEnvBase(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
     # sets seed. if seed is -1 will pick a random one
