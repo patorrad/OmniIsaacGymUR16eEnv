@@ -414,7 +414,8 @@ class TofSensorTask(RLTask):
         # Raytracing
 
         self.init_data()
-        # self.curo_ik_solver = self.init_curobo()
+        if self._task_cfg["Curobo"]:
+            self.curo_ik_solver = self.init_curobo()
 
         return
 
@@ -776,8 +777,9 @@ class TofSensorTask(RLTask):
         if self._cfg["raycast"]:
             self.raytrace_step()
         # print("time",time.time()-start)
-
-        # self.render_curobo()
+        if self._task_cfg["Curobo"]:
+            self.render_curobo()
+            
         joint_angle = self._robots.get_joint_positions()
 
         if self._task_cfg['Training']["use_oracle"]:
@@ -1152,7 +1154,7 @@ class TofSensorTask(RLTask):
 
         ee_world_pose, _ = self._manipulated_object.get_world_poses()
 
-        self.goal_pose.position[:] = torch.as_tensor([-0.4, 0.8, 1.4]).to(
+        self.goal_pose.position[:] = torch.as_tensor([-0.3, 0.6, 1.04]).to(
             self.device) + self.position_grid_offset
         self.goal_pose.quaternion[:] = torch.as_tensor([1, 0, 0, 0]).to(
             self.device)  # ik_goal.quaternion[:]
@@ -1208,10 +1210,10 @@ class TofSensorTask(RLTask):
             if success[i].item():
                 colors += [(0, 1, 0, 0.25)]
                 point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
-            # else:
-            #     colors += [(1, 0, 0, 0.25)]
-            #     point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
-        sizes = [60.0 for _ in range(len(colors))]
+            else:
+                colors += [(1, 0, 0, 0.25)]
+                point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
+        sizes = [20.0 for _ in range(len(colors))]
 
         draw.draw_points(point_list, colors, sizes)
 
