@@ -218,7 +218,7 @@ class VecEnvBase(gym.Env):
         self._world.step(render=self._render)
         observations = self._task.get_observations()
 
-        return observations, {}
+        return observations
 
     @property
     def num_envs(self):

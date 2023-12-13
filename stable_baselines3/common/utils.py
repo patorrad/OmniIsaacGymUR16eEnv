@@ -227,6 +227,7 @@ def check_for_correct_spaces(env: GymEnv, observation_space: spaces.Space, actio
     :param observation_space: Observation space to check against
     :param action_space: Action space to check against
     """
+   
     if observation_space != env.observation_space:
         raise ValueError(f"Observation spaces do not match: {observation_space} != {env.observation_space}")
     if action_space != env.action_space:

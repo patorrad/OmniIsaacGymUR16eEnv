@@ -57,7 +57,7 @@ def parse_hydra_configs(cfg: DictConfig):
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
 
-    from omni.isaac.gym.vec_env import VecEnvBase
+    from omniisaacgymenvs.utils.vec_env_base import VecEnvBase
 
     env = VecEnvBase(headless=headless,
                      sim_device=cfg.device_id,
@@ -70,7 +70,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     task = initialize_task(cfg_dict, env)
 
-    policy = PPO.load("results/126/TofSensor2/model/model_330.zip", env, "cuda")
+    policy = PPO.load("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/outputs/2023-12-12/22-20-49/results/1212/TofSensor2/model/model_200", env, "cuda")
 
     while env._simulation_app.is_running():
         reward_sum = 0
@@ -90,7 +90,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
             action = policy.predict(observation=obs, deterministic=True)[0]
 
-            obs, reward, done, info = env.step(action)
+            obs, reward, dones, truncated, infos = env.step(action)
             reward_sum += reward.sum().cpu().detach().item() / env._num_envs
             # print((env._task.angle_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
 

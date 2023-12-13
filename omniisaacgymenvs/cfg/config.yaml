@@ -41,7 +41,7 @@ checkpoint: ''
 evaluation: False
 
 # disables rendering
-headless: True
+headless: False
 # enables native livestream
 enable_livestream: False
 # timeout for MT script
@@ -69,7 +69,7 @@ defaults:
 
 # Debug
 raycast: True
-debug: False 
+debug: True 
 debug_with_trimesh: False 
 raycast_width: 8
 raycast_height: 8

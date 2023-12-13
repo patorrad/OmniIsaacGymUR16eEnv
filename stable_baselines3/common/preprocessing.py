@@ -3,7 +3,7 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch as th
-from gym import spaces
+from gymnasium import spaces
 from torch.nn import functional as F
 
 
@@ -149,6 +149,7 @@ def get_obs_shape(
     :param observation_space:
     :return:
     """
+    
     
     if isinstance(observation_space, spaces.Box):
         return observation_space.shape

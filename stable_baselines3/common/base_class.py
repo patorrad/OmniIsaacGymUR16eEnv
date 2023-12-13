@@ -179,8 +179,7 @@ class BaseAlgorithm(ABC):
           
 
             if supported_action_spaces is not None:
-                
-            
+             
                 assert isinstance(self.action_space, supported_action_spaces), (
                     f"The algorithm only supports {supported_action_spaces} as action spaces "
                     f"but {self.action_space} was provided"

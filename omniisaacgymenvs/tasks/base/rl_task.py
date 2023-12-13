@@ -36,7 +36,7 @@ import omni.kit
 import omni.usd
 import torch
 import warp as wp
-from gym import spaces
+from gymnasium import spaces
 from omni.isaac.cloner import GridCloner
 from omni.isaac.core.tasks import BaseTask
 from omni.isaac.core.utils.prims import define_prim
