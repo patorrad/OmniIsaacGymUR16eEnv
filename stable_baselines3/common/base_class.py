@@ -117,7 +117,8 @@ class BaseAlgorithm(ABC):
         seed: Optional[int] = None,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
-        supported_action_spaces: Optional[Tuple[Type[spaces.Space], ...]] = None,
+        supported_action_spaces: Optional[Tuple[Type[spaces.Space],
+                                                ...]] = None,
     ) -> None:
         if isinstance(policy, str):
             self.policy_class = self._get_policy_from_name(policy)
@@ -172,38 +173,45 @@ class BaseAlgorithm(ABC):
             self.action_space = debug_env.action_space
             self.n_envs = env.num_envs
             self.env = env
-         
 
             # get VecNormalize object if needed
             self._vec_normalize_env = unwrap_vec_normalize(env)
-          
 
             if supported_action_spaces is not None:
-             
-                assert isinstance(self.action_space, supported_action_spaces), (
-                    f"The algorithm only supports {supported_action_spaces} as action spaces "
-                    f"but {self.action_space} was provided"
-                )
+
+                assert isinstance(
+                    self.action_space, supported_action_spaces
+                ), (f"The algorithm only supports {supported_action_spaces} as action spaces "
+                    f"but {self.action_space} was provided")
 
             if not support_multi_env and self.n_envs > 1:
                 raise ValueError(
-                    "Error: the model does not support multiple envs; it requires " "a single vectorized environment."
-                )
+                    "Error: the model does not support multiple envs; it requires "
+                    "a single vectorized environment.")
 
             # Catch common mistake: using MlpPolicy/CnnPolicy instead of MultiInputPolicy
-            if policy in ["MlpPolicy", "CnnPolicy"] and isinstance(self.observation_space, spaces.Dict):
-                raise ValueError(f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}")
+            if policy in ["MlpPolicy", "CnnPolicy"] and isinstance(
+                    self.observation_space, spaces.Dict):
+                raise ValueError(
+                    f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}"
+                )
 
             if self.use_sde and not isinstance(self.action_space, spaces.Box):
-                raise ValueError("generalized State-Dependent Exploration (gSDE) can only be used with continuous actions.")
+                raise ValueError(
+                    "generalized State-Dependent Exploration (gSDE) can only be used with continuous actions."
+                )
 
             if isinstance(self.action_space, spaces.Box):
                 assert np.all(
-                    np.isfinite(np.array([self.action_space.low, self.action_space.high]))
+                    np.isfinite(
+                        np.array(
+                            [self.action_space.low, self.action_space.high]))
                 ), "Continuous action space must have a finite lower and upper bound"
 
     @staticmethod
-    def _wrap_env(env: GymEnv, verbose: int = 0, monitor_wrapper: bool = True) -> VecEnv:
+    def _wrap_env(env: GymEnv,
+                  verbose: int = 0,
+                  monitor_wrapper: bool = True) -> VecEnv:
         """ "
         Wrap environment with the appropriate wrappers if needed.
         For instance, to have a vectorized environment
@@ -223,7 +231,8 @@ class BaseAlgorithm(ABC):
                 env = Monitor(env)
             if verbose >= 1:
                 print("Wrapping the env in a DummyVecEnv.")
-            env = DummyVecEnv([lambda: env])  # type: ignore[list-item, return-value]
+            env = DummyVecEnv([lambda: env
+                               ])  # type: ignore[list-item, return-value]
 
         # Make sure that dict-spaces are not nested (not supported)
         check_for_nested_spaces(env.observation_space)
@@ -236,10 +245,14 @@ class BaseAlgorithm(ABC):
                 # the other channel last), VecTransposeImage will throw an error
                 for space in env.observation_space.spaces.values():
                     wrap_with_vectranspose = wrap_with_vectranspose or (
-                        is_image_space(space) and not is_image_space_channels_first(space)  # type: ignore[arg-type]
+                        is_image_space(space)
+                        and not is_image_space_channels_first(
+                            space)  # type: ignore[arg-type]
                     )
             else:
-                wrap_with_vectranspose = is_image_space(env.observation_space) and not is_image_space_channels_first(
+                wrap_with_vectranspose = is_image_space(
+                    env.observation_space
+                ) and not is_image_space_channels_first(
                     env.observation_space  # type: ignore[arg-type]
                 )
 
@@ -277,16 +290,20 @@ class BaseAlgorithm(ABC):
         """Transform to callable if needed."""
         self.lr_schedule = get_schedule_fn(self.learning_rate)
 
-    def _update_current_progress_remaining(self, num_timesteps: int, total_timesteps: int) -> None:
+    def _update_current_progress_remaining(self, num_timesteps: int,
+                                           total_timesteps: int) -> None:
         """
         Compute current progress remaining (starts from 1 and ends to 0)
 
         :param num_timesteps: current number of timesteps
         :param total_timesteps:
         """
-        self._current_progress_remaining = 1.0 - float(num_timesteps) / float(total_timesteps)
+        self._current_progress_remaining = 1.0 - float(num_timesteps) / float(
+            total_timesteps)
 
-    def _update_learning_rate(self, optimizers: Union[List[th.optim.Optimizer], th.optim.Optimizer]) -> None:
+    def _update_learning_rate(
+        self, optimizers: Union[List[th.optim.Optimizer],
+                                th.optim.Optimizer]) -> None:
         """
         Update the optimizers learning rate using the current learning rate schedule
         and the current progress remaining (from 1 to 0).
@@ -295,12 +312,14 @@ class BaseAlgorithm(ABC):
             An optimizer or a list of optimizers.
         """
         # Log the current learning rate
-        self.logger.record("train/learning_rate", self.lr_schedule(self._current_progress_remaining))
+        self.logger.record("train/learning_rate",
+                           self.lr_schedule(self._current_progress_remaining))
 
         if not isinstance(optimizers, list):
             optimizers = [optimizers]
         for optimizer in optimizers:
-            update_learning_rate(optimizer, self.lr_schedule(self._current_progress_remaining))
+            update_learning_rate(
+                optimizer, self.lr_schedule(self._current_progress_remaining))
 
     def _excluded_save_params(self) -> List[str]:
         """
@@ -423,22 +442,29 @@ class BaseAlgorithm(ABC):
         # Avoid resetting the environment when calling ``.learn()`` consecutive times
         if reset_num_timesteps or self._last_obs is None:
             assert self.env is not None
-            self._last_obs,_ = self.env.reset()  # type: ignore[assignment]
-            self._last_episode_starts = np.ones((self.env.num_envs,), dtype=bool)
+            self._last_obs = self.env.reset()  # type: ignore[assignment]
+            self._last_episode_starts = np.ones((self.env.num_envs, ),
+                                                dtype=bool)
             # Retrieve unnormalized observation for saving into the buffer
             if self._vec_normalize_env is not None:
-                self._last_original_obs = self._vec_normalize_env.get_original_obs()
+                self._last_original_obs = self._vec_normalize_env.get_original_obs(
+                )
 
         # Configure logger's outputs if no logger was passed
         if not self._custom_logger:
-            self._logger = utils.configure_logger(self.verbose, self.tensorboard_log, tb_log_name, reset_num_timesteps)
+            self._logger = utils.configure_logger(self.verbose,
+                                                  self.tensorboard_log,
+                                                  tb_log_name,
+                                                  reset_num_timesteps)
 
         # Create eval callback if needed
         callback = self._init_callback(callback, progress_bar)
 
         return total_timesteps, callback
 
-    def _update_info_buffer(self, infos: List[Dict[str, Any]], dones: Optional[np.ndarray] = None) -> None:
+    def _update_info_buffer(self,
+                            infos: List[Dict[str, Any]],
+                            dones: Optional[np.ndarray] = None) -> None:
         """
         Retrieve reward, episode length, episode success and update the buffer
         if using Monitor wrapper or a GoalEnv.
@@ -498,7 +524,8 @@ class BaseAlgorithm(ABC):
             f"a different number of environments, you must use `{self.__class__.__name__}.load(path, env)` instead"
         )
         # Check that the observation spaces match
-        check_for_correct_spaces(env, self.observation_space, self.action_space)
+        check_for_correct_spaces(env, self.observation_space,
+                                 self.action_space)
         # Update VecNormalize object
         # otherwise the wrong env may be used, see https://github.com/DLR-RM/stable-baselines3/issues/637
         self._vec_normalize_env = unwrap_vec_normalize(env)
@@ -553,7 +580,8 @@ class BaseAlgorithm(ABC):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
-        return self.policy.predict(observation, state, episode_start, deterministic)
+        return self.policy.predict(observation, state, episode_start,
+                                   deterministic)
 
     def set_random_seed(self, seed: Optional[int] = None) -> None:
         """
@@ -564,7 +592,8 @@ class BaseAlgorithm(ABC):
         """
         if seed is None:
             return
-        set_random_seed(seed, using_cuda=self.device.type == th.device("cuda").type)
+        set_random_seed(seed,
+                        using_cuda=self.device.type == th.device("cuda").type)
         self.action_space.seed(seed)
         # self.env is always a VecEnv
         if self.env is not None:
@@ -608,7 +637,8 @@ class BaseAlgorithm(ABC):
                 # What errors recursive_getattr could throw? KeyError, but
                 # possible something else too (e.g. if key is an int?).
                 # Catch anything for now.
-                raise ValueError(f"Key {name} is an invalid object name.") from e
+                raise ValueError(
+                    f"Key {name} is an invalid object name.") from e
 
             if isinstance(attr, th.optim.Optimizer):
                 # Optimizers do not support "strict" keyword...
@@ -635,8 +665,7 @@ class BaseAlgorithm(ABC):
         if exact_match and updated_objects != objects_needing_update:
             raise ValueError(
                 "Names of parameters do not match agents' parameters: "
-                f"expected {objects_needing_update}, got {updated_objects}"
-            )
+                f"expected {objects_needing_update}, got {updated_objects}")
 
     @classmethod
     def load(  # noqa: C901
@@ -692,19 +721,24 @@ class BaseAlgorithm(ABC):
             if "device" in data["policy_kwargs"]:
                 del data["policy_kwargs"]["device"]
             # backward compatibility, convert to new format
-            if "net_arch" in data["policy_kwargs"] and len(data["policy_kwargs"]["net_arch"]) > 0:
+            if "net_arch" in data["policy_kwargs"] and len(
+                    data["policy_kwargs"]["net_arch"]) > 0:
                 saved_net_arch = data["policy_kwargs"]["net_arch"]
-                if isinstance(saved_net_arch, list) and isinstance(saved_net_arch[0], dict):
+                if isinstance(saved_net_arch, list) and isinstance(
+                        saved_net_arch[0], dict):
                     data["policy_kwargs"]["net_arch"] = saved_net_arch[0]
 
-        if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data["policy_kwargs"]:
+        if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data[
+                "policy_kwargs"]:
             raise ValueError(
                 f"The specified policy kwargs do not equal the stored policy kwargs."
                 f"Stored kwargs: {data['policy_kwargs']}, specified kwargs: {kwargs['policy_kwargs']}"
             )
 
         if "observation_space" not in data or "action_space" not in data:
-            raise KeyError("The observation_space and action_space were not given, can't verify new environments")
+            raise KeyError(
+                "The observation_space and action_space were not given, can't verify new environments"
+            )
 
         # Gym -> Gymnasium space conversion
         for key in {"observation_space", "action_space"}:
@@ -714,7 +748,8 @@ class BaseAlgorithm(ABC):
             # Wrap first if needed
             env = cls._wrap_env(env, data["verbose"])
             # Check if given env is valid
-            check_for_correct_spaces(env, data["observation_space"], data["action_space"])
+            check_for_correct_spaces(env, data["observation_space"],
+                                     data["action_space"])
             # Discard `_last_obs`, this will force the env to reset before training
             # See issue https://github.com/DLR-RM/stable-baselines3/issues/597
             if force_reset and data is not None:
@@ -746,7 +781,8 @@ class BaseAlgorithm(ABC):
             # Patch to load Policy saved using SB3 < 1.7.0
             # the error is probably due to old policy being loaded
             # See https://github.com/DLR-RM/stable-baselines3/issues/1233
-            if "pi_features_extractor" in str(e) and "Missing key(s) in state_dict" in str(e):
+            if "pi_features_extractor" in str(
+                    e) and "Missing key(s) in state_dict" in str(e):
                 model.set_parameters(params, exact_match=False, device=device)
                 warnings.warn(
                     "You are probably loading a model saved with SB3 < 1.7.0, "
@@ -770,7 +806,8 @@ class BaseAlgorithm(ABC):
                     continue
                 # Set the data attribute directly to avoid issue when using optimizers
                 # See https://github.com/DLR-RM/stable-baselines3/issues/391
-                recursive_setattr(model, f"{name}.data", pytorch_variables[name].data)
+                recursive_setattr(model, f"{name}.data",
+                                  pytorch_variables[name].data)
 
         # Sample gSDE exploration matrix, so it uses the right device
         # see issue #44
@@ -841,4 +878,7 @@ class BaseAlgorithm(ABC):
         # Build dict of state_dicts
         params_to_save = self.get_parameters()
 
-        save_to_zip_file(path, data=data, params=params_to_save, pytorch_variables=pytorch_variables)
+        save_to_zip_file(path,
+                         data=data,
+                         params=params_to_save,
+                         pytorch_variables=pytorch_variables)

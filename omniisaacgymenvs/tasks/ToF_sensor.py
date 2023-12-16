@@ -779,7 +779,7 @@ class TofSensorTask(RLTask):
         # print("time",time.time()-start)
         if self._task_cfg["Curobo"]:
             self.render_curobo()
-            
+
         joint_angle = self._robots.get_joint_positions()
 
         if self._task_cfg['Training']["use_oracle"]:
@@ -825,7 +825,7 @@ class TofSensorTask(RLTask):
         # delta pose
         action = torch.clip(action, -1, 1)
         # self.pre_action[:, 5] = action.reshape(-1) * 0
-        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action 
+        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
         # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
@@ -1105,7 +1105,7 @@ class TofSensorTask(RLTask):
                                                                      8, :, :],
                                 delta_pose=delta_pose)
 
-        return delta_dof_pos, delta_pose
+        return delta_dof_pos / 2, delta_pose
 
     def pre_physics_step(self, actions) -> None:
 
@@ -1262,11 +1262,11 @@ class TofSensorTask(RLTask):
 
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
-        angle_reward = abs((1 - dev)**2) * 5
+        angle_reward = abs((1 - dev)**3) * 5
 
         negative_index = torch.where(dev > 1)[0]
 
-        angle_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 5
+        angle_reward[negative_index] = -abs((1 - dev[negative_index])**3) * 5
         return angle_reward
 
     def calculate_targetangledev_reward(self) -> None:
@@ -1277,7 +1277,7 @@ class TofSensorTask(RLTask):
 
     def calculate_raytrace_reward(self) -> None:
 
-        dev_percentage = torch.sum(self.raytrace_cover_range / 0.5, dim=1)
+        dev_percentage = torch.sum(self.raytrace_cover_range / 0.4, dim=1)
 
         positive_reward = torch.where(dev_percentage > 1)[0]
         raytrace_range_reward = -(1 - dev_percentage) * 1
@@ -1314,7 +1314,8 @@ class TofSensorTask(RLTask):
 
     def calculate_raytrace_dev_reward(self):
         dev = torch.mean(self.raytrace_dev / 0.04, axis=1)
-        dev_reward = torch.clip(1 - dev, -0.5, 1) * 5
+
+        dev_reward = torch.clip(1 - dev, -0.5, 1)**3 * 5
         return dev_reward
 
     def calculate_metrics(self) -> None:

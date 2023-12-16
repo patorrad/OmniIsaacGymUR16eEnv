@@ -22,9 +22,9 @@ def demo(fix_root_link, balance_passive_force):
 
     # Load URDF
     loader: sapien.URDFLoader = scene.create_urdf_loader()
-    loader.fix_root_link = fix_root_link
-    robot: sapien.Articulation = loader.load("/home/lmeee/Documents/Entong/curobo/src/curobo/content/assets/robot/franka_description/franka_panda.urdf")
-    robot.set_root_pose(sapien.Pose([0, 0, 0], [1, 0, 0, 0]))
+    loader.fix_root_link = True
+    robot: sapien.Articulation = loader.load("/home/lme/Documents/stretch_urdf/stretch_urdf/RE2V0/stretch_description_RE2V0_tool_stretch_gripper.urdf")
+    robot.set_root_pose(sapien.Pose([0, 0, 1], [1, 0, 0, 0]))
 
     # Set initial joint positions
     # arm_init_qpos = [4.71, 2.84, 0, 0.75, 4.62, 4.48, 4.88]

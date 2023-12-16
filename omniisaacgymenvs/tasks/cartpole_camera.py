@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 import torch
 

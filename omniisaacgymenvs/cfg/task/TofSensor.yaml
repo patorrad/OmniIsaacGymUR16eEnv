@@ -10,7 +10,7 @@ env:
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 6
-  num_observations: 18 #18
+  num_observations: 10 #18
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -81,7 +81,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -110,6 +110,6 @@ sim:
     rule-base: False
 
 Training:
-  use_oracle: True
+  use_oracle: False
 
 Curobo: False

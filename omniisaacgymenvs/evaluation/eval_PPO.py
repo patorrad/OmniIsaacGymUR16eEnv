@@ -70,7 +70,9 @@ def parse_hydra_configs(cfg: DictConfig):
 
     task = initialize_task(cfg_dict, env)
 
-    policy = PPO.load("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/outputs/2023-12-12/22-20-49/results/1212/TofSensor2/model/model_200", env, "cuda")
+    policy = PPO.load(
+        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2023-12-16/04-49-40/results/1216/TofSensor2/model/model_330",
+        env, "cuda")
 
     while env._simulation_app.is_running():
         reward_sum = 0
@@ -86,7 +88,6 @@ def parse_hydra_configs(cfg: DictConfig):
             env._num_envs / torch.pi * 180)
 
         for i in range(198):
-           
 
             action = policy.predict(observation=obs, deterministic=True)[0]
 
@@ -103,8 +104,9 @@ def parse_hydra_configs(cfg: DictConfig):
         print(
             "angle deviation:",
             abs(env._task.angle_dev).sum().cpu().detach().item() /
-            env._num_envs/ torch.pi * 180,env._task.raytrace_dist,env._task.raytrace_dev)
+            env._num_envs / torch.pi * 180)
     env._simulation_app.close()
+
 
 if __name__ == '__main__':
 
