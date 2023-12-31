@@ -206,6 +206,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                         device=self.device))
 
             new_obs, rewards, dones, truncated, infos = env.step(clipped_actions)
+            
            
 
             self.num_timesteps += env.num_envs

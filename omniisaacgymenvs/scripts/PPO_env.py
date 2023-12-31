@@ -95,7 +95,7 @@ def parse_hydra_configs(cfg: DictConfig):
         "key": "tactile_image",
         "features_extractor_class": NatureCNN,  #NatureCNN,
         "state_key": "state",
-        "cnn_output_dim": 256
+        "cnn_output_dim":64
     }
     policy_kwargs = {
         "features_extractor_class": feature_extractor_class,
@@ -116,10 +116,10 @@ def parse_hydra_configs(cfg: DictConfig):
     
     }
     
-    # wandb_run = setup_wandb(config,
-    #                         exp_name,
-    #                         tags=["PPO", "Tof"],
-    #                         project="TofSensor")
+    wandb_run = setup_wandb(config,
+                            exp_name,
+                            tags=["PPO", "Tof"],
+                            project="TofSensor")
 
 
     
@@ -136,7 +136,12 @@ def parse_hydra_configs(cfg: DictConfig):
         verbose=1
         )
     
-    model.learn(total_timesteps=env_iter)
+    model.learn(total_timesteps=env_iter,
+                callback=WandbCallback(model_save_freq=10,
+                model_save_path=str(result_path / "model"),
+                eval_freq=10,
+                eval_env_fn=None
+                ))
    
 
     env.close()

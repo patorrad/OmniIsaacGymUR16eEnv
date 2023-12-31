@@ -881,6 +881,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.advantages = torch.zeros((self.buffer_size, self.n_envs),
                                       dtype=torch.float32,
             device=self.device)
+        self.generator_ready=False
         super(RolloutBuffer, self).reset()
 
     def add(  # type: ignore[override]
@@ -913,6 +914,7 @@ class DictRolloutBuffer(RolloutBuffer):
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs, ) + self.obs_shape[key])
             self.observations[key][self.pos] = obs_
+       
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
@@ -931,6 +933,7 @@ class DictRolloutBuffer(RolloutBuffer):
         batch_size: Optional[int] = None,
     ) -> Generator[DictRolloutBufferSamples, None, None]:
         assert self.full, ""
+        
         indices = np.random.permutation(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
@@ -960,6 +963,8 @@ class DictRolloutBuffer(RolloutBuffer):
         batch_inds: np.ndarray,
         env: Optional[VecNormalize] = None,
     ) -> DictRolloutBufferSamples:
+        
+        
         return DictRolloutBufferSamples(
             observations={
                 key: self.to_torch(obs[batch_inds])
