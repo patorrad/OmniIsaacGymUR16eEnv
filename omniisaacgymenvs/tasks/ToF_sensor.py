@@ -132,6 +132,7 @@ class TofSensorTask(RLTask):
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._num_observations = self._task_cfg["env"]["num_observations"]
         self._num_actions = self._task_cfg["env"]["num_actions"]
+        
 
         RLTask.__init__(self, name, env)
 
@@ -416,6 +417,8 @@ class TofSensorTask(RLTask):
         self.init_data()
         if self._task_cfg["Curobo"]:
             self.curo_ik_solver = self.init_curobo()
+        
+        
 
         return
 
@@ -782,6 +785,14 @@ class TofSensorTask(RLTask):
 
         joint_angle = self._robots.get_joint_positions()
 
+       
+
+        if isinstance(self._num_observations,dict):
+            self.obs_buf = {}
+            self.obs_buf["state"] = joint_angle
+            self.obs_buf["image"] = self.raycast_reading*255
+            return self.obs_buf
+
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles_x[:, None], self.target_angle[:, None],
@@ -889,6 +900,8 @@ class TofSensorTask(RLTask):
         debug_start_point_colors = []
         debug_circle = []
 
+        self.raycast_reading = torch.zeros((self._num_envs,2,8,8)).to(self.device)
+
         # ray average distance
         self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
         # ray tracing reading
@@ -924,6 +937,8 @@ class TofSensorTask(RLTask):
                 circle[env][i], gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
+
+            self.raycast_reading[env][i] = ray_t.reshape(8,8)
 
             if len(torch.where(ray_t > 0)[0]) > 0:
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
@@ -997,6 +1012,8 @@ class TofSensorTask(RLTask):
                     debug_start_point_colors.append(start_point_colors)
 
                     debug_circle.append([circle[env][i].cpu().numpy()])
+
+       
 
         if self._cfg["debug"]:
 

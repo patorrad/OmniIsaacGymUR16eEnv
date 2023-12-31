@@ -80,10 +80,28 @@ def parse_hydra_configs(cfg: DictConfig):
     result_path.mkdir(exist_ok=True, parents=True)
 
 
-    policy = "MlpPolicy"
+    # policy = "MlpPolicy"
+    # policy_kwargs = {
+    #         'activation_fn': nn.ReLU,
+    #         "log_std_init": np.log(training_config['std'])
+    #     }
+
+    from stable_baselines3.common.torch_layers import CombinedExtractor,NatureCNN
+    policy = "MultiInputPolicy"
+
+    feature_extractor_class = CombinedExtractor
+
+    feature_extractor_kwargs = {
+        "key": "tactile_image",
+        "features_extractor_class": NatureCNN,  #NatureCNN,
+        "state_key": "state",
+        "cnn_output_dim": 256
+    }
     policy_kwargs = {
-            'activation_fn': nn.ReLU,
-            "log_std_init": np.log(training_config['std'])
+        "features_extractor_class": feature_extractor_class,
+        "features_extractor_kwargs": feature_extractor_kwargs,
+        "net_arch": [dict(pi=[64, 64], vf=[64, 64])],
+        "activation_fn": nn.ReLU,
         }
     
     # init wandb
@@ -98,10 +116,10 @@ def parse_hydra_configs(cfg: DictConfig):
     
     }
     
-    wandb_run = setup_wandb(config,
-                            exp_name,
-                            tags=["PPO", "Tof"],
-                            project="TofSensor")
+    # wandb_run = setup_wandb(config,
+    #                         exp_name,
+    #                         tags=["PPO", "Tof"],
+    #                         project="TofSensor")
 
 
     
@@ -118,12 +136,7 @@ def parse_hydra_configs(cfg: DictConfig):
         verbose=1
         )
     
-    model.learn(total_timesteps=env_iter,
-                callback=WandbCallback(model_save_freq=10,
-                model_save_path=str(result_path / "model"),
-                eval_freq=10,
-                eval_env_fn=None
-                ))
+    model.learn(total_timesteps=env_iter)
    
 
     env.close()

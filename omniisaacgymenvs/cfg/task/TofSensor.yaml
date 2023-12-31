@@ -5,12 +5,12 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: 1 #${resolve_default:30,${...num_envs}}
+  numEnvs: 60 #${resolve_default:30,${...num_envs}}
   envSpacing: 4.0
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 6
-  num_observations: 10 #18
+  num_observations: {"state":6,"image":[2,8,8]} #18
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -81,7 +81,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "/home/wuyou/桌面/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -113,3 +113,4 @@ Training:
   use_oracle: False
 
 Curobo: False
+

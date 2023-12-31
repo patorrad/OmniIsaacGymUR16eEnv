@@ -87,11 +87,11 @@ class NatureCNN(BaseFeaturesExtractor):
         )
         n_input_channels = observation_space.shape[0]
         self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0),
+            nn.Conv2d(n_input_channels, 32, kernel_size=2, stride=1, padding=0),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
+            nn.Conv2d(32, 64, kernel_size=2, stride=1, padding=0),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.Conv2d(64, 64, kernel_size=2, stride=1, padding=0),
             nn.ReLU(),
             nn.Flatten(),
         )
@@ -103,6 +103,8 @@ class NatureCNN(BaseFeaturesExtractor):
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
+       
+    
         return self.linear(self.cnn(observations))
 
 
@@ -230,52 +232,96 @@ class MlpExtractor(nn.Module):
 
 class CombinedExtractor(BaseFeaturesExtractor):
     """
-    Combined features extractor for Dict observation spaces.
-    Builds a features extractor for each key of the space. Input from each space
+    Combined feature extractor for Dict observation spaces.
+    Builds a feature extractor for each key of the space. Input from each space
     is fed through a separate submodule (CNN or MLP, depending on input shape),
     the output features are concatenated and fed through additional MLP network ("combined").
-
     :param observation_space:
     :param cnn_output_dim: Number of features to output from each CNN submodule(s). Defaults to
         256 to avoid exploding network sizes.
-    :param normalized_image: Whether to assume that the image is already normalized
-        or not (this disables dtype and bounds checks): when True, it only checks that
-        the space is a Box and has 3 dimensions.
-        Otherwise, it checks that it has expected dtype (uint8) and bounds (values in [0, 255]).
     """
 
-    def __init__(
-        self,
-        observation_space: spaces.Dict,
-        cnn_output_dim: int = 256,
-        normalized_image: bool = False,
-    ) -> None:
+    def __init__(self,
+                 observation_space: gym.spaces.Dict,
+                 key: str,
+                 features_extractor_class: Type[
+                     BaseFeaturesExtractor] = FlattenExtractor,
+                 cnn_output_dim: int = 256,
+                 state_key="state",
+                 state_mlp_size=(64, 64),
+                 state_mlp_activation_fn=nn.ReLU,
+                 augmentation=False,
+                 ):
         # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
         super().__init__(observation_space, features_dim=1)
 
-        extractors: Dict[str, nn.Module] = {}
+        extractors = {}
 
         total_concat_size = 0
+        self.augmentation = augmentation
+
         for key, subspace in observation_space.spaces.items():
-            if is_image_space(subspace, normalized_image=normalized_image):
-                extractors[key] = NatureCNN(subspace, features_dim=cnn_output_dim, normalized_image=normalized_image)
+
+            if is_image_space(subspace):
+
+                extractors[key] = features_extractor_class(
+                    subspace, features_dim=cnn_output_dim)
                 total_concat_size += cnn_output_dim
-            else:
-                # The observation key is a vector, flatten it if needed
-                extractors[key] = nn.Flatten()
-                total_concat_size += get_flattened_obs_dim(subspace)
+
+            elif key == state_key:
+
+                # # The observation key is a vector, flatten it if needed
+                # extractors[key] = nn.Flatten()
+                # total_concat_size += get_flattened_obs_dim(subspace)
+
+                self.state_space = observation_space[key]
+                self.state_dim = self.state_space.shape[0]
+
+                if len(state_mlp_size) == 0:
+                    raise RuntimeError(f"State mlp size is empty")
+                elif len(state_mlp_size) == 1:
+                    net_arch = []
+                else:
+                    net_arch = state_mlp_size[:-1]
+                output_dim = state_mlp_size[-1]
+
+                output_dim = state_mlp_size[-1]
+
+                total_concat_size += output_dim
+
+                self.state_mlp = nn.Sequential(
+                    *create_mlp(self.state_dim, output_dim, net_arch,
+                                state_mlp_activation_fn))
+
+                extractors[key] = self.state_mlp
 
         self.extractors = nn.ModuleDict(extractors)
 
         # Update the features dim manually
         self._features_dim = total_concat_size
 
+       
+
     def forward(self, observations: TensorDict) -> th.Tensor:
         encoded_tensor_list = []
 
         for key, extractor in self.extractors.items():
-            encoded_tensor_list.append(extractor(observations[key]))
+            if key == "image":
+
+                if self.augmentation:
+                    encoded_tensor_list.append(
+                        extractor(self.aug(observations[key])))
+
+                else:
+                    encoded_tensor_list.append(extractor(
+                        observations[key]))
+            else:
+
+                encoded_tensor_list.append(
+                    extractor(observations[key][:, :self.state_dim]))
+
         return th.cat(encoded_tensor_list, dim=1)
+
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:

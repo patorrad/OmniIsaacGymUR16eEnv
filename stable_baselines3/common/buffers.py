@@ -857,25 +857,30 @@ class DictRolloutBuffer(RolloutBuffer):
 
     def reset(self) -> None:
         self.observations = {}
+        import torch
         for key, obs_input_shape in self.obs_shape.items():
-            self.observations[key] = np.zeros(
+            self.observations[key] = torch.zeros(
                 (self.buffer_size, self.n_envs, *obs_input_shape),
-                dtype=np.float32)
-        self.actions = np.zeros(
-            (self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self.rewards = np.zeros((self.buffer_size, self.n_envs),
-                                dtype=np.float32)
-        self.returns = np.zeros((self.buffer_size, self.n_envs),
-                                dtype=np.float32)
-        self.episode_starts = np.zeros((self.buffer_size, self.n_envs),
-                                       dtype=np.float32)
-        self.values = np.zeros((self.buffer_size, self.n_envs),
-                               dtype=np.float32)
-        self.log_probs = np.zeros((self.buffer_size, self.n_envs),
-                                  dtype=np.float32)
-        self.advantages = np.zeros((self.buffer_size, self.n_envs),
-                                   dtype=np.float32)
-        self.generator_ready = False
+                dtype=torch.float32)
+        self.actions = torch.zeros(
+            (self.buffer_size, self.n_envs, self.action_dim), dtype=torch.float32,
+            device=self.device)
+        self.rewards = torch.zeros((self.buffer_size, self.n_envs),
+                                   dtype=torch.float32,
+            device=self.device)
+        self.returns = torch.zeros((self.buffer_size, self.n_envs),
+                                   dtype=torch.float32,
+            device=self.device)
+        self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.values = torch.zeros((self.buffer_size, self.n_envs),
+                                  dtype=torch.float32,
+            device=self.device)
+        self.log_probs = torch.zeros((self.buffer_size, self.n_envs),
+                                     dtype=torch.float32,
+            device=self.device)
+        self.advantages = torch.zeros((self.buffer_size, self.n_envs),
+                                      dtype=torch.float32,
+            device=self.device)
         super(RolloutBuffer, self).reset()
 
     def add(  # type: ignore[override]
@@ -902,7 +907,7 @@ class DictRolloutBuffer(RolloutBuffer):
             log_prob = log_prob.reshape(-1, 1)
 
         for key in self.observations.keys():
-            obs_ = np.array(obs[key])
+            obs_ = obs[key]
             # Reshape needed when using multiple envs with discrete observations
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
@@ -912,11 +917,11 @@ class DictRolloutBuffer(RolloutBuffer):
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos] = np.array(action)
-        self.rewards[self.pos] = np.array(reward)
-        self.episode_starts[self.pos] = np.array(episode_start)
-        self.values[self.pos] = value.clone().cpu().numpy().flatten()
-        self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        self.actions[self.pos] = action
+        self.rewards[self.pos] = reward
+        self.episode_starts[self.pos] = episode_start
+        self.values[self.pos] = value.clone().reshape(-1)
+        self.log_probs[self.pos] = log_prob.clone()
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True

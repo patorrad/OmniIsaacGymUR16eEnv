@@ -207,9 +207,6 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
             new_obs, rewards, dones, truncated, infos = env.step(clipped_actions)
            
-            
-            
-    
 
             self.num_timesteps += env.num_envs
 
@@ -231,8 +228,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 if done:
                     # if (infos[idx].get("terminal_observation") is not None
                     #         and infos[idx].get("TimeLimit.truncated", False)):
-                
-                        terminal_obs = new_obs[idx][None,:]
+
+                        if isinstance(new_obs,dict):
+                            terminal_obs = {}
+                            for key in new_obs.keys():
+                                terminal_obs[key] = new_obs[key][idx][None,:]
+                        else:
+                            terminal_obs = new_obs[idx][None,:]
                         # terminal_obs = infos[idx]["terminal_observation"][None,:]
                         with th.no_grad():
                             terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
@@ -245,11 +247,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             
             self.last_rollout_reward += rewards.sum()
             
-            
-            
         
-        
-
             rollout_buffer.add(
                 self._last_obs,  # type: ignore[arg-type]
                 actions,

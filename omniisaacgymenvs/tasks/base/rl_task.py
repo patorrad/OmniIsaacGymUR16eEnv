@@ -117,10 +117,22 @@ class RLTask(RLTaskInterface):
                 np.ones(self.num_actions, dtype=np.float32) * -1.0, np.ones(self.num_actions, dtype=np.float32) * 1.0
             )
         if not hasattr(self, "observation_space"):
-            self.observation_space = spaces.Box(
-                np.ones(self.num_observations, dtype=np.float32) * -np.Inf,
-                np.ones(self.num_observations, dtype=np.float32) * np.Inf,
-            )
+           
+            if isinstance(self.num_observations,dict):
+                keys = self.num_observations.keys()
+                self.observation_space = {}
+                for key in keys:
+                    
+                    if key =="image":
+                        self.observation_space[key] = spaces.Box(low = 0,high=255,dtype=np.uint8,shape=self.num_observations[key])
+                    else:
+                        self.observation_space[key] = spaces.Box(np.ones(self.num_observations[key], dtype=np.float32) * -np.Inf, np.ones(self.num_observations[key], dtype=np.float32) * np.Inf,)
+                self.observation_space = spaces.Dict(self.observation_space)
+            else:
+                self.observation_space = spaces.Box(
+                    np.ones(self.num_observations, dtype=np.float32) * -np.Inf,
+                    np.ones(self.num_observations, dtype=np.float32) * np.Inf,
+                )
         if not hasattr(self, "state_space"):
             self.state_space = spaces.Box(
                 np.ones(self.num_states, dtype=np.float32) * -np.Inf,
@@ -133,7 +145,8 @@ class RLTask(RLTaskInterface):
         """Prepares torch buffers for RL data collection."""
 
         # prepare tensors
-        self.obs_buf = torch.zeros((self._num_envs, self.num_observations), device=self._device, dtype=torch.float)
+        # self.obs_buf = torch.zeros((self._num_envs, self.num_observations), device=self._device, dtype=torch.float)
+        self.obs_buf = {}
         self.states_buf = torch.zeros((self._num_envs, self.num_states), device=self._device, dtype=torch.float)
         self.rew_buf = torch.zeros(self._num_envs, device=self._device, dtype=torch.float)
         self.reset_buf = torch.ones(self._num_envs, device=self._device, dtype=torch.long)

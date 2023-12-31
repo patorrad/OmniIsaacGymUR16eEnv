@@ -69,6 +69,7 @@ def obs_space_info(obs_space: spaces.Space) -> Tuple[List[str], Dict[Any, Tuple[
     keys = []
     shapes = {}
     dtypes = {}
+
     for key, box in subspaces.items():
         keys.append(key)
         shapes[key] = box.shape
