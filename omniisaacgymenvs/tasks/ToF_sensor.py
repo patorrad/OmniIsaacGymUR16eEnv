@@ -804,7 +804,7 @@ class TofSensorTask(RLTask):
         elif self._cfg["raycast"]:
 
             self.obs_buf = torch.cat(
-                [self.raytrace_dist, self.raytrace_dev * 10, joint_angle],
+                [joint_angle,self.raycast_reading],
                 dim=1)
 
         return self.obs_buf
@@ -900,8 +900,8 @@ class TofSensorTask(RLTask):
         debug_start_point_colors = []
         debug_circle = []
 
-        self.raycast_reading = torch.zeros((self._num_envs,2,8,8)).to(self.device)
-
+        self.raycast_reading = torch.zeros((self._num_envs, self._cfg["raycast_width"] * self._cfg["raycast_height"]*self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
+        num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
         # ray average distance
         self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
         # ray tracing reading
@@ -938,7 +938,7 @@ class TofSensorTask(RLTask):
 
             ray_t = wp.torch.to_torch(ray_t)
 
-            self.raycast_reading[env][i] = ray_t.reshape(8,8)
+            self.raycast_reading[env][i*num_pixel:i*num_pixel+num_pixel] = ray_t
 
             if len(torch.where(ray_t > 0)[0]) > 0:
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])

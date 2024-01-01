@@ -57,7 +57,7 @@ def parse_hydra_configs(cfg: DictConfig):
     # init env
     cfg_dict = omegaconf_to_dict(cfg)
     print_dict(cfg_dict)
-   
+#    
     headless = cfg.headless
     render = not headless
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
@@ -80,29 +80,29 @@ def parse_hydra_configs(cfg: DictConfig):
     result_path.mkdir(exist_ok=True, parents=True)
 
 
-    # policy = "MlpPolicy"
-    # policy_kwargs = {
-    #         'activation_fn': nn.ReLU,
-    #         "log_std_init": np.log(training_config['std'])
-    #     }
-
-    from stable_baselines3.common.torch_layers import CombinedExtractor,NatureCNN
-    policy = "MultiInputPolicy"
-
-    feature_extractor_class = CombinedExtractor
-
-    feature_extractor_kwargs = {
-        "key": "tactile_image",
-        "features_extractor_class": NatureCNN,  #NatureCNN,
-        "state_key": "state",
-        "cnn_output_dim":64
-    }
+    policy = "MlpPolicy"
     policy_kwargs = {
-        "features_extractor_class": feature_extractor_class,
-        "features_extractor_kwargs": feature_extractor_kwargs,
-        "net_arch": [dict(pi=[64, 64], vf=[64, 64])],
-        "activation_fn": nn.ReLU,
+            'activation_fn': nn.ReLU,
+            "log_std_init": np.log(training_config['std'])
         }
+
+    # from stable_baselines3.common.torch_layers import CombinedExtractor,NatureCNN
+    # policy = "MultiInputPolicy"
+
+    # feature_extractor_class = CombinedExtractor
+
+    # feature_extractor_kwargs = {
+    #     "key": "tactile_image",
+    #     "features_extractor_class": NatureCNN,  #NatureCNN,
+    #     "state_key": "state",
+    #     "cnn_output_dim":64
+    # }
+    # policy_kwargs = {
+    #     "features_extractor_class": feature_extractor_class,
+    #     "features_extractor_kwargs": feature_extractor_kwargs,
+    #     "net_arch": [dict(pi=[64, 64], vf=[64, 64])],
+    #     "activation_fn": nn.ReLU,
+    #     }
     
     # init wandb
     horizon = 200
