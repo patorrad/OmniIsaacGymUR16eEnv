@@ -804,7 +804,7 @@ class TofSensorTask(RLTask):
         elif self._cfg["raycast"]:
 
             self.obs_buf = torch.cat(
-                [joint_angle,self.raycast_reading],
+                [joint_angle,self.raycast_reading*100],
                 dim=1)
 
         return self.obs_buf

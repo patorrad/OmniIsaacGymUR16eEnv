@@ -71,5 +71,5 @@ params:
     n_epochs: 10
     n_env_horizon: 100
     std: 1.0
-    iteraction: 200
+    iteraction: 500
     
