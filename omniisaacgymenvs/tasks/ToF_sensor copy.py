@@ -141,6 +141,10 @@ from curobo.util_file import (
 from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
+
+from omni.isaac.core.utils.extensions import enable_extension
+enable_extension("omni.importer.urdf")
+from omni.importer.urdf import _urdf
 # # End CuRobo
 
 class TofSensorTask(RLTask):
@@ -182,7 +186,7 @@ class TofSensorTask(RLTask):
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
         self._max_episode_length = 500
 
-        # self._end_effector_link = "ee_link"
+        self._end_effector_link = "ee_link"
         self.current_directory = os.getcwd()
 
         self._step = 0
@@ -343,7 +347,7 @@ class TofSensorTask(RLTask):
             UsdGeom.Xformable(
                 stage.GetPrimAtPath("/World/envs/env_0/robot/ee_link")),
             self._device)
-        # self._end_effector.get_world_poses()
+        self._end_effector.get_world_poses()
 
         hand_pose_inv_rot, hand_pose_inv_pos = (tf_inverse(
             hand_pose[3:7], hand_pose[0:3]))
@@ -378,8 +382,9 @@ class TofSensorTask(RLTask):
 
     def set_up_scene(self, scene) -> None:
 
-        self.load_robot()
-        # self.add_gripper()
+        robot_path = self.load_robot()
+        cprint.err(f'robot_path {robot_path}')
+        self.add_gripper()
 
         # self.load_sphere()
         # self.load_manipulated_object()
@@ -399,17 +404,17 @@ class TofSensorTask(RLTask):
         scene.add(self._robots)
 
         # end-effectors view
-        # self._end_effector = RigidPrimView(
-        #     prim_paths_expr="/World/envs/.*/robot/ee_link",
-        #     name="end_effector_view",
-        #     reset_xform_properties=False)
-        # scene.add(self._end_effector)
+        self._end_effector = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/robot/ee_link",
+            name="end_effector_view",
+            reset_xform_properties=False)
+        scene.add(self._end_effector)
 
-        # self.wrist_2_link = RigidPrimView(
-        #     prim_paths_expr="/World/envs/.*/robot/wrist_2_link",
-        #     name="wrist_2_link_view",
-        #     reset_xform_properties=False)
-        # scene.add(self.wrist_2_link)
+        self.wrist_2_link = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/robot/wrist_2_link",
+            name="wrist_2_link_view",
+            reset_xform_properties=False)
+        scene.add(self.wrist_2_link)
 
         # manipulated object
         self._manipulated_object = RigidPrimView(
@@ -418,7 +423,7 @@ class TofSensorTask(RLTask):
             reset_xform_properties=False)
         scene.add(self._manipulated_object)
 
-        # table
+        # # table
         # self._table = RigidPrimView(prim_paths_expr="/World/envs/.*/table",
         #                             name="table_view",
         #                             reset_xform_properties=False)
@@ -458,14 +463,46 @@ class TofSensorTask(RLTask):
     def load_robot(self):
 
         from omniisaacgymenvs.robots.articulations.ur10 import UR10
+        subroot = self.default_zero_env_path
+        robot_config = load_yaml(join_path(get_robot_configs_path(),
+                                        "ur16e.yml"))["robot_cfg"]
+        urdf_interface = _urdf.acquire_urdf_interface()
 
+        import_config = _urdf.ImportConfig()
+        import_config.merge_fixed_joints = False
+        import_config.convex_decomp = False
+        import_config.import_inertia_tensor = True
+        import_config.fix_base = True
+        import_config.make_default_prim = False
+        import_config.self_collision = False
+        import_config.create_physics_scene = True
+        import_config.import_inertia_tensor = False
+        import_config.default_drive_strength = 20000
+        import_config.default_position_drive_damping = 500
+        import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+        import_config.distance_scale = 1
+        import_config.density = 0.0
+        full_path = join_path(get_assets_path(), robot_config["kinematics"]["urdf_path"])
+        robot_path = self.default_zero_env_path + "/robot" #get_path_of_dir(full_path)
+        filename = get_filename(full_path)
+        imported_robot = urdf_interface.parse_urdf(robot_path, filename, import_config)
+        dest_path = subroot
+        robot_path = urdf_interface.import_robot(
+            robot_path,
+            filename,
+            imported_robot,
+            import_config,
+            dest_path,
+        )
         self.robot = UR10(
-            prim_path=self.default_zero_env_path + "/robot",
+            # prim_path=self.default_zero_env_path + "/robot",
+            prim_path=robot_path,
             name="robot",
             position=self._robot_positions,
-            orientation=self._robot_rotations,
+            # orientation=self._robot_rotations,
             attach_gripper=False,
-            usd_path=self._task_cfg['sim']["URRobot"]['robot_path'])
+            # usd_path=self._task_cfg['sim']["URRobot"]['robot_path'])
+        )
       
         self.robot.set_joint_positions(self._robot_dof_target)
         self.robot.set_joints_default_state(self._robot_dof_target)
@@ -473,6 +510,13 @@ class TofSensorTask(RLTask):
         self._sim_config.apply_articulation_settings(
             "robot", get_prim_at_path(self.robot.prim_path),
             self._sim_config.parse_actor_config("robot"))
+        
+        self.robot.set_solver_velocity_iteration_count(4)
+        self.robot.set_solver_position_iteration_count(44)
+
+        self._env._world._physics_context.set_solver_type("PGS")
+
+        return robot_path
 
     def load_sphere(self):
 
@@ -741,7 +785,7 @@ class TofSensorTask(RLTask):
 
     def get_observations(self) -> dict:
 
-        # _, current_orientation = self._end_effector.get_world_poses()
+        _, current_orientation = self._end_effector.get_world_poses()
 
         # current_euler_angles = quaternion_to_axis_angle(current_orientation)
         # quaternion = quaternion_multiply(
@@ -749,8 +793,8 @@ class TofSensorTask(RLTask):
         #     current_orientation)
         # self.current_euler_angles = quaternion_to_axis_angle(quaternion)
 
-        _wrist2_local_pos, _ = self._robots.get_local_poses()
-        _ee_local_pos, _ = self._robots.get_local_poses()
+        _wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
+        _ee_local_pos, _ = self._end_effector.get_local_poses()
 
         current_euler_angles_x = torch.atan2(
             _ee_local_pos[:, 1] - _wrist2_local_pos[:, 1],
@@ -763,7 +807,7 @@ class TofSensorTask(RLTask):
 
         self.angle_dev = (current_euler_angles_x -
                           torch.pi / 2) - self.target_angle
-        cur_position, _ = self._robots.get_local_poses()
+        cur_position, _ = self._end_effector.get_local_poses()
 
         cur_position[:, 0] = -cur_position[:, 0]
 
@@ -838,24 +882,24 @@ class TofSensorTask(RLTask):
 
         return delta_dof_pos, delta_pose
 
-    # def ik(self, jacobian_end_effector, delta_pose, damping_factor=0.05):
-    #     """
-    #         Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
-    #         """
+    def ik(self, jacobian_end_effector, delta_pose, damping_factor=0.05):
+        """
+            Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
+            """
 
-    #     # compute position and orientation error
-    #     delta_pose = delta_pose[:, :, None]
+        # compute position and orientation error
+        delta_pose = delta_pose[:, :, None]
 
-    #     # solve damped least squares (dO = J.T * V)
-    #     transpose = torch.transpose(jacobian_end_effector, 1, 2)
-    #     lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-    #                                                              **2)
-    #     return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
-    #                                       lmbda) @ delta_pose).squeeze(dim=2)
+        # solve damped least squares (dO = J.T * V)
+        transpose = torch.transpose(jacobian_end_effector, 1, 2)
+        lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
+                                                                 **2)
+        return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
+                                          lmbda) @ delta_pose).squeeze(dim=2)
 
     def raytrace_step(self) -> None:
 
-        gripper_pose, gripper_rot = self._robots.get_world_poses()
+        gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
         )
@@ -1085,7 +1129,7 @@ class TofSensorTask(RLTask):
         # target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
         #     self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
 
-        cur_pos, _ = self._robots.get_local_poses()
+        cur_pos, _ = self._end_effector.get_local_poses()
         cur_pos[:, 0] = -cur_pos[:, 0]
 
         delta_pose[:, 0] = self.target_position[:, 0] - cur_pos[:, 0]
@@ -1108,68 +1152,65 @@ class TofSensorTask(RLTask):
         for i in range(1):
             self._env._world.step(render=False)
 
-        # dof_limits = self._robots.get_dof_limits()
-        # self.robot_dof_lower_limits = dof_limits[0, :,
-        #                                          0].to(device=self._device)
-        # self.robot_dof_upper_limits = dof_limits[0, :,
-        #                                          1].to(device=self._device)
+        dof_limits = self._robots.get_dof_limits()
+        self.robot_dof_lower_limits = dof_limits[0, :,
+                                                 0].to(device=self._device)
+        self.robot_dof_upper_limits = dof_limits[0, :,
+                                                 1].to(device=self._device)
 
         self._step += 1
         if not self._env._world.is_playing():
             return
 
-        # if not self._task_cfg["sim"]["Control"]["rule-base"]:
+        if not self._task_cfg["sim"]["Control"]["rule-base"]:
 
-        #     actions = actions.to(self._device)
-        #     delta_dof_pos, delta_pose = self.recover_action(
-        #         actions, self.velocity_limit)
-        # else:
-        #     delta_dof_pos, delta_pose = self.recover_rule_based_action()
+            actions = actions.to(self._device)
+            delta_dof_pos, delta_pose = self.recover_action(
+                actions, self.velocity_limit)
+        else:
+            delta_dof_pos, delta_pose = self.recover_rule_based_action()
 
-        # # current dof and current joint velocity
-        # current_dof = self._robots.get_joint_positions()
-        # targets_dof = current_dof + delta_dof_pos[:, :6]
-        # # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
-        # #                           self.robot_dof_upper_limits)
+        # current dof and current joint velocity
+        current_dof = self._robots.get_joint_positions()
+        targets_dof = current_dof + delta_dof_pos[:, :6]
+        # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
+        #                           self.robot_dof_upper_limits)
 
-        # # targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2,
-        # #                                  torch.pi / 2)
+        # targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2,
+        #                                  torch.pi / 2)
 
-        # targets_dof[:, -1] = 0
+        targets_dof[:, -1] = 0
 
         ## <curobo
-        robot_prim_path = "/World/env/.*/robot"
+        robot_prim_path = "/World/envs/envs_0/robot"
         if not self._env._world.is_playing():
             if i % 100 == 0:
                 print("**** Click Play to start simulation *****")
             i += 1
 
         else:
-            # if self._step == 50: # or self._step % 1000 == 0.0:
-            #     print("Updating world, reading w.r.t.") #, robot_prim_path)
-            #     obstacles = self.usd_help.get_obstacles_from_stage(
-            #         # only_paths=[obstacles_path],
-            #         reference_prim_path=robot_prim_path,
-            #         ignore_substring=[
-            #             # "/World/envs/.*/robot",
-            #             # "/World/envs/.*/manipulated_object_1",
-            #             # "/World/envs/.*/robot/ee_link",
-            #             # "/World/envs/.*/robot/wrist_2_link",
-            #             # "/World/envs/.*/table",
-            #             # "/World/defaultGroundPlane",
-            #             # "/curobo",
-            #         ],
-            #     ).get_collision_check_world()
-            #     cprint.info(f'obstacles {obstacles}')
-            #     self.motion_gen.update_world(obstacles)
-            #     print("Updated World")
-            #     carb.log_info("Synced CuRobo world from stage.")
+            if self._step == 50 or self._step % 1000 == 0.0:
+                print("Updating world, reading w.r.t.") #, robot_prim_path)
+                obstacles = self.usd_help.get_obstacles_from_stage(
+                    # only_paths=[obstacles_path],
+                    reference_prim_path=robot_prim_path,
+                    ignore_substring=[
+                        "/World/envs/envs_0/robot",
+                        "/World/envs/env_0/manipulated_object_1",
+                        # "/World/envs/env_0/table",
+                        "/World/defaultGroundPlane",
+                        "/curobo",
+                    ],
+                ).get_collision_check_world()
+
+                # self.motion_gen.update_world(obstacles)
+                print("Updated World")
+                carb.log_info("Synced CuRobo world from stage.")
             
             # position and orientation of target virtual cube:
             # target_position, target_rotation = self._manipulated_object.get_world_poses()
             target_position, target_rotation = self.visual_target[0].get_world_pose()
-            # cprint.err(f'cube_position and rotation {target_position} {target_rotation}')
-            #[0.34624776, 0., 0.27603734] [6.123234e-17, 1.000000e+00, 0.000000e+00, 0.000000e+00]
+
             if self.past_pose is None:
                 self.past_pose = target_position
             if self.target_pose is None:
@@ -1177,7 +1218,6 @@ class TofSensorTask(RLTask):
             
             sim_js = self._robots.get_joints_state()
             sim_js_names = self._robots.dof_names
-            sim_js.positions[0][0] = 3.725e-10
             cu_js = JointState(
                 position=self.tensor_args.to_device(sim_js.positions),
                 velocity=self.tensor_args.to_device(sim_js.velocities) * 0.0,
@@ -1221,8 +1261,7 @@ class TofSensorTask(RLTask):
                     position=self.tensor_args.to_device(ee_translation_goal),
                     quaternion=self.tensor_args.to_device(ee_orientation_teleop_goal),
                 )
-                cprint.info(f'ik_goal {ik_goal}')
-
+                cprint.info("ik_goal", ik_goal.position)
                 result = self.motion_gen.plan_single(cu_js.unsqueeze(0), ik_goal, self.plan_config)
                 # ik_result = ik_solver.solve_single(ik_goal, cu_js.position.view(1,-1), cu_js.position.view(1,1,-1))
 
@@ -1235,7 +1274,7 @@ class TofSensorTask(RLTask):
                     common_js_names = []
                     for x in sim_js_names:
                         if x in self.cmd_plan.joint_names:
-                            idx_list.append(self._robots.get_dof_index(x))
+                            idx_list.append(self._robot.get_dof_index(x))
                             common_js_names.append(x)
                     # idx_list = [robot.get_dof_index(x) for x in sim_js_names]
 
@@ -1367,9 +1406,9 @@ class TofSensorTask(RLTask):
         self.robot.initialize()
         self.robot.disable_gravity()
 
-        # for i in range(self.num_envs):
-        #     self.grippers[i].initialize(
-        #         articulation_num_dofs=self._robots.num_dof)
+        for i in range(self.num_envs):
+            self.grippers[i].initialize(
+                articulation_num_dofs=self._robots.num_dof)
         self.reset()
 
     def calculate_angledev_reward(self) -> None:
@@ -1494,18 +1533,18 @@ class TofSensorTask(RLTask):
         # self.init_robot_joints[random_values], dtype=torch.float)
 
         self._robots.set_joint_positions(
-            torch.tensor([0.0, -2.2, 1.9, -1.383, -1.57, 0.00], #[0, -1.57, 1.57 / 2 * 2, -1.57 * 2, 0, 0],
+            torch.tensor([0, -1.57, 1.57 / 2 * 2, -1.57 * 2, 0, 0],
                          dtype=torch.float).repeat(self.num_envs,
                                                    1).clone().detach())
 
         for i in range(1):
             self._env._world.step(render=False)
-        self.init_ee_link_position, self.init_ee_link_orientation = self._robots.get_world_poses(
+        self.init_ee_link_position, self.init_ee_link_orientation = self._end_effector.get_world_poses(
         )
 
         # init object location
         # random orientation
-        target_obj_position, _ = self._robots.get_world_poses()  # wxyz
+        target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2 + 0.2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
         self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5
@@ -1528,7 +1567,7 @@ class TofSensorTask(RLTask):
         for i in range(10):
             self._env._world.step(render=False)
 
-        self.init_ee_local_pos, _ = self._robots.get_local_poses()
+        self.init_ee_local_pos, _ = self._end_effector.get_local_poses()
 
         top_ee_local_pose = self.init_ee_local_pos.clone()
         top_ee_local_pose[:, 1] += 0.16

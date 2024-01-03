@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: ''
+num_envs: 2 #''
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -41,7 +41,7 @@ checkpoint: ''
 evaluation: False
 
 # disables rendering
-headless: True
+headless: False
 # enables native livestream
 enable_livestream: False
 # timeout for MT script
@@ -62,7 +62,7 @@ warp: False
 # set default task and default training config based on task
 defaults:
   - _self_
-  - task: Cartpole
+  - task: Cartpole #TofSensor
   - train: ${task}PPO
   - override hydra/job_logging: disabled
 

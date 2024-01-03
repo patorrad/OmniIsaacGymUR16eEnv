@@ -77,8 +77,9 @@ sim:
     contact_offset: 0.02
     rest_offset: 0.001
 
-  ur10:
+  URRobot:
     # -1 to use default values
+    robot_path: "omniverse://localhost/NVIDIA/Assets/Isaac/2023.1.1/Isaac/Robots/UniversalRobots/ur16e/ur16e.usd" #"/home/heisenberg/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd" #"../../../omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -91,4 +92,18 @@ sim:
     # per-body
     density: -1
     max_depenetration_velocity: 1000.0
+    position: [0, 0.0, 0] #2.02]
+    quaternion: [1,0,0,0] #[0, 0, 1, 0]
+    dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
+    num_sensors: 2
+    sensor_radius: 0.045
+  Object:
+    category: "cube"
+    scale: [0.1, 0.1, 0.3]
+  Table:
+    position: [0.4, -0.1, 0.3]
+    quaternion: [1.0, 0.0, 0.0, 0.0]
+    scale: [0.1, 0.1, 1.5]
+  Control:
+    rule-base: False
     
