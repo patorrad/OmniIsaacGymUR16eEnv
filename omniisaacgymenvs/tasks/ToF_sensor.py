@@ -132,7 +132,6 @@ class TofSensorTask(RLTask):
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._num_observations = self._task_cfg["env"]["num_observations"]
         self._num_actions = self._task_cfg["env"]["num_actions"]
-        
 
         RLTask.__init__(self, name, env)
 
@@ -417,8 +416,6 @@ class TofSensorTask(RLTask):
         self.init_data()
         if self._task_cfg["Curobo"]:
             self.curo_ik_solver = self.init_curobo()
-        
-        
 
         return
 
@@ -785,12 +782,10 @@ class TofSensorTask(RLTask):
 
         joint_angle = self._robots.get_joint_positions()
 
-       
-
-        if isinstance(self._num_observations,dict):
+        if isinstance(self._num_observations, dict):
             self.obs_buf = {}
             self.obs_buf["state"] = joint_angle
-            self.obs_buf["image"] = self.raycast_reading*255
+            self.obs_buf["image"] = self.raycast_reading * 255
             return self.obs_buf
 
         if self._task_cfg['Training']["use_oracle"]:
@@ -803,10 +798,9 @@ class TofSensorTask(RLTask):
 
         elif self._cfg["raycast"]:
 
-            self.obs_buf = torch.cat(
-                [joint_angle,self.raycast_reading*100],
-                dim=1)
-
+            self.obs_buf = torch.cat([joint_angle, self.raycast_reading],
+                                     dim=1)
+        
         return self.obs_buf
 
     def update_cache_state(self):
@@ -900,7 +894,12 @@ class TofSensorTask(RLTask):
         debug_start_point_colors = []
         debug_circle = []
 
-        self.raycast_reading = torch.zeros((self._num_envs, self._cfg["raycast_width"] * self._cfg["raycast_height"]*self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
+        self.raycast_reading = torch.zeros(
+            (self._num_envs,
+             self._cfg["raycast_width"] * self._cfg["raycast_height"] *
+             self._task_cfg['sim']["URRobot"]['num_sensors'])).to(
+                 self.device) - 1
+
         num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
         # ray average distance
         self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
@@ -938,19 +937,32 @@ class TofSensorTask(RLTask):
 
             ray_t = wp.torch.to_torch(ray_t)
 
-            self.raycast_reading[env][i*num_pixel:i*num_pixel+num_pixel] = ray_t
-
             if len(torch.where(ray_t > 0)[0]) > 0:
+
+                # normalize tof reading
+                reading = ray_t[torch.where(ray_t > 0)]
+
+                noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
+                                            device=self.rl_device) / 1000 * 10
+                reading += noise_distance
+                reading = (reading - torch.min(reading)) / (
+                    torch.max(reading) - torch.min(reading)+1e-5)
+               
+                self.raycast_reading[env][i * num_pixel + torch.where(ray_t > 0)[0]] = reading
+
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
                 cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
             else:
+                reading = ray_t
                 average_distance = -0.01
                 cover_percentage = 0
+
             self.raytrace_dist[env][i] = average_distance
             self.raytrace_cover_range[env][i] = cover_percentage
             self.raytrace_reading[env, :, i] = ray_t
 
             # replace the zero value
+
             ray_t_copy = ray_t.clone()
             if len(torch.where(ray_t <= 0)[0]) > 0:
                 index = torch.where(ray_t <= 0)[0]
@@ -960,12 +972,8 @@ class TofSensorTask(RLTask):
                 self.raytrace_dev[env][i] = 10
             else:
                 self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
-
-            # standard_deviation = math.sqrt(
-            #     max(average_distance * 100 * 0.4795 - 3.2018, 0))
-            # noise_distance = np.random.normal(average_distance * 1000,
-            #                                     standard_deviation)
-
+            
+           
             if self._cfg["debug"]:
                 self.debug_draw.clear_lines()
                 self.debug_draw.clear_points()
@@ -1012,8 +1020,6 @@ class TofSensorTask(RLTask):
                     debug_start_point_colors.append(start_point_colors)
 
                     debug_circle.append([circle[env][i].cpu().numpy()])
-
-       
 
         if self._cfg["debug"]:
 
