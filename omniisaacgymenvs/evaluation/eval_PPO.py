@@ -71,17 +71,17 @@ def parse_hydra_configs(cfg: DictConfig):
     task = initialize_task(cfg_dict, env)
 
     policy = PPO.load(
-        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-09/22-08-29/results/19/TofSensor2/model/model_90",
+        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-09/23-20-33/results/19/TofSensor2/model/model_90",
         env, "cuda")
 
     while env._simulation_app.is_running():
         reward_sum = 0
         obs = env.reset()
         print('===============')
-        print(
-            "init dist deviation:",
-            abs(env._task.dist_dev).sum().cpu().detach().item() /
-            env._num_envs)
+        # print(
+        #     "init dist deviation:",
+        #     abs(env._task.dist_dev).sum().cpu().detach().item() /
+        #     env._num_envs)
         print(
             "init angle deviation:",
             abs(env._task.angle_dev).sum().cpu().detach().item() /
@@ -96,10 +96,10 @@ def parse_hydra_configs(cfg: DictConfig):
             # print((env._task.angle_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
 
         print("reward:", reward_sum)
-        print(
-            "dist deviation:",
-            abs(env._task.dist_dev).sum().cpu().detach().item() /
-            env._num_envs)
+        # print(
+        #     "dist deviation:",
+        #     abs(env._task.dist_dev).sum().cpu().detach().item() /
+        #     env._num_envs)
 
         print(
             "angle deviation:",
