@@ -13,6 +13,7 @@ from cprint import *
 import time
 
 import cv2
+import torch
 # DEVICE = 'cpu'
 DEVICE = 'cuda:0'
 wp.init()
@@ -48,7 +49,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
                              1.) * float(y) - float(EMITTER_DIAMETER) / 2.
     sz = EMITTER_DIAMETER / (float(width) -
                              1.) * float(z) - float(EMITTER_DIAMETER) / 2.
-    
+
     # compute view ray
     start = cam_pos
     # rd = wp.normalize(output)
@@ -67,7 +68,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
     # if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
     if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
-                            sign, normal, face):
+                         sign, normal, face):
         color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
 
         # # ignore this ray if it wouldn't reflect back to the receiver
@@ -287,6 +288,123 @@ def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
         faces=np.array(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3))
     baked_trimesh.apply_transform(transform)
     return baked_trimesh
+
+
+def circle_points(radius, centers, normals, num_points):
+    """
+    Generate points on a batch of circles in 3D space.
+
+    Args:
+    radius (float): The radius of the circles.
+    centers (torch.Tensor): a tensor of shape (batch_size, 3) representing the centers of the circles.
+    normals (torch.Tensor): a tensor of shape (batch_size, 3) representing the normals to the planes of the circles.
+    num_points (int): The number of points to generate on each circle.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, num_points, 3) representing the points on the circles.
+    """
+    batch_size = centers.shape[0]
+
+    # Normalize the normal vectors
+    normals = normals / torch.norm(normals, dim=-1, keepdim=True)
+
+    # Generate random vectors not in the same direction as the normals
+    not_normals = torch.rand(batch_size, 3, device='cuda:0')
+    while (normals * not_normals).sum(
+            dim=-1).max() > 0.99:  # Ensure they're not too similar
+        not_normals = torch.rand(batch_size, 3, device='cuda:0')
+
+    # Compute the basis of the planes
+    basis1 = torch.cross(normals, not_normals)
+    basis1 /= torch.norm(basis1, dim=-1, keepdim=True)
+    basis2 = torch.cross(normals, basis1)
+    basis2 /= torch.norm(basis2, dim=-1, keepdim=True)
+
+    # Generate points on the circles
+    t = torch.arange(0,
+                     2 * torch.pi,
+                     step=2 * torch.pi / num_points,
+                     device='cuda:0')
+    circles = centers[:, None, :] + radius * (
+        basis1[:, None, :] * torch.cos(t)[None, :, None] +
+        basis2[:, None, :] * torch.sin(t)[None, :, None])
+    return circles
+
+
+def quaternion_to_rotation_matrix(quaternion):
+    """
+    Convert a batch of quaternions to rotation matrices.
+
+    Args:
+    quaternion (torch.Tensor): a tensor of shape (batch_size, 4) representing the quaternions.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, 3, 3) representing the rotation matrices.
+    """
+    w, x, y, z = quaternion.unbind(dim=-1)
+
+    batch_size = quaternion.shape[0]
+
+    rotation_matrix = torch.empty((batch_size, 3, 3), device='cuda:0')
+
+    rotation_matrix[:, 0, 0] = 1 - 2 * y**2 - 2 * z**2
+    rotation_matrix[:, 0, 1] = 2 * x * y - 2 * z * w
+    rotation_matrix[:, 0, 2] = 2 * x * z + 2 * y * w
+    rotation_matrix[:, 1, 0] = 2 * x * y + 2 * z * w
+    rotation_matrix[:, 1, 1] = 1 - 2 * x**2 - 2 * z**2
+    rotation_matrix[:, 1, 2] = 2 * y * z - 2 * x * w
+    rotation_matrix[:, 2, 0] = 2 * x * z - 2 * y * w
+    rotation_matrix[:, 2, 1] = 2 * y * z + 2 * x * w
+    rotation_matrix[:, 2, 2] = 1 - 2 * x**2 - 2 * y**2
+
+    return rotation_matrix
+
+
+def find_plane_normal(num_env, quaternions):
+    """
+    Find the normal to a plane defined by a batch of points and rotations.
+
+    Args:
+    num_env: 
+    quaternions (torch.Tensor): a tensor of shape (batch_size, 4) representing the rotations.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, 3) representing the normals to the planes.
+    """
+    # Convert the quaternions to rotation matrices
+    rotation_matrices = quaternion_to_rotation_matrix(quaternions)
+    normals = torch.tensor([1.0, 0.0, 0.0],
+                           device='cuda:0').expand(num_env, -1)
+    normals = normals.view(num_env, 3, 1)
+    rotated_normals = torch.bmm(rotation_matrices, normals)
+    return rotated_normals.view(num_env, 3)
+
+
+def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
+                  debug_ray_hit_points_list, debug_ray_colors, debug_ray_sizes,
+                  debug_end_point_colors,debug_point_sizes,debug_start_point_colors,debug_circle):
+    debug_draw.clear_lines()
+    debug_draw.clear_points()
+
+    debug_sensor_ray_pos_list = np.concatenate(debug_sensor_ray_pos_list,
+                                               axis=0)
+    debug_ray_hit_points_list = np.concatenate(debug_ray_hit_points_list,
+                                               axis=0)
+    debug_ray_colors = np.concatenate(debug_ray_colors, axis=0)
+    debug_ray_sizes = np.concatenate(debug_ray_sizes, axis=0)
+    debug_end_point_colors = np.concatenate(debug_end_point_colors, axis=0)
+    debug_point_sizes = np.concatenate(debug_point_sizes, axis=0)
+    debug_start_point_colors = np.concatenate(debug_start_point_colors, axis=0)
+    debug_circle = np.concatenate(debug_circle, axis=0)
+
+    debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
+                          debug_ray_colors, debug_ray_sizes)
+    debug_draw.draw_points(debug_ray_hit_points_list, debug_end_point_colors,
+                           debug_point_sizes)
+    debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
+                           debug_point_sizes)
+    # Debug draw the gripper pose
+    debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
 
 if __name__ == "__main__":

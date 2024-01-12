@@ -67,7 +67,7 @@ from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.dynamic_control import _dynamic_control
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
 from pxr import Usd, UsdGeom
-from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh
+from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh, find_plane_normal, quaternion_to_rotation_matrix, circle_points, draw_raytrace
 import pdb
 
 import os
@@ -800,7 +800,7 @@ class TofSensorTask(RLTask):
 
             self.obs_buf = torch.cat([joint_angle, self.raycast_reading],
                                      dim=1)
-        
+
         return self.obs_buf
 
     def update_cache_state(self):
@@ -921,15 +921,6 @@ class TofSensorTask(RLTask):
                 torch.arange(self.num_envs).repeat_interleave(
                     self._task_cfg['sim']["URRobot"]['num_sensors'])):
 
-            # trimesh_1 = geom_to_trimesh(
-            #     UsdGeom.Cube(
-            #         get_prim_at_path(
-            #             self._manipulated_object.prim_paths[env])),
-            #     self.target_object_pose[env].cpu(),
-            #     transformations.euler_from_quaternion(
-            #         self.target_object_rot[env].cpu()))  #TODO Why to CPU?
-            # warp_mesh = warp_from_trimesh(trimesh_1, self._device)
-
             self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
                                     mesh_index=0)
             ray_t, ray_dir, normal = self.raytracer.render(
@@ -946,9 +937,10 @@ class TofSensorTask(RLTask):
                                             device=self.rl_device) / 1000 * 10
                 reading += noise_distance
                 reading = (reading - torch.min(reading)) / (
-                    torch.max(reading) - torch.min(reading)+1e-5)
-               
-                self.raycast_reading[env][i * num_pixel + torch.where(ray_t > 0)[0]] = reading
+                    torch.max(reading) - torch.min(reading) + 1e-5)
+
+                self.raycast_reading[env][i * num_pixel +
+                                          torch.where(ray_t > 0)[0]] = reading
 
                 average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
                 cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
@@ -972,11 +964,9 @@ class TofSensorTask(RLTask):
                 self.raytrace_dev[env][i] = 10
             else:
                 self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
-            
-           
+
             if self._cfg["debug"]:
-                self.debug_draw.clear_lines()
-                self.debug_draw.clear_points()
+
                 sensor_ray_pos_np = circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
@@ -988,10 +978,7 @@ class TofSensorTask(RLTask):
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
 
-                # print(
-                #     f'distance with noise sensor {i}: , {average_distance*100}',
-                #     np.max(ray_t) - np.min(ray_t))
-                # print(ray_t.reshape(8, 8)[3:5, :])
+            
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1025,62 +1012,11 @@ class TofSensorTask(RLTask):
 
             if len(debug_sensor_ray_pos_list) > 0:
 
-                debug_sensor_ray_pos_list = np.concatenate(
-                    debug_sensor_ray_pos_list, axis=0)
-                debug_ray_hit_points_list = np.concatenate(
-                    debug_ray_hit_points_list, axis=0)
-                debug_ray_colors = np.concatenate(debug_ray_colors, axis=0)
-                debug_ray_sizes = np.concatenate(debug_ray_sizes, axis=0)
-                debug_end_point_colors = np.concatenate(debug_end_point_colors,
-                                                        axis=0)
-                debug_point_sizes = np.concatenate(debug_point_sizes, axis=0)
-                debug_start_point_colors = np.concatenate(
-                    debug_start_point_colors, axis=0)
-                debug_circle = np.concatenate(debug_circle, axis=0)
-
-                self.debug_draw.draw_lines(debug_sensor_ray_pos_list,
-                                           debug_ray_hit_points_list,
-                                           debug_ray_colors, debug_ray_sizes)
-                self.debug_draw.draw_points(debug_ray_hit_points_list,
-                                            debug_end_point_colors,
-                                            debug_point_sizes)
-                self.debug_draw.draw_points(debug_sensor_ray_pos_list,
-                                            debug_start_point_colors,
-                                            debug_point_sizes)
-                # Debug draw the gripper pose
-                self.debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
-
-        # if self._cfg[
-        #         "debug_with_trimesh"]:  #TODO Update with sensor circle
-        #     ## Visualization for trimesh
-        #     # Create axis for visualization
-        #     axis_origins = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
-        #     axis_directions = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        #     # stack axis rays into line segments for visualization as Path3D
-        #     axis_visualize = trimesh.load_path(np.hstack(
-        #         (axis_origins,
-        #          axis_origins + axis_directions)).reshape(-1, 2, 3),
-        #                                        colors=np.array(
-        #                                            [[0, 0, 255, 255],
-        #                                             [0, 255, 0, 255],
-        #                                             [255, 0, 0, 255]]))
-        #     # stack rays into line segments for visualization as Path3D
-        #     ray_origins = np.repeat(np.expand_dims(gripper_pose.cpu()[0],
-        #                                            axis=0),
-        #                             repeats=256,
-        #                             axis=0)
-        #     ray_visualize = trimesh.load_path(
-        #         np.hstack(
-        #             (ray_origins,
-        #              ray_origins + ray_dir.numpy())).reshape(-1, 2, 3))
-        #     # trimesh_1.apply_transform(matrix)
-        #     self.j = self.j + 1
-        #     if self.j % 25 == 0:
-        #         scene = trimesh.Scene(
-        #             [trimesh_1, ray_visualize, axis_visualize])
-
-        #         # display the scene
-        #         scene.show()
+                draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
+                              debug_ray_hit_points_list, debug_ray_colors,
+                              debug_ray_sizes, debug_end_point_colors,
+                              debug_point_sizes, debug_start_point_colors,
+                              debug_circle)
 
     def get_target_pose(self):
 
@@ -1413,8 +1349,8 @@ class TofSensorTask(RLTask):
         # init position
         object_target_position = target_obj_position.clone()
         object_target_position[:, 1] += 0.3
-        # object_target_position[:, 0] += 0.1
-
+        random_x = torch.rand(self.num_envs).to(self.device) * 0.1
+        object_target_position[:, 0] -= random_x
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
 
@@ -1427,11 +1363,7 @@ class TofSensorTask(RLTask):
             self._env._world.step(render=False)
 
         self.init_ee_local_pos, _ = self._end_effector.get_local_poses()
-
-        top_ee_local_pose = self.init_ee_local_pos.clone()
-        top_ee_local_pose[:, 1] += 0.16
-        self._end_effector_points = torch.cat(
-            [self.init_ee_local_pos[None], top_ee_local_pose[None]], dim=1)
+        self.init_ee_local_pos[:, 0] += random_x
 
         # reset goal orientation
 
@@ -1455,93 +1387,3 @@ class TofSensorTask(RLTask):
 
         if self._cfg["debug_with_trimesh"]:
             self.j = 0
-
-
-def circle_points(radius, centers, normals, num_points):
-    """
-    Generate points on a batch of circles in 3D space.
-
-    Args:
-    radius (float): The radius of the circles.
-    centers (torch.Tensor): a tensor of shape (batch_size, 3) representing the centers of the circles.
-    normals (torch.Tensor): a tensor of shape (batch_size, 3) representing the normals to the planes of the circles.
-    num_points (int): The number of points to generate on each circle.
-
-    Returns:
-    torch.Tensor: a tensor of shape (batch_size, num_points, 3) representing the points on the circles.
-    """
-    batch_size = centers.shape[0]
-
-    # Normalize the normal vectors
-    normals = normals / torch.norm(normals, dim=-1, keepdim=True)
-
-    # Generate random vectors not in the same direction as the normals
-    not_normals = torch.rand(batch_size, 3, device='cuda:0')
-    while (normals * not_normals).sum(
-            dim=-1).max() > 0.99:  # Ensure they're not too similar
-        not_normals = torch.rand(batch_size, 3, device='cuda:0')
-
-    # Compute the basis of the planes
-    basis1 = torch.cross(normals, not_normals)
-    basis1 /= torch.norm(basis1, dim=-1, keepdim=True)
-    basis2 = torch.cross(normals, basis1)
-    basis2 /= torch.norm(basis2, dim=-1, keepdim=True)
-
-    # Generate points on the circles
-    t = torch.arange(0,
-                     2 * torch.pi,
-                     step=2 * torch.pi / num_points,
-                     device='cuda:0')
-    circles = centers[:, None, :] + radius * (
-        basis1[:, None, :] * torch.cos(t)[None, :, None] +
-        basis2[:, None, :] * torch.sin(t)[None, :, None])
-    return circles
-
-
-def quaternion_to_rotation_matrix(quaternion):
-    """
-    Convert a batch of quaternions to rotation matrices.
-
-    Args:
-    quaternion (torch.Tensor): a tensor of shape (batch_size, 4) representing the quaternions.
-
-    Returns:
-    torch.Tensor: a tensor of shape (batch_size, 3, 3) representing the rotation matrices.
-    """
-    w, x, y, z = quaternion.unbind(dim=-1)
-
-    batch_size = quaternion.shape[0]
-
-    rotation_matrix = torch.empty((batch_size, 3, 3), device='cuda:0')
-
-    rotation_matrix[:, 0, 0] = 1 - 2 * y**2 - 2 * z**2
-    rotation_matrix[:, 0, 1] = 2 * x * y - 2 * z * w
-    rotation_matrix[:, 0, 2] = 2 * x * z + 2 * y * w
-    rotation_matrix[:, 1, 0] = 2 * x * y + 2 * z * w
-    rotation_matrix[:, 1, 1] = 1 - 2 * x**2 - 2 * z**2
-    rotation_matrix[:, 1, 2] = 2 * y * z - 2 * x * w
-    rotation_matrix[:, 2, 0] = 2 * x * z - 2 * y * w
-    rotation_matrix[:, 2, 1] = 2 * y * z + 2 * x * w
-    rotation_matrix[:, 2, 2] = 1 - 2 * x**2 - 2 * y**2
-
-    return rotation_matrix
-
-
-def find_plane_normal(num_env, quaternions):
-    """
-    Find the normal to a plane defined by a batch of points and rotations.
-
-    Args:
-    num_env: 
-    quaternions (torch.Tensor): a tensor of shape (batch_size, 4) representing the rotations.
-
-    Returns:
-    torch.Tensor: a tensor of shape (batch_size, 3) representing the normals to the planes.
-    """
-    # Convert the quaternions to rotation matrices
-    rotation_matrices = quaternion_to_rotation_matrix(quaternions)
-    normals = torch.tensor([1.0, 0.0, 0.0],
-                           device='cuda:0').expand(num_env, -1)
-    normals = normals.view(num_env, 3, 1)
-    rotated_normals = torch.bmm(rotation_matrices, normals)
-    return rotated_normals.view(num_env, 3)
