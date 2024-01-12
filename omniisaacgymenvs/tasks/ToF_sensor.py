@@ -173,7 +173,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
+        velocity_limit = torch.as_tensor([0.2] * 3 + [0.6] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -832,7 +832,6 @@ class TofSensorTask(RLTask):
         # self.pre_action[:, 5] = action.reshape(-1) * 0
         self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
-        # action[:,[0,1,2,3,4]] = 0 # rotate along z axis to rotation
 
         delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] -
                                                   limit[:, 0]) + limit[:, 0]
@@ -934,7 +933,7 @@ class TofSensorTask(RLTask):
                 reading = ray_t[torch.where(ray_t > 0)]
 
                 noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
-                                            device=self.rl_device) / 1000 * 10
+                                            device=self.rl_device) / 1000 * 0
                 reading += noise_distance
                 reading = (reading - torch.min(reading)) / (
                     torch.max(reading) - torch.min(reading) + 1e-5)
@@ -1090,20 +1089,19 @@ class TofSensorTask(RLTask):
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :6]
 
-        # targets_dof = torch.clamp(targets_dof, self.robot_dof_lower_limits,
-        #                           self.robot_dof_upper_limits)
-
-        # targets_dof[:, -2] = torch.clamp(targets_dof[:, -2], -torch.pi / 2,
-        #                                  torch.pi / 2)
+       
 
         targets_dof[:, -1] = 0
 
         self._robots.set_joint_position_targets(targets_dof)
 
         pre_position, pre_orientation = self._end_effector.get_local_poses()
+        target_position = pre_position+delta_pose[:,:3]
 
         for i in range(1):
             self._env._world.step(render=False)
+        curr_position, _ = self._end_effector.get_local_poses()
+       
 
     def render_curobo(self):
 

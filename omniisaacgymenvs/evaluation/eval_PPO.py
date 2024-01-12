@@ -71,7 +71,7 @@ def parse_hydra_configs(cfg: DictConfig):
     task = initialize_task(cfg_dict, env)
 
     policy = PPO.load(
-        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-09/23-20-33/results/19/TofSensor2/model/model_90",
+        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-11/23-51-51/results/111/TofSensor2/model/model_650",
         env, "cuda")
 
     while env._simulation_app.is_running():
@@ -90,6 +90,7 @@ def parse_hydra_configs(cfg: DictConfig):
         for i in range(198):
 
             action = policy.predict(observation=obs, deterministic=True)[0]
+            
 
             obs, reward, dones, truncated, infos = env.step(action)
             reward_sum += reward.sum().cpu().detach().item() / env._num_envs
