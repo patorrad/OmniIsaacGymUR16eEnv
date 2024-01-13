@@ -67,8 +67,9 @@ from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.dynamic_control import _dynamic_control
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
 from pxr import Usd, UsdGeom
-from .raycast import Raycast, geom_to_trimesh, warp_from_trimesh, find_plane_normal, quaternion_to_rotation_matrix, circle_points, draw_raytrace
+from .raycast import Raycast, find_plane_normal, circle_points, draw_raytrace
 import pdb
+from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_action
 
 import os
 import omni.isaac.core.utils.prims as prim_utils
@@ -122,12 +123,14 @@ from omni.isaac.core.objects import cuboid, sphere
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
-
+        
+        # config info
         self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
         self._device = self._cfg["rl_device"]
-
+        
+        # env info
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._num_observations = self._task_cfg["env"]["num_observations"]
@@ -135,6 +138,7 @@ class TofSensorTask(RLTask):
 
         RLTask.__init__(self, name, env)
 
+        # robot info
         self._robot_positions = self._task_cfg['sim']["URRobot"]["position"]
         self._robot_rotations = self._task_cfg['sim']["URRobot"]["quaternion"]
         self._robot_dof_target = torch.tensor(
@@ -143,36 +147,23 @@ class TofSensorTask(RLTask):
         self._robot_dof_targets = self._robot_dof_target.repeat(
             self._num_envs, 1)
 
+        
+        # table/object info
         self.init_table_position = torch.tensor(
             self._task_cfg['sim']["Table"]["position"],
             device=self._device).repeat(self._num_envs, 1)
-
         self.object_category = self._task_cfg['sim']["Object"]["category"]
         self._manipulated_object_positions = [
             torch.tensor([-0.6, 0.0, 1.9]),
             torch.tensor([-0.6, -0.25, 1.9])
         ]
+        
+        # draw info
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
-        self._reset_dist = self._task_cfg["env"]["resetDist"]
-        self._max_push_effort = self._task_cfg["env"]["maxEffort"]
-        self._max_episode_length = 500
-
-        self._end_effector_link = "ee_link"
-        self.current_directory = os.getcwd()
-
-        self._step = 0
-        self.angle_dev = torch.ones(self.num_envs)
-        self.current_euler_angles = torch.zeros((self.num_envs, 3))
-
         # control parameter
-
+        self._step = 0
         self.frame_skip = 1
-
-        self.object_prim_path = []
-
-        self.rew_buf = torch.zeros(self.num_envs, device=self.device)
-        self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
         velocity_limit = torch.as_tensor([0.5] * 3 + [1.5] * 3,
                                          device=self.device)  # slow down
 
@@ -180,130 +171,11 @@ class TofSensorTask(RLTask):
             [-velocity_limit, velocity_limit], dim=1),
                                               device=self.device)
 
-        # self.start_time = time.time()
-
-        # self.load_bin_yaml('omniisaacgymenvs/cfg/bin.xml')
-
+    
         return
 
-    def init_curobo(self):
 
-        # # CuRobo
-        from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
-
-        # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-        from curobo.geom.sdf.world import CollisionCheckerType
-        from curobo.geom.types import WorldConfig
-        from curobo.rollout.rollout_base import Goal
-        from curobo.types.base import TensorDeviceType
-        from curobo.types.math import Pose
-        from curobo.types.robot import JointState, RobotConfig
-        from curobo.types.state import JointState
-        from curobo.util.logger import setup_curobo_logger
-        from curobo.util.usd_helper import UsdHelper
-        from curobo.util_file import (
-            get_assets_path,
-            get_filename,
-            get_path_of_dir,
-            get_robot_configs_path,
-            get_world_configs_path,
-            join_path,
-            load_yaml,
-        )
-        from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-        from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-        from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
-
-        self.tensor_args = TensorDeviceType()
-        robot_cfg = load_yaml(join_path(get_robot_configs_path(),
-                                        "ur16e.yml"))["robot_cfg"]
-        j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
-        default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
-
-        world_cfg_table = WorldConfig.from_dict(
-            load_yaml(
-                join_path(get_world_configs_path(), "collision_table.yml")))
-        world_cfg_table.cuboid[0].pose[2] -= 0.002
-        world_cfg1 = WorldConfig.from_dict(
-            load_yaml(
-                join_path(get_world_configs_path(),
-                          "collision_table.yml"))).get_mesh_world()
-        world_cfg1.mesh[0].name += "_mesh"
-        world_cfg1.mesh[0].pose[2] = -10.5
-
-        n_obstacle_cuboids = 30
-        n_obstacle_mesh = 10
-
-        world_cfg = WorldConfig(cuboid=world_cfg_table.cuboid,
-                                mesh=world_cfg1.mesh)
-
-        ik_config = IKSolverConfig.load_from_robot_config(
-            robot_cfg,
-            world_cfg,
-            rotation_threshold=0.05,
-            position_threshold=0.005,
-            num_seeds=20,
-            self_collision_check=True,
-            self_collision_opt=True,
-            tensor_args=self.tensor_args,
-            use_cuda_graph=True,
-            collision_checker_type=CollisionCheckerType.MESH,
-            collision_cache={
-                "obb": n_obstacle_cuboids,
-                "mesh": n_obstacle_mesh
-            },
-            # use_fixed_samples=True,
-        )
-        ik_solver = IKSolver(ik_config)
-
-        self.position_grid_offset = self.tensor_args.to_device(
-            self.get_pose_grid(10, 10, 5, 0.5, 0.5, 0.5))
-
-        fk_state = ik_solver.fk(ik_solver.get_retract_config().view(1, -1))
-        self.goal_pose = fk_state.ee_pose
-        self.goal_pose = self.goal_pose.repeat(
-            self.position_grid_offset.shape[0])
-        self.goal_pose.position += self.position_grid_offset
-
-        return ik_solver
-
-    def get_pose_grid(self, n_x, n_y, n_z, max_x, max_y, max_z):
-        x = np.linspace(-max_x, max_x, n_x)
-        y = np.linspace(-max_y, max_y, n_y)
-        z = np.linspace(0, max_z, n_z)
-        x, y, z = np.meshgrid(x, y, z, indexing="ij")
-
-        position_arr = np.zeros((n_x * n_y * n_z, 3))
-        position_arr[:, 0] = x.flatten()
-        position_arr[:, 1] = y.flatten()
-        position_arr[:, 2] = z.flatten()
-
-        return position_arr
-
-    def load_bin_yaml(self, file):
-        tree = ET.parse(file)
-        root = tree.getroot()
-
-        self.init_robot_joints_name = {}
-        self.init_robot_joints = []
-
-        # Now you can iterate over the elements and extract the data
-        for group_state in root.findall('group_state'):
-            state_name = group_state.get('name')
-            group_name = group_state.get('group')
-            self.init_robot_joints_name[state_name] = []
-            joint_angle = []
-            for joint in group_state.findall('joint'):
-                joint_name = joint.get('name')
-                joint_value = float(joint.get('value'))
-                joint_angle.append(joint_value)
-
-            self.init_robot_joints_name[group_name] = torch.as_tensor(
-                np.array(joint_angle)[[2, 1, 0, 3, 4, 5]]).to(self.device)
-            self.init_robot_joints.append(
-                np.array(joint_angle)[[2, 1, 0, 3, 4, 5]])
-        self.init_robot_joints = torch.as_tensor(self.init_robot_joints)
-
+    
     def init_data(self) -> None:
 
         def get_env_local_pose(env_pos, xformable, device):
@@ -324,22 +196,7 @@ class TofSensorTask(RLTask):
                                 device=device,
                                 dtype=torch.float)
 
-        stage = get_current_stage()
-
-        hand_pose = get_env_local_pose(
-            self._env_pos[0],
-            UsdGeom.Xformable(
-                stage.GetPrimAtPath("/World/envs/env_0/robot/ee_link")),
-            self._device)
-        self._end_effector.get_world_poses()
-
-        hand_pose_inv_rot, hand_pose_inv_pos = (tf_inverse(
-            hand_pose[3:7], hand_pose[0:3]))
-        self.franka_local_grasp_pos = hand_pose[3:7].repeat(
-            (self._num_envs, 1))
-        self.franka_local_grasp_rot = hand_pose[0:3].repeat(
-            (self._num_envs, 1))
-
+       
         self.init_mesh()
 
         self.raytracer = Raycast(self._cfg["raycast_width"],
@@ -369,8 +226,6 @@ class TofSensorTask(RLTask):
         self.load_robot()
         self.add_gripper()
 
-        # self.load_sphere()
-        # self.load_manipulated_object()
         if self.object_category in ['cube']:
             self.load_cube()
 
@@ -417,37 +272,8 @@ class TofSensorTask(RLTask):
         if self._task_cfg["Curobo"]:
             self.curo_ik_solver = self.init_curobo()
 
-        return
 
-    def compute_ik(self, target_position, target_orientation):
-
-        self._kinematics_solver = LulaKinematicsSolver(
-            robot_description_path=
-            "/omniisaacgymenvs/cfg/robot/robot_descriptor.yaml",
-            urdf_path="/omniisaacgymenvs/assests/robots/ur16e/ur16e.urdf")
-        from omni.isaac.core.articulations import Articulation
-
-        # robot_prim_path = "/panda"
-        # path_to_robot_usd = self.current_directory + self._task_cfg['sim']["URRobot"]['robot_path']
-
-        # add_reference_to_stage(path_to_robot_usd, robot_prim_path)
-        # articulation = Articulation(self.default_zero_env_path + "/robot")
-        # self._robots = ArticulationView(
-        #     prim_paths_expr="/World/envs/.*/robot", name="robot_view", reset_xform_properties=False)
-        from omni.isaac.core.robots.robot import Robot
-        _robot = Robot(self.default_zero_env_path + "/robot")
-        _robot.initialize()
-
-        self._articulation_kinematics_solver = ArticulationKinematicsSolver(
-            _robot, self._kinematics_solver, "ee_link")
-
-        self._kinematics_solver.set_robot_base_pose(
-            robot_position=np.array(self._robot_positions),
-            robot_orientation=np.array(self._robot_rotations))
-
-        joint_positions, success = self._articulation_kinematics_solver.compute_inverse_kinematics(
-            target_position, target_orientation)
-        return joint_positions, success
+       
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
@@ -586,45 +412,7 @@ class TofSensorTask(RLTask):
         UsdShade.MaterialBindingAPI(object_prim).Bind(
             cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
 
-    def load_pod(self):
-        for i in range(self.num_envs):
-
-            # add_reference_to_stage(
-            #         prim_path=f"/World/envs/env_{i}" + "/pod",
-            #         usd_path = "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/pod/pod.usd",
-            # )
-
-            # initila toe orientation
-            from scipy.spatial.transform import Rotation
-            # Define the Euler angles in the format (roll, pitch, yaw)
-            euler_angles = [np.pi / 2, np.pi / 2, np.pi / 2]
-
-            # Create a Rotation object from the Euler angles
-            r = Rotation.from_euler('xyz', euler_angles, degrees=False)
-
-            # Get the corresponding quaternion
-            quaternion = r.as_quat()
-
-            prim_utils.create_prim(
-                prim_path=f"/World/envs/env_{i}" + "/pod",
-                usd_path=self.current_directory +
-                "/omniisaacgymenvs/assests/robots/pod/pod.usd",
-                translation=[-0.463, 0.95, 0],
-                # orientation=quaternion,
-            )
-            stage = omni.usd.get_context().get_stage()
-            cube_prim = stage.GetPrimAtPath(f"/World/envs/env_{i}" + "/pod")
-
-            # ================================= set property ========================================
-            # Make it a rigid body with kinematic
-            utils.setRigidBody(cube_prim, "convexMeshSimplification", True)
-
-            mass_api = UsdPhysics.MassAPI.Apply(cube_prim)
-            mass_api.CreateMassAttr(10)
-            # Alternatively set the density
-            mass_api.CreateDensityAttr(1000)
-            UsdPhysics.CollisionAPI.Apply(cube_prim)
-
+    
     def load_table(self):
         table_translation = np.array(
             self._task_cfg['sim']["Table"]["position"])
@@ -648,22 +436,7 @@ class TofSensorTask(RLTask):
         #                                scale=(0.005, 0.005, 0.0202))
         table_prim = get_prim_at_path(self.default_zero_env_path + "/table")
 
-        # utils.setRigidBody(table_prim, "convexHull", True)
-        # UsdPhysics.CollisionAPI.Apply(table_prim)
-
-        # x = UsdShade.MaterialBindingAPI.Apply(table_prim)
-        # from omni.isaac.core.materials.physics_material import PhysicsMaterial
-        # material = PhysicsMaterial(
-        #     prim_path="/World/PhysicsMaterials/FrankaFingerMaterial",
-        #     name="franka_finger_material_physics",
-        #     static_friction=0.7,
-        #     dynamic_friction=0.0,
-        # )
-        # x.Bind(
-        #     material.material,
-        #     bindingStrength="weakerThanDescendants",
-        #     materialPurpose="physics",
-        # )
+      
 
         self._sim_config.apply_rigid_body_settings(
             "table",
@@ -744,13 +517,7 @@ class TofSensorTask(RLTask):
 
     def get_observations(self) -> dict:
 
-        _, current_orientation = self._end_effector.get_world_poses()
-
-        # current_euler_angles = quaternion_to_axis_angle(current_orientation)
-        # quaternion = quaternion_multiply(
-        #     quaternion_invert(self.init_ee_link_orientation),
-        #     current_orientation)
-        # self.current_euler_angles = quaternion_to_axis_angle(quaternion)
+        
 
         _wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
         _ee_local_pos, _ = self._end_effector.get_local_poses()
@@ -770,13 +537,13 @@ class TofSensorTask(RLTask):
 
         cur_position[:, 0] = -cur_position[:, 0]
 
-        self.dist_dev = torch.linalg.norm(self.target_position - cur_position,
+        self.dist_dev = torch.linalg.norm(self.target_ee_position - cur_position,
                                           dim=1)
 
         # start = time.time()
         if self._cfg["raycast"]:
             self.raytrace_step()
-        # print("time",time.time()-start)
+      
         if self._task_cfg["Curobo"]:
             self.render_curobo()
 
@@ -791,8 +558,8 @@ class TofSensorTask(RLTask):
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles_x[:, None], self.target_angle[:, None],
-                self.angle_dev[:, None], cur_position, self.target_position,
-                self.target_position - cur_position, joint_angle
+                self.angle_dev[:, None], cur_position, self.target_ee_position,
+                self.target_ee_position - cur_position, joint_angle
             ],
                                      dim=1)
 
@@ -804,61 +571,10 @@ class TofSensorTask(RLTask):
         return self.obs_buf
 
     def update_cache_state(self):
-        self._q = self._robots.get_joint_positions()
-        self._qd = self._robots.get_joint_velocities()
-        self._mm = self._robots.get_mass_matrices()
+      
         self._robots.set_gains(kds=torch.zeros((self.num_envs, 6)),
                                kps=torch.zeros((self.num_envs, 6)))
-        self._j_eef = self._robots.get_jacobians(clone=False)[:, 6, :, :]
-        self.kp = torch.tensor([150., 150., 150., 100., 100., 100.],
-                               device=self.device) / 100
-        self.kd = 2 * torch.sqrt(self.kp)
-        self.kp_null = torch.tensor([10.] * 6, device=self.device)
-        self.kd_null = 2 * torch.sqrt(self.kp_null)
-        self.num_ur16e_dofs = 6
-        self.ur16e_default_dof_pos = self.default_dof
-
-        self._ee_vel = torch.concat([
-            self._robots.get_linear_velocities(),
-            self._robots.get_angular_velocities()
-        ],
-                                    dim=1)
-        self._ur16e_effort_limits = self._robots.get_max_efforts()
-
-    def recover_action(self, action, limit):
-
-        # delta pose
-        action = torch.clip(action, -1, 1)
-
-        self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
-
-        delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] -
-                                                  limit[:, 0]) + limit[:, 0]
-        self.control_time = self._env._world.get_physics_dt()
-        delta_pose = delta_pose * self.control_time
-
-        self.jacobians = self._robots.get_jacobians(clone=False)
-        delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
-                                                                     6, :, :],
-                                delta_pose=delta_pose)
-        delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
-
-        return delta_dof_pos, delta_pose
-
-    def ik(self, jacobian_end_effector, delta_pose, damping_factor=0.05):
-        """
-            Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
-            """
-
-        # compute position and orientation error
-        delta_pose = delta_pose[:, :, None]
-
-        # solve damped least squares (dO = J.T * V)
-        transpose = torch.transpose(jacobian_end_effector, 1, 2)
-        lmbda = torch.eye(6).to(jacobian_end_effector.device) * (damping_factor
-                                                                 **2)
-        return (transpose @ torch.inverse(jacobian_end_effector @ transpose +
-                                          lmbda) @ delta_pose).squeeze(dim=2)
+     
 
     def raytrace_step(self) -> None:
 
@@ -1013,60 +729,27 @@ class TofSensorTask(RLTask):
     def get_target_pose(self):
 
         target_x = 0.3 * torch.sin(torch.as_tensor(self.target_angle)).to(
-            self.device) + self.init_ee_local_pos[:, 0]
+            self.device) + self.init_ee_dev_local_pos[:, 0]
 
         target_y = 0.3 * (1 - torch.cos(torch.as_tensor(
-            self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
+            self.target_angle))).to(self.device) + self.init_ee_dev_local_pos[:, 1]
 
-        self.target_position = torch.cat([
+        self.target_ee_position = torch.cat([
             -target_x[:, None], target_y[:, None],
-            self.init_ee_local_pos[:, 2][:, None]
+            self.init_ee_dev_local_pos[:, 2][:, None]
         ],
                                          dim=1)
 
-        self.init_dist = torch.linalg.norm(self.target_position[:, :2] -
-                                           self.init_ee_local_pos[:, :2],
+        self.init_ee_object_dist = torch.linalg.norm(self.target_ee_position[:, :2] -
+                                           self.init_ee_dev_local_pos[:, :2],
                                            dim=1)
 
-    def recover_rule_based_action(self):
-
-        delta_pose = torch.zeros((self.num_envs, 6)).to(self.device)
-
-        delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
-
-        # target_x = 0.4 * torch.sin(torch.as_tensor(self.target_angle)).to(
-        #     self.device) + self.init_ee_local_pos[:, 0]
-
-        # target_y = 0.4 * (1 - torch.cos(torch.as_tensor(
-        #     self.target_angle))).to(self.device) + self.init_ee_local_pos[:, 1]
-
-        cur_pos, _ = self._end_effector.get_local_poses()
-        cur_pos[:, 0] = -cur_pos[:, 0]
-
-        delta_pose[:, 0] = self.target_position[:, 0] - cur_pos[:, 0]
-        delta_pose[:, 1] = self.target_position[:, 1] - cur_pos[:, 1]
-
-        satified_index = torch.where(abs(self.angle_dev) < 0.02)[0]
-
-        if torch.numel(satified_index) != 0:
-            delta_pose[satified_index, 5] = 0
-
-        self.jacobians = self._robots.get_jacobians(clone=False)
-        delta_dof_pos = self.ik(jacobian_end_effector=self.jacobians[:,
-                                                                     8, :, :],
-                                delta_pose=delta_pose)
-
-        return delta_dof_pos / 2, delta_pose
+    
 
     def pre_physics_step(self, actions) -> None:
 
         self.actions = actions
 
-        dof_limits = self._robots.get_dof_limits()
-        self.robot_dof_lower_limits = dof_limits[0, :,
-                                                 0].to(device=self._device)
-        self.robot_dof_upper_limits = dof_limits[0, :,
-                                                 1].to(device=self._device)
 
         self._step += 1
         if not self._env._world.is_playing():
@@ -1075,11 +758,14 @@ class TofSensorTask(RLTask):
         if not self._task_cfg["sim"]["Control"]["rule-base"]:
 
             actions = actions.to(self._device)
-
-            delta_dof_pos, delta_pose = self.recover_action(
-                actions, self.velocity_limit)
+            
+            delta_dof_pos, delta_pose = recover_action(actions,
+                                                       self.velocity_limit,
+                                                       self._env, self._robots)
         else:
-            delta_dof_pos, delta_pose = self.recover_rule_based_action()
+            delta_dof_pos, delta_pose = recover_rule_based_action(
+                self.num_envs, self.device, self._end_effector,
+                self.target_ee_position, self.angle_dev, self._robots)
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
@@ -1099,76 +785,7 @@ class TofSensorTask(RLTask):
                                                  target_position,
                                                  dim=1)
 
-    def render_curobo(self):
-
-        # frame skip
-        ee_translation_goal, ee_orientation_teleop_goal = self._manipulated_object.get_local_poses(
-        )
-
-        ee_world_pose, _ = self._manipulated_object.get_world_poses()
-
-        self.goal_pose.position[:] = torch.as_tensor([-0.3, 0.6, 1.04]).to(
-            self.device) + self.position_grid_offset
-        self.goal_pose.quaternion[:] = torch.as_tensor([1, 0, 0, 0]).to(
-            self.device)  # ik_goal.quaternion[:]
-        # tranformed
-        pre_transoform_goal_pose = self.goal_pose.clone()
-
-        pre_transoform_goal_pose.position[:, 0] += ee_world_pose[
-            0, 0] - ee_translation_goal[0, 0]
-
-        transform = Transform3d(device=self.device).rotate(
-            quaternion_to_matrix((torch.as_tensor(
-                self._robot_rotations).to(device=self.device))))
-
-        # rotation_matrix = quaternion_to_matrix(
-        #     (torch.as_tensor(orientation).to(device)))
-
-        self.goal_pose.position[:] -= torch.as_tensor(
-            [self._robot_positions]).to(device=self.device)
-
-        self.goal_pose.position[:] = transform.transform_points(
-            self.goal_pose.position[:].clone().to(device=self.device))
-
-        self.goal_pose.quaternion[:] = quaternion_multiply(
-            quaternion_invert(
-                torch.as_tensor(self._robot_rotations).to(device=self.device)),
-            self.goal_pose.quaternion[:])
-
-        result = self.curo_ik_solver.solve_batch(self.goal_pose)
-
-        # succ = torch.any(result.success)
-
-        # get spheres and flags:
-
-        # transform back
-
-        self.draw_points(pre_transoform_goal_pose, result.success)
-
-    def draw_points(self, pose, success):
-        # Third Party
-        from omni.isaac.debug_draw import _debug_draw
-
-        draw = _debug_draw.acquire_debug_draw_interface()
-        N = 100
-        # if draw.get_num_points() > 0:
-        draw.clear_points()
-        cpu_pos = pose.position.cpu().numpy()
-        b, _ = cpu_pos.shape
-        point_list = []
-        colors = []
-        for i in range(b):
-            # get list of points:
-
-            if success[i].item():
-                colors += [(0, 1, 0, 0.25)]
-                point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
-            else:
-                colors += [(1, 0, 0, 0.25)]
-                point_list += [(cpu_pos[i, 0], cpu_pos[i, 1], cpu_pos[i, 2])]
-        sizes = [20.0 for _ in range(len(colors))]
-
-        draw.draw_points(point_list, colors, sizes)
+   
 
     def transform_mesh(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
@@ -1242,7 +859,7 @@ class TofSensorTask(RLTask):
 
     def calculate_dist_reward(self) -> None:
 
-        dev_percentage = self.dist_dev / self.init_dist
+        dev_percentage = self.dist_dev / self.init_ee_object_dist
 
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
@@ -1280,10 +897,8 @@ class TofSensorTask(RLTask):
         self.rew_buf += controller_penalty
 
         action_penalty = torch.sum(
-            torch.clip(self._robots.get_joint_velocities(), -1,
-                       1)**2, dim=1) * -1 + torch.sum(torch.clip(
-                           self.actions, -1, 1)**2,
-                                                      dim=1) * -0.5
+            torch.clip(self._robots.get_joint_velocities(), -1, 1)**2, dim=1
+        ) * -1 + torch.sum(torch.clip(self.actions, -1, 1)**2, dim=1) * -0.5
 
         self.rew_buf += action_penalty
 
@@ -1314,20 +929,7 @@ class TofSensorTask(RLTask):
         self.scene.add(self._robots)
 
     def reset(self):
-        # # initial robot
-        target_joint_positions = torch.zeros(6, device=self.device)
-        target_joint_positions[0] = 0
-        target_joint_positions[1] = -1.57
-        target_joint_positions[2] = 1.57 / 2 * 2
-        target_joint_positions[3] = -1.57 * 2
-        target_joint_positions[4] = 0
-        # random_values = torch.randint(low=0,
-        #                               high=len(self.init_robot_joints),
-        #                               size=(self.num_envs, ))
-
-        # self.target_joint_positions = torch.tensor(
-        # self.init_robot_joints[random_values], dtype=torch.float)
-
+       
         self._robots.set_joint_positions(
             torch.tensor([0, -1.57, 1.57 / 2 * 2, -1.57 * 2, 0, 0],
                          dtype=torch.float).repeat(self.num_envs,
@@ -1363,12 +965,10 @@ class TofSensorTask(RLTask):
         for i in range(10):
             self._env._world.step(render=False)
 
-        self.init_ee_local_pos, _ = self._end_effector.get_local_poses()
-        self.init_ee_local_pos[:, 0] += random_x
+        self.init_ee_dev_local_pos, _ = self._end_effector.get_local_poses()
+        self.init_ee_dev_local_pos[:, 0] += random_x
 
         # reset goal orientation
-
-        self.target_angle = torch.zeros(self.num_envs, device=self.device)
         self.target_angle = -self.rand_orientation[:, 2].clone()
         self.init_angle_dev = -self.target_angle.clone()
         self.get_target_pose()
