@@ -173,7 +173,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
+        velocity_limit = torch.as_tensor([0.5] * 3 + [1.5] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -829,7 +829,7 @@ class TofSensorTask(RLTask):
 
         # delta pose
         action = torch.clip(action, -1, 1)
-        # self.pre_action[:, 5] = action.reshape(-1) * 0
+
         self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
         delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] -
@@ -1212,10 +1212,6 @@ class TofSensorTask(RLTask):
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
 
-        action_penalty = torch.sum(torch.clamp(
-            self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
-
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
         angle_reward = abs((1 - dev)**3) * 5
@@ -1254,10 +1250,6 @@ class TofSensorTask(RLTask):
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
 
-        action_penalty = torch.sum(torch.clamp(
-            self._robots.get_joint_velocities() - 1, 1),
-                                   dim=1) * -0.0
-
         dev = torch.clamp(dev_percentage, 0, 1.8)
 
         dist_reward = abs((1 - dev)**2) * 1
@@ -1282,14 +1274,17 @@ class TofSensorTask(RLTask):
         self.rew_buf += self.calculate_targetangledev_reward()
         self.rew_buf += self.calculate_raytrace_reward()
         self.rew_buf += self.calculate_raytrace_dev_reward()
-        self.rew_buf /= 1.5
+        self.rew_buf /= 1.2
 
-        controller_penalty = (self.cartesian_error**2) * -3e3
+        controller_penalty = (self.cartesian_error**2) * -1e3
         self.rew_buf += controller_penalty
 
         action_penalty = torch.sum(
-            torch.clip(self._robots.get_joint_velocities(), -1, 1)**2,dim=1) * -0.5
-        
+            torch.clip(self._robots.get_joint_velocities(), -1,
+                       1)**2, dim=1) * -1 + torch.sum(torch.clip(
+                           self.actions, -1, 1)**2,
+                                                      dim=1) * -0.5
+
         self.rew_buf += action_penalty
 
         return self.rew_buf
