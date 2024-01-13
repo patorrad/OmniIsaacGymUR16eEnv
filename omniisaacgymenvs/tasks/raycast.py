@@ -24,165 +24,6 @@ wp.config.print_launches = False
 MAX_DIST = 1.2  # meters
 
 
-@wp.kernel
-def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
-         height: int, pixels: wp.array(dtype=wp.vec3),
-         ray_dist: wp.array(dtype=wp.float32),
-         ray_dir: wp.array(dtype=wp.vec3),
-         normal_vec: wp.array(dtype=wp.vec3)):
-    # Warp quaternion is x, y, z, w
-    q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
-
-    tid = wp.tid()
-
-    pi = 3.14159265359
-    y = tid // height
-    z = tid % width
-
-    # For 25 degree cone
-    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 4.
-
-    # For inner edge of noise cone
-    NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
-
-    sy = EMITTER_DIAMETER / (float(height) -
-                             1.) * float(y) - float(EMITTER_DIAMETER) / 2.
-    sz = EMITTER_DIAMETER / (float(width) -
-                             1.) * float(z) - float(EMITTER_DIAMETER) / 2.
-
-    # compute view ray
-    start = cam_pos
-    # rd = wp.normalize(output)
-    grid_vec = wp.vec3(1.0, sy, sz)
-    dir = wp.quat_rotate(q2, grid_vec)
-    # rd = wp.normalize(wp.vec3(0., 0., -1.0))
-    # print(rd)
-    t = float(0.0)
-    bary_u = float(0.0)
-    bary_v = float(0.0)
-    sign = float(0.0)
-    normal = wp.vec3()
-    face = int(0)
-
-    color = wp.vec3(0.0, 0.0, 0.0)
-
-    # if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
-    if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
-                         sign, normal, face):
-        color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
-
-        # # ignore this ray if it wouldn't reflect back to the receiver
-        # ray_dot_product = wp.dot(dir, normal)
-        # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
-        #     t = 0.
-        # # else:
-        # #     print(ray_dot_product)
-        # # if distance between [u,v] and ro is in the noise part of the cone
-        # if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
-        #     # use random function to determine whether we should give the reading t or 0
-        #     # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
-        #     rng_state = wp.rand_init(rng_seed, tid)
-        #     if wp.randf(rng_state) <= 9./34.:
-        #         t = float(0.)
-        #         # t = float(1.)
-
-    pixels[tid] = color
-    ray_dist[tid] = t
-    ray_dir[tid] = dir
-    normal_vec[tid] = normal
-
-
-class Raycast:
-
-    def __init__(self, width, height, vertices, faces):
-        self.width = width  #1024
-        self.height = height  #1024
-        self.cam_pos = (0.0, 1.5, 2.5)
-        # self.cam_pos = (0.0, 1.50, 1)
-        self.step = 0
-        self.result = np.zeros((self.height, self.width, 3))
-
-        self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
-        self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
-        self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
-        self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
-
-        self.init_buffer(vertices, faces)
-
-    def init_buffer(self, vertices, faces):
-        self.warp_mesh_list = []
-        for i, vert in enumerate(vertices):
-            warp_mesh = wp.Mesh(points=wp.empty(shape=vert.shape,
-                                                dtype=wp.vec3),
-                                indices=wp.from_torch(
-                                    faces[i].flatten(),
-                                    dtype=wp.int32,
-                                ))
-            self.warp_mesh_list.append(warp_mesh)
-
-    def set_geom(self, vertices, mesh_index):
-        wp.build.clear_kernel_cache()
-
-        wp.copy(self.warp_mesh_list[mesh_index].points, vertices)
-        self.warp_mesh_list[mesh_index].refit()
-
-        self.mesh = self.warp_mesh_list[mesh_index]
-
-        # empty buffer
-        self.pixels.zero_()
-        self.ray_dist.zero_()
-        self.ray_dir.zero_()
-        self.normal_vec.zero_()
-
-    def update(self):
-        pass
-
-    def render(self,
-               cam_pos=(0.0, 1.5, 2.5),
-               cam_dir=np.array([1, 0, 0, 0]),
-               is_live=False):
-
-        wp.launch(kernel=draw,
-                  dim=self.width * self.height,
-                  inputs=[
-                      self.mesh.id, cam_pos, cam_dir, self.width, self.height,
-                      self.pixels, self.ray_dist, self.ray_dir, self.normal_vec
-                  ])
-
-        wp.synchronize_device()
-
-        # plt.imshow(self.ray_dist.numpy().reshape((self.height, self.width)), origin="lower",interpolation="antialiased")
-        # plt.show()
-
-        # # ray = self.ray_dist.numpy().reshape((self.height, self.width))*100
-        # # ray = (ray-np.min(ray))/(np.max(ray)-np.min(ray))
-        # # plt.plot(
-        # #     np.arange(6),
-        # #     np.diff(self.ray_dist.numpy().reshape(
-        # #         (self.height, self.width))[3, 1:].reshape(-1)))
-        # plt.savefig("image.png")
-        # plt.cla()
-        # image = cv2.imread("image.png")
-        # cv2.imshow("image",image)
-        # cv2.waitKey(1)
-
-        return self.ray_dist, self.ray_dir, self.normal_vec
-
-    # def save(self):
-    #     for i in self.result.shape[0]:
-    #         plt.imshow(self.result.shape[i].numpy().reshape(
-    #             (self.height, self.width, 3)),
-    #                    origin="lower",
-    #                    interpolation="antialiased")
-    #         plt.savefig("/home/aurmr/Pictures/raycast_cube_{}.png".format(i),
-    #                     bbox_inches="tight",
-    #                     pad_inches=1,
-    #                     transparent=True,
-    #                     facecolor="g",
-    #                     edgecolor='w',
-    #                     orientation='landscape')
-
-
 def warp_from_trimesh(trimesh: trimesh.Trimesh, device):
     mesh = wp.Mesh(points=wp.array(trimesh.vertices,
                                    dtype=wp.vec3,
@@ -409,6 +250,285 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
     debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
 
-if __name__ == "__main__":
-    example = Raycast()
-    example.render()
+@wp.kernel
+def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
+         height: int, pixels: wp.array(dtype=wp.vec3),
+         ray_dist: wp.array(dtype=wp.float32),
+         ray_dir: wp.array(dtype=wp.vec3),
+         normal_vec: wp.array(dtype=wp.vec3)):
+    # Warp quaternion is x, y, z, w
+    q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
+
+    tid = wp.tid()
+
+    pi = 3.14159265359
+    y = tid // height
+    z = tid % width
+
+    # For 25 degree cone
+    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 4.
+
+    # For inner edge of noise cone
+    NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
+
+    sy = EMITTER_DIAMETER / (float(height) -
+                             1.) * float(y) - float(EMITTER_DIAMETER) / 2.
+    sz = EMITTER_DIAMETER / (float(width) -
+                             1.) * float(z) - float(EMITTER_DIAMETER) / 2.
+
+    # compute view ray
+    start = cam_pos
+    # rd = wp.normalize(output)
+    grid_vec = wp.vec3(1.0, sy, sz)
+    dir = wp.quat_rotate(q2, grid_vec)
+    # rd = wp.normalize(wp.vec3(0., 0., -1.0))
+    # print(rd)
+    t = float(0.0)
+    bary_u = float(0.0)
+    bary_v = float(0.0)
+    sign = float(0.0)
+    normal = wp.vec3()
+    face = int(0)
+
+    color = wp.vec3(0.0, 0.0, 0.0)
+
+    # if wp.abs(wp.sqrt(sz * sz + sy * sy)) < (EMITTER_DIAMETER / 2.):
+    if wp.mesh_query_ray(mesh_id, start, dir, MAX_DIST, t, bary_u, bary_v,
+                         sign, normal, face):
+        color = normal * 0.5 + wp.vec3(0.5, 0.5, 0.5)
+
+        # # ignore this ray if it wouldn't reflect back to the receiver
+        # ray_dot_product = wp.dot(dir, normal)
+        # if ray_dot_product < -0.996 or ray_dot_product > -0.866:
+        #     t = 0.
+        # # else:
+        # #     print(ray_dot_product)
+        # # if distance between [u,v] and ro is in the noise part of the cone
+        # if wp.abs(wp.sqrt(sz * sz + sy * sy)) > (NO_NOISE_DIAMETER) / 2.:
+        #     # use random function to determine whether we should give the reading t or 0
+        #     # from experiment: there were 9 out-of-range readings out of the 34 total for a given distance
+        #     rng_state = wp.rand_init(rng_seed, tid)
+        #     if wp.randf(rng_state) <= 9./34.:
+        #         t = float(0.)
+        #         # t = float(1.)
+
+    pixels[tid] = color
+    ray_dist[tid] = t
+    ray_dir[tid] = dir
+    normal_vec[tid] = normal
+
+
+class Raycast:
+
+    def __init__(self, width, height, vertices, faces):
+        self.width = width  #1024
+        self.height = height  #1024
+        self.cam_pos = (0.0, 1.5, 2.5)
+        # self.cam_pos = (0.0, 1.50, 1)
+        self.step = 0
+        self.result = np.zeros((self.height, self.width, 3))
+
+        self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
+        self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
+
+        self.init_buffer(vertices, faces)
+
+    def init_setting(self, _task_cfg, _cfg, num_envs,debug_draw,device):
+        self._task_cfg = _task_cfg
+        self._cfg = _cfg
+        self.num_envs = num_envs
+        self.debug_draw = debug_draw
+        self.device = device
+
+    def init_buffer(self, vertices, faces):
+        self.warp_mesh_list = []
+        for i, vert in enumerate(vertices):
+            warp_mesh = wp.Mesh(points=wp.empty(shape=vert.shape,
+                                                dtype=wp.vec3),
+                                indices=wp.from_torch(
+                                    faces[i].flatten(),
+                                    dtype=wp.int32,
+                                ))
+            self.warp_mesh_list.append(warp_mesh)
+
+    def set_geom(self, vertices, mesh_index):
+        wp.build.clear_kernel_cache()
+
+        wp.copy(self.warp_mesh_list[mesh_index].points, vertices)
+        self.warp_mesh_list[mesh_index].refit()
+
+        self.mesh = self.warp_mesh_list[mesh_index]
+
+        # empty buffer
+        self.pixels.zero_()
+        self.ray_dist.zero_()
+        self.ray_dir.zero_()
+        self.normal_vec.zero_()
+
+    def update(self):
+        pass
+
+    def render(self,
+               cam_pos=(0.0, 1.5, 2.5),
+               cam_dir=np.array([1, 0, 0, 0]),
+               is_live=False):
+
+        wp.launch(kernel=draw,
+                  dim=self.width * self.height,
+                  inputs=[
+                      self.mesh.id, cam_pos, cam_dir, self.width, self.height,
+                      self.pixels, self.ray_dist, self.ray_dir, self.normal_vec
+                  ])
+
+        wp.synchronize_device()
+
+        return self.ray_dist, self.ray_dir, self.normal_vec
+
+    def raytrace_step(self, gripper_pose, gripper_rot,
+                      transformed_vertices) -> None:
+
+        normals = find_plane_normal(self.num_envs, gripper_rot)
+        raycast_circle = circle_points(
+            self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
+            normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
+
+        # for draw point
+        debug_sensor_ray_pos_list = []
+        debug_ray_hit_points_list = []
+        debug_ray_colors = []
+        debug_ray_sizes = []
+        debug_point_sizes = []
+        debug_end_point_colors = []
+        debug_start_point_colors = []
+        debug_circle = []
+
+        self.raycast_reading = torch.zeros(
+            (self.num_envs,
+             self._cfg["raycast_width"] * self._cfg["raycast_height"] *
+             self._task_cfg['sim']["URRobot"]['num_sensors'])).to(
+                 self.device) - 1
+
+        num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
+        # ray average distance
+        self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
+        # ray tracing reading
+        self.raytrace_reading = torch.zeros(
+            (self.num_envs,
+             self._cfg["raycast_width"] * self._cfg["raycast_height"],
+             2)).to(self.device)
+        # ray trace coverage
+        self.raytrace_cover_range = torch.zeros(
+            (self.num_envs, 2)).to(self.device)
+        # ray trace max min dist
+        self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
+
+        for i, env in zip(
+                torch.arange(
+                    self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
+                        self.num_envs),
+                torch.arange(self.num_envs).repeat_interleave(
+                    self._task_cfg['sim']["URRobot"]['num_sensors'])):
+
+            self.set_geom(wp.from_torch(transformed_vertices[env]),
+                                    mesh_index=0)
+            ray_t, ray_dir, normal = self.render(
+                raycast_circle[env][i], gripper_rot[env])
+
+            ray_t = wp.torch.to_torch(ray_t)
+
+            if len(torch.where(ray_t > 0)[0]) > 0:
+
+                # normalize tof reading
+                reading = ray_t[torch.where(ray_t > 0)]
+
+                noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
+                                            device=self.device) / 1000 * 0
+                reading += noise_distance
+                reading = (reading - torch.min(reading)) / (
+                    torch.max(reading) - torch.min(reading) + 1e-5)
+
+                self.raycast_reading[env][i * num_pixel +
+                                          torch.where(ray_t > 0)[0]] = reading
+
+                average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
+                cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
+            else:
+                reading = ray_t
+                average_distance = -0.01
+                cover_percentage = 0
+
+            self.raytrace_dist[env][i] = average_distance
+            self.raytrace_cover_range[env][i] = cover_percentage
+            self.raytrace_reading[env, :, i] = ray_t
+
+            # replace the zero value
+
+            ray_t_copy = ray_t.clone()
+            if len(torch.where(ray_t <= 0)[0]) > 0:
+                index = torch.where(ray_t <= 0)[0]
+                ray_t[index] = torch.max(ray_t)
+
+            if torch.max(ray_t) < 1e-2:
+                self.raytrace_dev[env][i] = 10
+            else:
+                self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
+
+            if self._cfg["debug"]:
+
+                sensor_ray_pos_np = raycast_circle[env][i].cpu().numpy()
+                sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
+                                        sensor_ray_pos_np[1],
+                                        sensor_ray_pos_np[2])
+
+                ray_t = ray_t_copy.cpu().numpy()
+                ray_dir = ray_dir.numpy()
+
+                line_vec = np.transpose(
+                    np.multiply(np.transpose(ray_dir), ray_t))
+
+                # Get rid of ray misses (0 values)
+                line_vec = line_vec[np.any(line_vec, axis=1)]
+                ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
+                hits_len = len(ray_hit_points_list)
+
+                if hits_len > 0:
+                    sensor_ray_pos_list = [
+                        sensor_ray_pos_tuple for _ in range(hits_len)
+                    ]
+                    ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
+                    ray_sizes = [2 for _ in range(hits_len)]
+                    point_sizes = [7 for _ in range(hits_len)]
+                    start_point_colors = [
+                        (0, 0.75, 0, 1) for _ in range(hits_len)
+                    ]  # start (camera) points: green
+                    end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
+
+                    debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
+                    debug_ray_hit_points_list.append(ray_hit_points_list)
+                    debug_ray_colors.append(ray_colors)
+                    debug_ray_sizes.append(ray_sizes)
+
+                    debug_end_point_colors.append(end_point_colors)
+                    debug_point_sizes.append(point_sizes)
+                    debug_start_point_colors.append(start_point_colors)
+
+                    debug_circle.append([raycast_circle[env][i].cpu().numpy()])
+
+        if self._cfg["debug"]:
+
+            if len(debug_sensor_ray_pos_list) > 0:
+
+                draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
+                              debug_ray_hit_points_list, debug_ray_colors,
+                              debug_ray_sizes, debug_end_point_colors,
+                              debug_point_sizes, debug_start_point_colors,
+                              debug_circle)
+        
+        return self.raycast_reading,self.raytrace_cover_range,self.raytrace_dev
+
+
+# if __name__ == "__main__":
+#     example = Raycast()
+#     example.render()

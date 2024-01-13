@@ -123,13 +123,13 @@ from omni.isaac.core.objects import cuboid, sphere
 class TofSensorTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
-        
+
         # config info
         self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
         self._device = self._cfg["rl_device"]
-        
+
         # env info
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
@@ -147,7 +147,6 @@ class TofSensorTask(RLTask):
         self._robot_dof_targets = self._robot_dof_target.repeat(
             self._num_envs, 1)
 
-        
         # table/object info
         self.init_table_position = torch.tensor(
             self._task_cfg['sim']["Table"]["position"],
@@ -157,7 +156,7 @@ class TofSensorTask(RLTask):
             torch.tensor([-0.6, 0.0, 1.9]),
             torch.tensor([-0.6, -0.25, 1.9])
         ]
-        
+
         # draw info
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
 
@@ -171,11 +170,8 @@ class TofSensorTask(RLTask):
             [-velocity_limit, velocity_limit], dim=1),
                                               device=self.device)
 
-    
         return
 
-
-    
     def init_data(self) -> None:
 
         def get_env_local_pose(env_pos, xformable, device):
@@ -196,12 +192,13 @@ class TofSensorTask(RLTask):
                                 device=device,
                                 dtype=torch.float)
 
-       
         self.init_mesh()
 
         self.raytracer = Raycast(self._cfg["raycast_width"],
                                  self._cfg["raycast_height"],
                                  [self.mesh_vertices[0]], [self.mesh_faces[0]])
+        self.raytracer.init_setting(self._task_cfg, self._cfg, self.num_envs,
+                                    self.debug_draw, self.device)
 
     def init_mesh(self):
 
@@ -271,9 +268,6 @@ class TofSensorTask(RLTask):
         self.init_data()
         if self._task_cfg["Curobo"]:
             self.curo_ik_solver = self.init_curobo()
-
-
-       
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
@@ -412,7 +406,6 @@ class TofSensorTask(RLTask):
         UsdShade.MaterialBindingAPI(object_prim).Bind(
             cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
 
-    
     def load_table(self):
         table_translation = np.array(
             self._task_cfg['sim']["Table"]["position"])
@@ -435,8 +428,6 @@ class TofSensorTask(RLTask):
         #                                translation=table_translation,
         #                                scale=(0.005, 0.005, 0.0202))
         table_prim = get_prim_at_path(self.default_zero_env_path + "/table")
-
-      
 
         self._sim_config.apply_rigid_body_settings(
             "table",
@@ -517,8 +508,6 @@ class TofSensorTask(RLTask):
 
     def get_observations(self) -> dict:
 
-        
-
         _wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
         _ee_local_pos, _ = self._end_effector.get_local_poses()
 
@@ -537,13 +526,18 @@ class TofSensorTask(RLTask):
 
         cur_position[:, 0] = -cur_position[:, 0]
 
-        self.dist_dev = torch.linalg.norm(self.target_ee_position - cur_position,
+        self.dist_dev = torch.linalg.norm(self.target_ee_position -
+                                          cur_position,
                                           dim=1)
 
         # start = time.time()
         if self._cfg["raycast"]:
-            self.raytrace_step()
-      
+            gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+
+            _, _, transformed_vertices = self.transform_mesh()
+            self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
+                gripper_pose, gripper_rot, transformed_vertices)
+
         if self._task_cfg["Curobo"]:
             self.render_curobo()
 
@@ -571,185 +565,32 @@ class TofSensorTask(RLTask):
         return self.obs_buf
 
     def update_cache_state(self):
-      
+
         self._robots.set_gains(kds=torch.zeros((self.num_envs, 6)),
                                kps=torch.zeros((self.num_envs, 6)))
-     
 
-    def raytrace_step(self) -> None:
-
-        gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-
-        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
-        )
-
-        _, _, transformed_vertices = self.transform_mesh()
-
-        gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-        normals = find_plane_normal(self.num_envs, gripper_rot)
-        self.raycast_circle = circle_points(
-            self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
-            normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
-
-        # PT Multiple sensors TODO need to move this to utils file
-
-        # for draw point
-        debug_sensor_ray_pos_list = []
-        debug_ray_hit_points_list = []
-        debug_ray_colors = []
-        debug_ray_sizes = []
-        debug_point_sizes = []
-        debug_end_point_colors = []
-        debug_start_point_colors = []
-        debug_circle = []
-
-        self.raycast_reading = torch.zeros(
-            (self._num_envs,
-             self._cfg["raycast_width"] * self._cfg["raycast_height"] *
-             self._task_cfg['sim']["URRobot"]['num_sensors'])).to(
-                 self.device) - 1
-
-        num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
-        # ray average distance
-        self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
-        # ray tracing reading
-        self.raytrace_reading = torch.zeros(
-            (self.num_envs,
-             self._cfg["raycast_width"] * self._cfg["raycast_height"],
-             2)).to(self.device)
-        # ray trace coverage
-        self.raytrace_cover_range = torch.zeros(
-            (self.num_envs, 2)).to(self.device)
-        # ray trace max min dist
-        self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
-
-        for i, env in zip(
-                torch.arange(
-                    self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
-                        self.num_envs),
-                torch.arange(self.num_envs).repeat_interleave(
-                    self._task_cfg['sim']["URRobot"]['num_sensors'])):
-
-            self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
-                                    mesh_index=0)
-            ray_t, ray_dir, normal = self.raytracer.render(
-                self.raycast_circle[env][i], gripper_rot[env])
-
-            ray_t = wp.torch.to_torch(ray_t)
-
-            if len(torch.where(ray_t > 0)[0]) > 0:
-
-                # normalize tof reading
-                reading = ray_t[torch.where(ray_t > 0)]
-
-                noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
-                                            device=self.rl_device) / 1000 * 0
-                reading += noise_distance
-                reading = (reading - torch.min(reading)) / (
-                    torch.max(reading) - torch.min(reading) + 1e-5)
-
-                self.raycast_reading[env][i * num_pixel +
-                                          torch.where(ray_t > 0)[0]] = reading
-
-                average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
-                cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
-            else:
-                reading = ray_t
-                average_distance = -0.01
-                cover_percentage = 0
-
-            self.raytrace_dist[env][i] = average_distance
-            self.raytrace_cover_range[env][i] = cover_percentage
-            self.raytrace_reading[env, :, i] = ray_t
-
-            # replace the zero value
-
-            ray_t_copy = ray_t.clone()
-            if len(torch.where(ray_t <= 0)[0]) > 0:
-                index = torch.where(ray_t <= 0)[0]
-                ray_t[index] = torch.max(ray_t)
-
-            if torch.max(ray_t) < 1e-2:
-                self.raytrace_dev[env][i] = 10
-            else:
-                self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
-
-            if self._cfg["debug"]:
-
-                sensor_ray_pos_np = self.raycast_circle[env][i].cpu().numpy()
-                sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
-                                        sensor_ray_pos_np[1],
-                                        sensor_ray_pos_np[2])
-
-                ray_t = ray_t_copy.cpu().numpy()
-                ray_dir = ray_dir.numpy()
-
-                line_vec = np.transpose(
-                    np.multiply(np.transpose(ray_dir), ray_t))
-
-                # Get rid of ray misses (0 values)
-                line_vec = line_vec[np.any(line_vec, axis=1)]
-                ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
-                hits_len = len(ray_hit_points_list)
-
-                if hits_len > 0:
-                    sensor_ray_pos_list = [
-                        sensor_ray_pos_tuple for _ in range(hits_len)
-                    ]
-                    ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                    ray_sizes = [2 for _ in range(hits_len)]
-                    point_sizes = [7 for _ in range(hits_len)]
-                    start_point_colors = [
-                        (0, 0.75, 0, 1) for _ in range(hits_len)
-                    ]  # start (camera) points: green
-                    end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
-
-                    debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
-                    debug_ray_hit_points_list.append(ray_hit_points_list)
-                    debug_ray_colors.append(ray_colors)
-                    debug_ray_sizes.append(ray_sizes)
-
-                    debug_end_point_colors.append(end_point_colors)
-                    debug_point_sizes.append(point_sizes)
-                    debug_start_point_colors.append(start_point_colors)
-
-                    debug_circle.append(
-                        [self.raycast_circle[env][i].cpu().numpy()])
-
-        if self._cfg["debug"]:
-
-            if len(debug_sensor_ray_pos_list) > 0:
-
-                draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
-                              debug_ray_hit_points_list, debug_ray_colors,
-                              debug_ray_sizes, debug_end_point_colors,
-                              debug_point_sizes, debug_start_point_colors,
-                              debug_circle)
 
     def get_target_pose(self):
 
         target_x = 0.3 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_dev_local_pos[:, 0]
 
-        target_y = 0.3 * (1 - torch.cos(torch.as_tensor(
-            self.target_angle))).to(self.device) + self.init_ee_dev_local_pos[:, 1]
+        target_y = 0.3 * (1 - torch.cos(torch.as_tensor(self.target_angle))
+                          ).to(self.device) + self.init_ee_dev_local_pos[:, 1]
 
         self.target_ee_position = torch.cat([
             -target_x[:, None], target_y[:, None],
             self.init_ee_dev_local_pos[:, 2][:, None]
         ],
-                                         dim=1)
+                                            dim=1)
 
-        self.init_ee_object_dist = torch.linalg.norm(self.target_ee_position[:, :2] -
-                                           self.init_ee_dev_local_pos[:, :2],
-                                           dim=1)
-
-    
+        self.init_ee_object_dist = torch.linalg.norm(
+            self.target_ee_position[:, :2] - self.init_ee_dev_local_pos[:, :2],
+            dim=1)
 
     def pre_physics_step(self, actions) -> None:
 
         self.actions = actions
-
 
         self._step += 1
         if not self._env._world.is_playing():
@@ -758,7 +599,7 @@ class TofSensorTask(RLTask):
         if not self._task_cfg["sim"]["Control"]["rule-base"]:
 
             actions = actions.to(self._device)
-            
+
             delta_dof_pos, delta_pose = recover_action(actions,
                                                        self.velocity_limit,
                                                        self._env, self._robots)
@@ -784,8 +625,6 @@ class TofSensorTask(RLTask):
         self.cartesian_error = torch.linalg.norm(curr_position -
                                                  target_position,
                                                  dim=1)
-
-   
 
     def transform_mesh(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
@@ -929,7 +768,7 @@ class TofSensorTask(RLTask):
         self.scene.add(self._robots)
 
     def reset(self):
-       
+
         self._robots.set_joint_positions(
             torch.tensor([0, -1.57, 1.57 / 2 * 2, -1.57 * 2, 0, 0],
                          dtype=torch.float).repeat(self.num_envs,
