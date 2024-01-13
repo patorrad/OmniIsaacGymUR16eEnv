@@ -163,7 +163,7 @@ class TofSensorTask(RLTask):
         # control parameter
         self._step = 0
         self.frame_skip = 1
-        velocity_limit = torch.as_tensor([0.5] * 3 + [1.5] * 3,
+        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -469,68 +469,37 @@ class TofSensorTask(RLTask):
             # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
             # self.load_object(usd_path=object_path,env_index=i,object_index=2)
 
-    def lock_motion(self, stage, joint_path, prim_path, ee_link, i, lock=True):
-        from pxr import UsdPhysics, Gf
-        # D6 fixed joint
-        d6FixedJoint = UsdPhysics.Joint.Define(stage, joint_path)
-        d6FixedJoint.CreateBody0Rel().SetTargets(
-            [f"/World/envs/env_{i}/manipulated_object_1"])
-        d6FixedJoint.CreateBody1Rel().SetTargets([prim_path])
+    
+    def update_cache_state(self):
 
-        d6FixedJoint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.26, 0.0, 0))
-        d6FixedJoint.CreateLocalRot0Attr().Set(Gf.Quatf(
-            1.0, Gf.Vec3f(0, 0, 0)))
-
-        d6FixedJoint.CreateLocalPos1Attr().Set(Gf.Vec3f(0, 0, 0))
-
-        d6FixedJoint.CreateLocalRot1Attr().Set(Gf.Quatf(
-            1.0, Gf.Vec3f(0, 0, 0)))
-        # lock all DOF (lock - low is greater than high)
-        d6Prim = stage.GetPrimAtPath(joint_path)
-
-        if lock:
-            for name in ["transX", "transY", "transZ"]:
-                limitAPI = UsdPhysics.LimitAPI.Apply(d6Prim, name)
-                limitAPI.CreateLowAttr(1.0)
-                limitAPI.CreateHighAttr(-1.0)
-
-            # for limit_name in ["rotX", "rotY", "rotZ"]:
-            #     limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
-
-            #     limit_api.CreateLowAttr(-45.0)
-            #     limit_api.CreateHighAttr(45.0)
-
-    def unlock_motion(self, fixed_joint_path):
-        for i in range(self._num_envs):
-            is_valid = is_prim_path_valid(fixed_joint_path)
-            if is_valid:
-                delete_prim(fixed_joint_path)
-
+        self.robot_joints = self._robots.get_joint_positions()
+        self._wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
+        self._ee_local_pos, _ = self._end_effector.get_local_poses()
+        
     def get_observations(self) -> dict:
-
-        _wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
-        _ee_local_pos, _ = self._end_effector.get_local_poses()
-
+        
+        self.update_cache_state()
+        
         current_euler_angles_x = torch.atan2(
-            _ee_local_pos[:, 1] - _wrist2_local_pos[:, 1],
-            _ee_local_pos[:, 0] - _wrist2_local_pos[:, 0])
-
-        self.angle_dev_target = torch.atan2(
-            _ee_local_pos[:, 2] - _wrist2_local_pos[:, 2],
-            torch.linalg.norm(_ee_local_pos[:, :2] - _wrist2_local_pos[:, :2],
+            self._ee_local_pos[:, 1] - self._wrist2_local_pos[:, 1],
+            self._ee_local_pos[:, 0] - self._wrist2_local_pos[:, 0])
+        
+        self.angle_x_dev = torch.atan2(
+            self._ee_local_pos[:, 2] - self._wrist2_local_pos[:, 2],
+            torch.linalg.norm(self._ee_local_pos[:, :2] - self._wrist2_local_pos[:, :2],
                               dim=1))
-
-        self.angle_dev = (current_euler_angles_x -
+        
+        self.angle_z_dev = (current_euler_angles_x -
                           torch.pi / 2) - self.target_angle
-        cur_position, _ = self._end_effector.get_local_poses()
-
+        
+        
+        
+        cur_position = self._ee_local_pos.clone()
         cur_position[:, 0] = -cur_position[:, 0]
-
-        self.dist_dev = torch.linalg.norm(self.target_ee_position -
+        self.ee_object_dist = torch.linalg.norm(self.target_ee_position -
                                           cur_position,
                                           dim=1)
 
-        # start = time.time()
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -538,37 +507,28 @@ class TofSensorTask(RLTask):
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose, gripper_rot, transformed_vertices)
 
-        if self._task_cfg["Curobo"]:
-            self.render_curobo()
-
-        joint_angle = self._robots.get_joint_positions()
-
         if isinstance(self._num_observations, dict):
             self.obs_buf = {}
-            self.obs_buf["state"] = joint_angle
+            self.obs_buf["state"] = self.robot_joints
             self.obs_buf["image"] = self.raycast_reading * 255
             return self.obs_buf
 
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles_x[:, None], self.target_angle[:, None],
-                self.angle_dev[:, None], cur_position, self.target_ee_position,
-                self.target_ee_position - cur_position, joint_angle
+                self.angle_z_dev[:, None], cur_position, self.target_ee_position,
+                self.target_ee_position - cur_position, self.robot_joints
             ],
                                      dim=1)
 
         elif self._cfg["raycast"]:
 
-            self.obs_buf = torch.cat([joint_angle, self.raycast_reading],
+            self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
 
         return self.obs_buf
 
-    def update_cache_state(self):
-
-        self._robots.set_gains(kds=torch.zeros((self.num_envs, 6)),
-                               kps=torch.zeros((self.num_envs, 6)))
-
+   
 
     def get_target_pose(self):
 
@@ -599,14 +559,14 @@ class TofSensorTask(RLTask):
         if not self._task_cfg["sim"]["Control"]["rule-base"]:
 
             actions = actions.to(self._device)
-
+            actions[:,[2,3,4]] = 0
             delta_dof_pos, delta_pose = recover_action(actions,
                                                        self.velocity_limit,
                                                        self._env, self._robots)
         else:
             delta_dof_pos, delta_pose = recover_rule_based_action(
                 self.num_envs, self.device, self._end_effector,
-                self.target_ee_position, self.angle_dev, self._robots)
+                self.target_ee_position, self.angle_z_dev, self._robots)
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
@@ -657,10 +617,10 @@ class TofSensorTask(RLTask):
 
     def calculate_angledev_reward(self) -> None:
 
-        index = torch.where(abs(self.angle_dev) < 1.5 / 180 * torch.pi)
-        self.angle_dev[index] = 0
+        index = torch.where(abs(self.angle_z_dev) < 1.5 / 180 * torch.pi)
+        self.angle_z_dev[index] = 0
 
-        dev_percentage = self.angle_dev / self.init_angle_dev
+        dev_percentage = self.angle_z_dev / self.init_angle_z_dev
 
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
@@ -679,7 +639,7 @@ class TofSensorTask(RLTask):
 
     def calculate_targetangledev_reward(self) -> None:
 
-        angle_reward = -abs(self.angle_dev_target) * 3
+        angle_reward = -abs(self.angle_x_dev) * 3
 
         return angle_reward
 
@@ -698,7 +658,7 @@ class TofSensorTask(RLTask):
 
     def calculate_dist_reward(self) -> None:
 
-        dev_percentage = self.dist_dev / self.init_ee_object_dist
+        dev_percentage = self.ee_object_dist / self.init_ee_object_dist
 
         # exceed the target
         negative_index = torch.where(dev_percentage < 0)[0]
@@ -809,6 +769,6 @@ class TofSensorTask(RLTask):
 
         # reset goal orientation
         self.target_angle = -self.rand_orientation[:, 2].clone()
-        self.init_angle_dev = -self.target_angle.clone()
+        self.init_angle_z_dev = -self.target_angle.clone()
         self.get_target_pose()
         self._step = 0

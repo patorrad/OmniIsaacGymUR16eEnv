@@ -125,3 +125,41 @@ def init_curobo(self):
 #         # transform back
 
 #         self.draw_points(pre_transoform_goal_pose, result.success)
+
+
+# def lock_motion(self, stage, joint_path, prim_path, ee_link, i, lock=True):
+#     from pxr import UsdPhysics, Gf
+#     # D6 fixed joint
+#     d6FixedJoint = UsdPhysics.Joint.Define(stage, joint_path)
+#     d6FixedJoint.CreateBody0Rel().SetTargets(
+#         [f"/World/envs/env_{i}/manipulated_object_1"])
+#     d6FixedJoint.CreateBody1Rel().SetTargets([prim_path])
+
+#     d6FixedJoint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.26, 0.0, 0))
+#     d6FixedJoint.CreateLocalRot0Attr().Set(Gf.Quatf(
+#         1.0, Gf.Vec3f(0, 0, 0)))
+
+#     d6FixedJoint.CreateLocalPos1Attr().Set(Gf.Vec3f(0, 0, 0))
+
+#     d6FixedJoint.CreateLocalRot1Attr().Set(Gf.Quatf(
+#         1.0, Gf.Vec3f(0, 0, 0)))
+#     # lock all DOF (lock - low is greater than high)
+#     d6Prim = stage.GetPrimAtPath(joint_path)
+
+#     if lock:
+#         for name in ["transX", "transY", "transZ"]:
+#             limitAPI = UsdPhysics.LimitAPI.Apply(d6Prim, name)
+#             limitAPI.CreateLowAttr(1.0)
+#             limitAPI.CreateHighAttr(-1.0)
+
+#         # for limit_name in ["rotX", "rotY", "rotZ"]:
+#         #     limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
+
+#         #     limit_api.CreateLowAttr(-45.0)
+#         #     limit_api.CreateHighAttr(45.0)
+
+# def unlock_motion(self, fixed_joint_path):
+#     for i in range(self._num_envs):
+#         is_valid = is_prim_path_valid(fixed_joint_path)
+#         if is_valid:
+#             delete_prim(fixed_joint_path)

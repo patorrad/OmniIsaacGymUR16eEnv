@@ -84,7 +84,7 @@ def parse_hydra_configs(cfg: DictConfig):
         #     env._num_envs)
         print(
             "init angle deviation:",
-            abs(env._task.angle_dev).sum().cpu().detach().item() /
+            abs(env._task.angle_z_dev).sum().cpu().detach().item() /
             env._num_envs / torch.pi * 180)
 
         for i in range(198):
@@ -94,7 +94,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
             obs, reward, dones, truncated, infos = env.step(action)
             reward_sum += reward.sum().cpu().detach().item() / env._num_envs
-            # print((env._task.angle_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
+            # print((env._task.angle_z_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
 
         print("reward:", reward_sum)
         # print(
@@ -104,7 +104,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
         print(
             "angle deviation:",
-            abs(env._task.angle_dev).sum().cpu().detach().item() /
+            abs(env._task.angle_z_dev).sum().cpu().detach().item() /
             env._num_envs / torch.pi * 180)
     env._simulation_app.close()
 
