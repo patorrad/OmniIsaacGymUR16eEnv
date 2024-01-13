@@ -173,7 +173,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf = torch.zeros(self.num_envs, device=self.device)
         self.pre_action = torch.zeros((self.num_envs, 6), device=self.device)
-        velocity_limit = torch.as_tensor([0.2] * 3 + [0.6] * 3,
+        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -832,7 +832,6 @@ class TofSensorTask(RLTask):
         # self.pre_action[:, 5] = action.reshape(-1) * 0
         self.pre_action[:, [0, 1, 2, 3, 4, 5]] = action
 
-
         delta_pose = (self.pre_action + 1) / 2 * (limit[:, 1] -
                                                   limit[:, 0]) + limit[:, 0]
         self.control_time = self._env._world.get_physics_dt()
@@ -867,21 +866,16 @@ class TofSensorTask(RLTask):
 
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
         )
-        # transform = Transform3d(device=self.device).scale(
-        #     self.scale_size).rotate(
-        #         quaternion_to_matrix(quaternion_invert(
-        #             self.target_object_rot))).translate(
-        #                 self.target_object_pose)
 
-        # transformed_vertices = transform.transform_points(
-        #     self.mesh_vertices.clone().to(self.device))
         _, _, transformed_vertices = self.transform_mesh()
 
-        # PT Multiple sensors TODO need to move this to utils file
+        gripper_pose, gripper_rot = self._end_effector.get_world_poses()
         normals = find_plane_normal(self.num_envs, gripper_rot)
-        circle = circle_points(
+        self.raycast_circle = circle_points(
             self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
             normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
+
+        # PT Multiple sensors TODO need to move this to utils file
 
         # for draw point
         debug_sensor_ray_pos_list = []
@@ -923,7 +917,7 @@ class TofSensorTask(RLTask):
             self.raytracer.set_geom(wp.from_torch(transformed_vertices[env]),
                                     mesh_index=0)
             ray_t, ray_dir, normal = self.raytracer.render(
-                circle[env][i], gripper_rot[env])
+                self.raycast_circle[env][i], gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
 
@@ -966,7 +960,7 @@ class TofSensorTask(RLTask):
 
             if self._cfg["debug"]:
 
-                sensor_ray_pos_np = circle[env][i].cpu().numpy()
+                sensor_ray_pos_np = self.raycast_circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
@@ -976,8 +970,6 @@ class TofSensorTask(RLTask):
 
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
-
-            
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -1005,7 +997,8 @@ class TofSensorTask(RLTask):
                     debug_point_sizes.append(point_sizes)
                     debug_start_point_colors.append(start_point_colors)
 
-                    debug_circle.append([circle[env][i].cpu().numpy()])
+                    debug_circle.append(
+                        [self.raycast_circle[env][i].cpu().numpy()])
 
         if self._cfg["debug"]:
 
@@ -1067,6 +1060,8 @@ class TofSensorTask(RLTask):
 
     def pre_physics_step(self, actions) -> None:
 
+        self.actions = actions
+
         dof_limits = self._robots.get_dof_limits()
         self.robot_dof_lower_limits = dof_limits[0, :,
                                                  0].to(device=self._device)
@@ -1080,6 +1075,7 @@ class TofSensorTask(RLTask):
         if not self._task_cfg["sim"]["Control"]["rule-base"]:
 
             actions = actions.to(self._device)
+
             delta_dof_pos, delta_pose = self.recover_action(
                 actions, self.velocity_limit)
         else:
@@ -1089,19 +1085,19 @@ class TofSensorTask(RLTask):
         current_dof = self._robots.get_joint_positions()
         targets_dof = current_dof + delta_dof_pos[:, :6]
 
-       
-
         targets_dof[:, -1] = 0
 
         self._robots.set_joint_position_targets(targets_dof)
 
         pre_position, pre_orientation = self._end_effector.get_local_poses()
-        target_position = pre_position+delta_pose[:,:3]
+        target_position = pre_position + delta_pose[:, :3]
 
         for i in range(1):
             self._env._world.step(render=False)
         curr_position, _ = self._end_effector.get_local_poses()
-       
+        self.cartesian_error = torch.linalg.norm(curr_position -
+                                                 target_position,
+                                                 dim=1)
 
     def render_curobo(self):
 
@@ -1205,6 +1201,9 @@ class TofSensorTask(RLTask):
 
     def calculate_angledev_reward(self) -> None:
 
+        index = torch.where(abs(self.angle_dev) < 1.5 / 180 * torch.pi)
+        self.angle_dev[index] = 0
+
         dev_percentage = self.angle_dev / self.init_angle_dev
 
         # exceed the target
@@ -1283,6 +1282,15 @@ class TofSensorTask(RLTask):
         self.rew_buf += self.calculate_targetangledev_reward()
         self.rew_buf += self.calculate_raytrace_reward()
         self.rew_buf += self.calculate_raytrace_dev_reward()
+        self.rew_buf /= 1.5
+
+        controller_penalty = (self.cartesian_error**2) * -3e3
+        self.rew_buf += controller_penalty
+
+        action_penalty = torch.sum(
+            torch.clip(self._robots.get_joint_velocities(), -1, 1)**2,dim=1) * -0.5
+        
+        self.rew_buf += action_penalty
 
         return self.rew_buf
 
@@ -1370,18 +1378,3 @@ class TofSensorTask(RLTask):
         self.init_angle_dev = -self.target_angle.clone()
         self.get_target_pose()
         self._step = 0
-
-        # self.unlock_motion(f"/World/envs/env_{0}/robot/ee_link_cube")
-
-    def reset_raytracer(self):
-        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
-            clone=True)
-        trimesh_1 = geom_to_trimesh(
-            UsdGeom.Cube(
-                get_prim_at_path(self._manipulated_object.prim_paths[0])),
-            self.target_object_pose[0].cpu(),
-            self.target_object_rot[0].cpu())  # TODO Why to CPU?
-        warp_mesh = warp_from_trimesh(trimesh_1, self._device)
-
-        if self._cfg["debug_with_trimesh"]:
-            self.j = 0

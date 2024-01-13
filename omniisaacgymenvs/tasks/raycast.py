@@ -309,7 +309,7 @@ def circle_points(radius, centers, normals, num_points):
     normals = normals / torch.norm(normals, dim=-1, keepdim=True)
 
     # Generate random vectors not in the same direction as the normals
-    not_normals = torch.rand(batch_size, 3, device='cuda:0')
+    not_normals = torch.rand(batch_size, 3, device='cuda:0') * 0 + 0.5
     while (normals * not_normals).sum(
             dim=-1).max() > 0.99:  # Ensure they're not too similar
         not_normals = torch.rand(batch_size, 3, device='cuda:0')
@@ -328,6 +328,7 @@ def circle_points(radius, centers, normals, num_points):
     circles = centers[:, None, :] + radius * (
         basis1[:, None, :] * torch.cos(t)[None, :, None] +
         basis2[:, None, :] * torch.sin(t)[None, :, None])
+
     return circles
 
 
@@ -382,7 +383,8 @@ def find_plane_normal(num_env, quaternions):
 
 def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
                   debug_ray_hit_points_list, debug_ray_colors, debug_ray_sizes,
-                  debug_end_point_colors,debug_point_sizes,debug_start_point_colors,debug_circle):
+                  debug_end_point_colors, debug_point_sizes,
+                  debug_start_point_colors, debug_circle):
     debug_draw.clear_lines()
     debug_draw.clear_points()
 
