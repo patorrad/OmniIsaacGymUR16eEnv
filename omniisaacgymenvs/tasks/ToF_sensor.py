@@ -506,25 +506,27 @@ class TofSensorTask(RLTask):
             _, _, transformed_vertices = self.transform_mesh()
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose, gripper_rot, transformed_vertices)
-
-        if isinstance(self._num_observations, dict):
-            self.obs_buf = {}
-            self.obs_buf["state"] = self.robot_joints
-            self.obs_buf["image"] = self.raycast_reading * 255
-            return self.obs_buf
-
-        if self._task_cfg['Training']["use_oracle"]:
-            self.obs_buf = torch.cat([
-                current_euler_angles_x[:, None], self.target_angle[:, None],
-                self.angle_z_dev[:, None], cur_position, self.target_ee_position,
-                self.target_ee_position - cur_position, self.robot_joints
-            ],
-                                     dim=1)
-
-        elif self._cfg["raycast"]:
+            
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
+        # if isinstance(self._num_observations, dict):
+        #     self.obs_buf = {}
+        #     self.obs_buf["state"] = self.robot_joints
+        #     self.obs_buf["image"] = self.raycast_reading * 255
+        #     return self.obs_buf
+
+        # if self._task_cfg['Training']["use_oracle"]:
+        #     self.obs_buf = torch.cat([
+        #         current_euler_angles_x[:, None], self.target_angle[:, None],
+        #         self.angle_z_dev[:, None], cur_position, self.target_ee_position,
+        #         self.target_ee_position - cur_position, self.robot_joints
+        #     ],
+        #                              dim=1)
+
+       
+
+           
 
         return self.obs_buf
 
@@ -645,7 +647,7 @@ class TofSensorTask(RLTask):
 
     def calculate_raytrace_reward(self) -> None:
 
-        dev_percentage = torch.sum(self.raytrace_cover_range / 0.4, dim=1)
+        dev_percentage = torch.sum(self.raytrace_cover_range / 0.50, dim=1)
 
         positive_reward = torch.where(dev_percentage > 1)[0]
         raytrace_range_reward = -(1 - dev_percentage) * 1
@@ -750,8 +752,8 @@ class TofSensorTask(RLTask):
 
         # init position
         object_target_position = target_obj_position.clone()
-        object_target_position[:, 1] += 0.3
-        random_x = torch.rand(self.num_envs).to(self.device) * 0.1
+        object_target_position[:, 1] += 0.4
+        random_x = torch.rand(self.num_envs).to(self.device) * 0.2
         object_target_position[:, 0] -= random_x
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)

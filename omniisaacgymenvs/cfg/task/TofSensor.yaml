@@ -105,7 +105,7 @@ sim:
   Table:
     position: [0.0, 0.6, 0.52]
     quaternion: [1.0, 0.0, 0.0, 0.0]
-    scale: [0.6, 0.6, 1.04]
+    scale: [0.8, 0.8, 1.04]
   Control:
     rule-base: False
 

@@ -444,7 +444,7 @@ class Raycast:
                 reading = ray_t[torch.where(ray_t > 0)]
 
                 noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
-                                            device=self.device) / 1000 * 0
+                                            device=self.device) / 1000 * 20
                 reading += noise_distance
                 reading = (reading - torch.min(reading)) / (
                     torch.max(reading) - torch.min(reading) + 1e-5)
