@@ -619,7 +619,7 @@ class TofSensorTask(RLTask):
 
     def calculate_angledev_reward(self) -> None:
 
-        index = torch.where(abs(self.angle_z_dev) < 1.5 / 180 * torch.pi)
+        index = torch.where(abs(self.angle_z_dev) < 1.0 / 180 * torch.pi)
         self.angle_z_dev[index] = 0
 
         dev_percentage = self.angle_z_dev / self.init_angle_z_dev

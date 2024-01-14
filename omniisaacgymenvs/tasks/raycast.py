@@ -150,7 +150,7 @@ def circle_points(radius, centers, normals, num_points):
     normals = normals / torch.norm(normals, dim=-1, keepdim=True)
 
     # Generate random vectors not in the same direction as the normals
-    not_normals = torch.rand(batch_size, 3, device='cuda:0') * 0 + 0.5
+    not_normals = torch.rand(batch_size, 3, device='cuda:0') 
     while (normals * not_normals).sum(
             dim=-1).max() > 0.99:  # Ensure they're not too similar
         not_normals = torch.rand(batch_size, 3, device='cuda:0')
