@@ -100,7 +100,7 @@ import omniisaacgymenvs.utils.tools.transform_utils as tf
 from cprint import *
 import xml.etree.ElementTree as ET
 # 3D transformations functions
-from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, matrix_to_quaternion, quaternion_multiply
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply
 from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper_Properties
 from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
 
@@ -569,6 +569,7 @@ class TofSensorTask(RLTask):
             delta_dof_pos, delta_pose = recover_rule_based_action(
                 self.num_envs, self.device, self._end_effector,
                 self.target_ee_position, self.angle_z_dev, self._robots)
+        
 
         # current dof and current joint velocity
         current_dof = self._robots.get_joint_positions()
@@ -577,16 +578,18 @@ class TofSensorTask(RLTask):
         targets_dof[:, -1] = 0
 
         self._robots.set_joint_position_targets(targets_dof)
+        
 
         pre_position, pre_orientation = self._end_effector.get_local_poses()
         target_position = pre_position + delta_pose[:, :3]
 
-        for i in range(1):
+        for i in range(5):
             self._env._world.step(render=False)
-        curr_position, _ = self._end_effector.get_local_poses()
+        curr_position, curr_orientation = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position -
                                                  target_position,
                                                  dim=1)
+        # print(quaternion_to_axis_angle(quaternion_multiply(pre_orientation,quaternion_invert(curr_orientation)))[:,-1],delta_pose[:,-1])
 
     def transform_mesh(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
@@ -668,7 +671,7 @@ class TofSensorTask(RLTask):
             dev_percentage[negative_index] = abs(
                 dev_percentage[negative_index]) + 1
 
-        dev = torch.clamp(dev_percentage, 0, 1.8)
+        dev = torch.clamp(dev_percentage, -1, 1.8)
 
         dist_reward = abs((1 - dev)**2) * 1
 
