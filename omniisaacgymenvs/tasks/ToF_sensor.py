@@ -128,7 +128,7 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 5
+        self.frame_skip = 20
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -169,8 +169,9 @@ class TofSensorTask(RLTask):
                                     self.debug_draw, self.device)
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
-            self.motion_generation = MotionGeneration(self._robots,
+            self.motion_generation = MotionGeneration(self.robot,
                 self._env._world)
+        
 
     def init_mesh(self):
 
@@ -539,21 +540,22 @@ class TofSensorTask(RLTask):
             )
             from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
-            sim_js = JointsState(
-                positions=self._robots.get_joint_positions()[0],
-                velocities=self._robots.get_joint_velocities()[0],
-                efforts=None)
-            sim_js_names = self.robot.dof_names
+            
 
             target_ee_orientation = quaternion_multiply(
                 quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
                 cur_ee_orientation)
             target_ee_pos = cur_ee_pos + delta_pose[:, :3]
-            print(target_ee_pos[0], target_ee_orientation[0])
+            # target_list = np.load("/home/lme/Desktop/joint.npy", allow_pickle=True)
+            # robot_joint, target_ee_pos, target_ee_orientation = target_list[30]
+            robot_joint = self._robots.get_joint_positions()[0]
 
-            targets_dof = self.motion_generation.step_path(
-                target_ee_pos, target_ee_orientation)
-            targets_dof = targets_dof[None]
+            cmd_plan = self.motion_generation.step_path(
+                torch.as_tensor(target_ee_pos[0]).to(self.device), torch.as_tensor(target_ee_orientation[0]).to(self.device),robot_joint)
+            for i in range(len(cmd_plan)):
+                for i in range(1):
+                    self._env._world.step(render=True)
+                self._robots.set_joint_positions(cmd_plan[i].position[None])
 
         # else:
         #     delta_dof_pos, delta_pose = recover_rule_based_action(
@@ -563,26 +565,29 @@ class TofSensorTask(RLTask):
         #     targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
         #     targets_dof = current_dof + delta_dof_pos[:6]
 
-        targets_dof[:, -1] = 0
+        # targets_dof[:, -1] = 0
 
-        self._robots.set_joint_position_targets(targets_dof)
+        
+        # self._robots.set_joint_velocity_targets(targets_dof_velocity)
 
-        pre_position, pre_orientation = self._end_effector.get_local_poses()
-        target_position = pre_position + delta_pose[:, :3]
+        # pre_position, pre_orientation = self._end_effector.get_local_poses()
+        # target_position = pre_position + delta_pose[:, :3]
 
-        for i in range(self.frame_skip):
-            self._env._world.step(render=False)
-        curr_position, curr_orientation = self._end_effector.get_local_poses()
-        self.cartesian_error = torch.linalg.norm(curr_position -
-                                                 target_position,
-                                                 dim=1)
-        self.robot_joints_buffer.append([
-            self._robots.get_joint_positions()[0].cpu().numpy(),
-            curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
-        ])
+        
+        # curr_position, curr_orientation = self._end_effector.get_local_poses()
+        # self.cartesian_error = torch.linalg.norm(curr_position -
+        #                                          target_position,
+        #                                          dim=1)
+        
+        self.cartesian_error = 0
+        
+        # self.robot_joints_buffer.append([
+        #     self._robots.get_joint_positions()[0].cpu().numpy(),
+        #     curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
+        # ])
 
-        # print(curr_position[0],self._robots.get_local_poses())
-        np.save("joint.npy", self.robot_joints_buffer)
+        # # print(curr_position[0],self._robots.get_local_poses())
+        # np.save("joint.npy", self.robot_joints_buffer)
 
         # print(
         #     quaternion_multiply(

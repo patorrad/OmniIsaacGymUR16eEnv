@@ -35,22 +35,16 @@ import torch
 
 class MotionGeneration:
 
-    def __init__(self,
-                 robot,
-                 word,
-                 robot_path="ur16e.yml") -> None:
+    def __init__(self, robot, word, robot_path="ur16e.yml") -> None:
 
+        self.robot = robot
+        self.world=word
         n_obstacle_cuboids = 30
         n_obstacle_mesh = 10
-        self.robot = robot
-      
-        tensor_args = TensorDeviceType()
-
+        usd_help = UsdHelper()
+        self.tensor_args = TensorDeviceType()
         robot_cfg = load_yaml(join_path(get_robot_configs_path(),
-                                        robot_path))["robot_cfg"]
-
-        j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
-        default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
+                                        "ur16e.yml"))["robot_cfg"]
 
         world_cfg_table = WorldConfig.from_dict(
             load_yaml(
@@ -69,7 +63,7 @@ class MotionGeneration:
         motion_gen_config = MotionGenConfig.load_from_robot_config(
             robot_cfg,
             world_cfg,
-            tensor_args,
+            self.tensor_args,
             trajopt_tsteps=32,
             collision_checker_type=CollisionCheckerType.MESH,
             use_cuda_graph=True,
@@ -88,48 +82,39 @@ class MotionGeneration:
             finetune_dt_scale=1.05,
             velocity_scale=[0.25, 1, 1, 1, 1.0, 1.0, 1.0, 1.0, 1.0],
         )
+        
         self.motion_gen = MotionGen(motion_gen_config)
         print("warming up...")
         self.motion_gen.warmup(enable_graph=False, warmup_js_trajopt=False)
 
-        self.plan_config = MotionGenPlanConfig(enable_graph=False,
-                                               enable_graph_attempt=4,
-                                               max_attempts=2,
-                                               enable_finetune_trajopt=True)
-
-        usd_help = UsdHelper()
-
-        # obstacles = usd_help.get_obstacles_from_stage(
-        #     # only_paths=[obstacles_path],
-        #     reference_prim_path=robot_prim_path,
-        #     ignore_substring=[
-        #         robot_prim_path,
-        #         "/curobo",
-        #     ],
-        # ).get_collision_check_world()
-
-        # self.motion_gen.update_world(obstacles)
-        self.tensor_args = TensorDeviceType()
-
-        self.target_pose = None
-        self.past_pose = None
-
-        self._world = word
+        print("Curobo is Ready")
+        self.robot.get_articulation_controller()
+        
         
 
-    def step_path(self, target_ee_pos, target_ee_orientation):
-        from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+        self.plan_config = MotionGenPlanConfig(enable_graph=False,
+                                        enable_graph_attempt=4,
+                                        max_attempts=2,
+                                        enable_finetune_trajopt=True)
 
-      
+        usd_help.load_stage(self.world.stage)
+        usd_help.add_world_to_stage(world_cfg, base_frame="/World")
+        
+   
+
+    def step_path(self, target_ee_pos, target_ee_orientation,robot_joint):
+       
+
         cmd_plan = None
 
         sim_js = self.robot.get_joints_state()
         sim_js_names = self.robot.dof_names
+
         cu_js = JointState(
-            position=self.tensor_args.to_device(sim_js.positions),
-            velocity=self.tensor_args.to_device(sim_js.velocities),
-            acceleration=self.tensor_args.to_device(sim_js.velocities),
-            jerk=self.tensor_args.to_device(sim_js.velocities),
+            position=self.tensor_args.to_device(robot_joint),
+            velocity=self.tensor_args.to_device(sim_js.velocities) * 0,
+            acceleration=self.tensor_args.to_device(sim_js.velocities) * 0,
+            jerk=self.tensor_args.to_device(sim_js.velocities) * 0,
             joint_names=sim_js_names,
         )
         cu_js = cu_js.get_ordered_joint_state(
@@ -148,7 +133,9 @@ class MotionGeneration:
                                              self.plan_config)
 
         succ = result.success.item()  # ik_result.success.item()
-      
+        print(succ)
+        
+
         if succ:
             
             cmd_plan = result.get_interpolated_plan()
@@ -165,7 +152,11 @@ class MotionGeneration:
             cmd_plan = cmd_plan.get_ordered_joint_state(common_js_names)
 
             cmd_state = cmd_plan[-1]
+            
+          
 
-            return cmd_state.position
+            return cmd_plan
 
         return self.tensor_args.to_device(sim_js.positions)
+
+
