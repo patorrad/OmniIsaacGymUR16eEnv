@@ -67,6 +67,7 @@ from omniisaacgymenvs.utils.tools.rotation_conversions import *
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
 import omniisaacgymenvs.utils.tools.transform_utils as tf
+from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
 from .raycast import Raycast
 
@@ -128,8 +129,8 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 5
-        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
+        self.frame_skip = 1
+        velocity_limit = torch.as_tensor([0.3] * 3 + [1.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
@@ -170,7 +171,8 @@ class TofSensorTask(RLTask):
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
             self.motion_generation = MotionGeneration(self.robot,
-                                                      self._env._world,self.num_envs)
+                                                      self._env._world,
+                                                      n_envs=self.num_envs)
 
     def init_mesh(self):
 
@@ -523,8 +525,7 @@ class TofSensorTask(RLTask):
         actions[:, [2, 3, 4]] = 0
         control_time = self._env._world.get_physics_dt()
         delta_pose = recover_action(actions, self.velocity_limit, control_time)
-        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
-            )
+        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
         target_ee_pos = cur_ee_pos + delta_pose[:, :3]
 
         if self._task_cfg["sim"]["Control"] == "diffik":
@@ -539,20 +540,19 @@ class TofSensorTask(RLTask):
             self._robots.set_joint_position_targets(targets_dof)
 
         elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
-            
-            from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
+            
+            import time 
+          
             target_ee_orientation = quaternion_multiply(
                 quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
                 cur_ee_orientation)
-           
 
             robot_joint = self._robots.get_joint_positions()
 
             robot_joint = self.motion_generation.step_path(
-                target_ee_pos,
-                target_ee_orientation,
-                robot_joint)
+                target_ee_pos, target_ee_orientation, robot_joint)
+          
 
             self._robots.apply_action(ArticulationActions(robot_joint, ))
 
@@ -579,7 +579,6 @@ class TofSensorTask(RLTask):
             curr_position - torch.as_tensor(target_ee_pos).to(self.device),
             dim=1)
 
-        
         # self.robot_joints_buffer.append([
         #     self._robots.get_joint_positions()[0].cpu().numpy(),
         #     curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
