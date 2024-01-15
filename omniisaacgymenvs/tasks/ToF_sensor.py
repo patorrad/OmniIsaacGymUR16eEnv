@@ -170,8 +170,7 @@ class TofSensorTask(RLTask):
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
             self.motion_generation = MotionGeneration(self.robot,
-                self._env._world)
-        
+                                                      self._env._world)
 
     def init_mesh(self):
 
@@ -540,8 +539,6 @@ class TofSensorTask(RLTask):
             )
             from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
-            
-
             target_ee_orientation = quaternion_multiply(
                 quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
                 cur_ee_orientation)
@@ -551,11 +548,16 @@ class TofSensorTask(RLTask):
             robot_joint = self._robots.get_joint_positions()[0]
 
             cmd_plan = self.motion_generation.step_path(
-                torch.as_tensor(target_ee_pos[0]).to(self.device), torch.as_tensor(target_ee_orientation[0]).to(self.device),robot_joint)
-            for i in range(len(cmd_plan)):
-                for i in range(1):
-                    self._env._world.step(render=True)
-                self._robots.set_joint_positions(cmd_plan[i].position[None])
+                torch.as_tensor(target_ee_pos).to(self.device),
+                torch.as_tensor(target_ee_orientation).to(self.device),
+                robot_joint)
+
+            self._robots.apply_action(
+                ArticulationActions(cmd_plan[-1].position,
+                                    cmd_plan[-1].velocity*0
+                                    ))
+        
+       
 
         # else:
         #     delta_dof_pos, delta_pose = recover_rule_based_action(
@@ -567,20 +569,21 @@ class TofSensorTask(RLTask):
 
         # targets_dof[:, -1] = 0
 
-        
         # self._robots.set_joint_velocity_targets(targets_dof_velocity)
 
-        # pre_position, pre_orientation = self._end_effector.get_local_poses()
-        # target_position = pre_position + delta_pose[:, :3]
+        pre_position, pre_orientation = self._end_effector.get_local_poses()
+        target_position = pre_position + delta_pose[:, :3]
+        
+        for i in range(self.frame_skip*2):
+            self._env._world.step(render=True)
 
-        
-        # curr_position, curr_orientation = self._end_effector.get_local_poses()
-        # self.cartesian_error = torch.linalg.norm(curr_position -
-        #                                          target_position,
-        #                                          dim=1)
-        
-        self.cartesian_error = 0
-        
+        curr_position, curr_orientation = self._end_effector.get_local_poses()
+        self.cartesian_error = torch.linalg.norm(curr_position -
+                                                 torch.as_tensor(target_ee_pos).to(self.device),
+                                                 dim=1)
+
+        print(self.cartesian_error)
+
         # self.robot_joints_buffer.append([
         #     self._robots.get_joint_positions()[0].cpu().numpy(),
         #     curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
