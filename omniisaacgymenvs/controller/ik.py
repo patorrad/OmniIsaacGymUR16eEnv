@@ -26,13 +26,12 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
     return delta_dof_pos / 2, delta_pose
 
 
-def recover_action(action, limit, _env, _robots):
+def recover_action(action, limit, control_time):
 
     # delta pose
     action = torch.clip(action, -1, 1)
 
     delta_pose = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
-    control_time = _env._world.get_physics_dt()
     delta_pose = delta_pose * control_time
 
     return delta_pose
