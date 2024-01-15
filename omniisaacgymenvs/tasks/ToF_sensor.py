@@ -130,7 +130,7 @@ class TofSensorTask(RLTask):
         # control parameter
         self._step = 0
         self.frame_skip = 1
-        velocity_limit = torch.as_tensor([0.3] * 3 + [1.0] * 3,
+        velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
