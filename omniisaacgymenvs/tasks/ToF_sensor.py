@@ -128,7 +128,7 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 1
+        self.frame_skip = 5
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -170,7 +170,7 @@ class TofSensorTask(RLTask):
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
             self.motion_generation = MotionGeneration(self.robot,
-                                                      self._env._world)
+                                                      self._env._world,self.num_envs)
 
     def init_mesh(self):
 
@@ -547,11 +547,11 @@ class TofSensorTask(RLTask):
                 cur_ee_orientation)
            
 
-            robot_joint = self._robots.get_joint_positions()[0]
+            robot_joint = self._robots.get_joint_positions()
 
             robot_joint = self.motion_generation.step_path(
-                torch.as_tensor(target_ee_pos).to(self.device),
-                torch.as_tensor(target_ee_orientation).to(self.device),
+                target_ee_pos,
+                target_ee_orientation,
                 robot_joint)
 
             self._robots.apply_action(ArticulationActions(robot_joint, ))
