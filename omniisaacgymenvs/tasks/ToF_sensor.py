@@ -128,7 +128,7 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 20
+        self.frame_skip = 1
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -523,6 +523,9 @@ class TofSensorTask(RLTask):
         actions[:, [2, 3, 4]] = 0
         control_time = self._env._world.get_physics_dt()
         delta_pose = recover_action(actions, self.velocity_limit, control_time)
+        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
+            )
+        target_ee_pos = cur_ee_pos + delta_pose[:, :3]
 
         if self._task_cfg["sim"]["Control"] == "diffik":
 
@@ -533,31 +536,25 @@ class TofSensorTask(RLTask):
             current_dof = self._robots.get_joint_positions()
             targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
             targets_dof = current_dof + delta_dof_pos[:6]
+            self._robots.set_joint_position_targets(targets_dof)
 
         elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
-            cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
-            )
+            
             from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
             target_ee_orientation = quaternion_multiply(
                 quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
                 cur_ee_orientation)
-            target_ee_pos = cur_ee_pos + delta_pose[:, :3]
-            # target_list = np.load("/home/lme/Desktop/joint.npy", allow_pickle=True)
-            # robot_joint, target_ee_pos, target_ee_orientation = target_list[30]
+           
+
             robot_joint = self._robots.get_joint_positions()[0]
 
-            cmd_plan = self.motion_generation.step_path(
+            robot_joint = self.motion_generation.step_path(
                 torch.as_tensor(target_ee_pos).to(self.device),
                 torch.as_tensor(target_ee_orientation).to(self.device),
                 robot_joint)
 
-            self._robots.apply_action(
-                ArticulationActions(cmd_plan[-1].position,
-                                    cmd_plan[-1].velocity*0
-                                    ))
-        
-       
+            self._robots.apply_action(ArticulationActions(robot_joint, ))
 
         # else:
         #     delta_dof_pos, delta_pose = recover_rule_based_action(
@@ -573,17 +570,16 @@ class TofSensorTask(RLTask):
 
         pre_position, pre_orientation = self._end_effector.get_local_poses()
         target_position = pre_position + delta_pose[:, :3]
-        
-        for i in range(self.frame_skip*2):
+
+        for i in range(self.frame_skip):
             self._env._world.step(render=True)
 
         curr_position, curr_orientation = self._end_effector.get_local_poses()
-        self.cartesian_error = torch.linalg.norm(curr_position -
-                                                 torch.as_tensor(target_ee_pos).to(self.device),
-                                                 dim=1)
+        self.cartesian_error = torch.linalg.norm(
+            curr_position - torch.as_tensor(target_ee_pos).to(self.device),
+            dim=1)
 
-        print(self.cartesian_error)
-
+        
         # self.robot_joints_buffer.append([
         #     self._robots.get_joint_positions()[0].cpu().numpy(),
         #     curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()

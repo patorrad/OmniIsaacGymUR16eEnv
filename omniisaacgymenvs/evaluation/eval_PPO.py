@@ -76,6 +76,7 @@ def parse_hydra_configs(cfg: DictConfig):
 
     while env._simulation_app.is_running():
         reward_sum = 0
+        cartesian_error_sum = 0
         obs = env.reset()
         print('===============')
         # print(
@@ -87,13 +88,14 @@ def parse_hydra_configs(cfg: DictConfig):
             abs(env._task.angle_z_dev).sum().cpu().detach().item() /
             env._num_envs / torch.pi * 180)
 
-        for i in range(198):
+        for i in range(20):
 
             action = policy.predict(observation=obs, deterministic=True)[0]
             
 
             obs, reward, dones, truncated, infos = env.step(action)
             reward_sum += reward.sum().cpu().detach().item() / env._num_envs
+            cartesian_error_sum += env._task.cartesian_error.cpu().numpy()
             # print((env._task.angle_z_dev).sum().cpu().detach().item() /env._num_envs/ torch.pi * 180)
 
         print("reward:", reward_sum)
@@ -106,6 +108,7 @@ def parse_hydra_configs(cfg: DictConfig):
             "angle deviation:",
             abs(env._task.angle_z_dev).sum().cpu().detach().item() /
             env._num_envs / torch.pi * 180)
+        print("cartesian_error_sum",cartesian_error_sum)
     env._simulation_app.close()
 
 

@@ -133,7 +133,7 @@ class MotionGeneration:
                                              self.plan_config)
 
         succ = result.success.item()  # ik_result.success.item()
-        print(succ)
+        
         
 
         if succ:
@@ -155,8 +155,8 @@ class MotionGeneration:
             
           
 
-            return cmd_plan
+            return cmd_plan[-1].position
 
-        return self.tensor_args.to_device(sim_js.positions)
+        return robot_joint
 
 
