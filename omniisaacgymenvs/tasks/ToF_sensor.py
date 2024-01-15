@@ -523,27 +523,25 @@ class TofSensorTask(RLTask):
 
         actions = actions.to(self._device)
         actions[:, [2, 3, 4]] = 0
-        control_time = self._env._world.get_physics_dt()
-        delta_pose = recover_action(actions, self.velocity_limit, control_time)
-        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
+        delta_dof_pos, delta_pose = recover_action(actions,
+                                                   self.velocity_limit,
+                                                   self._env, self._robots)
+        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
+            )
         target_ee_pos = cur_ee_pos + delta_pose[:, :3]
-
+        
         if self._task_cfg["sim"]["Control"] == "diffik":
 
-            jacobians = self._robots.get_jacobians(clone=False)
-            delta_dof_pos = diffik(jacobian_end_effector=jacobians[:, 6, :, :],
-                                   delta_pose=delta_pose)
-            delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
             current_dof = self._robots.get_joint_positions()
-            targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
-            targets_dof = current_dof + delta_dof_pos[:6]
+            targets_dof = current_dof + delta_dof_pos[:, :6]
+
+            targets_dof[:, -1] = 0
+
             self._robots.set_joint_position_targets(targets_dof)
 
         elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
 
-            
-            import time 
-          
+
             target_ee_orientation = quaternion_multiply(
                 quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
                 cur_ee_orientation)
@@ -552,7 +550,6 @@ class TofSensorTask(RLTask):
 
             robot_joint = self.motion_generation.step_path(
                 target_ee_pos, target_ee_orientation, robot_joint)
-          
 
             self._robots.apply_action(ArticulationActions(robot_joint, ))
 
@@ -564,33 +561,13 @@ class TofSensorTask(RLTask):
         #     targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
         #     targets_dof = current_dof + delta_dof_pos[:6]
 
-        # targets_dof[:, -1] = 0
-
-        # self._robots.set_joint_velocity_targets(targets_dof_velocity)
-
-        pre_position, pre_orientation = self._end_effector.get_local_poses()
-        target_position = pre_position + delta_pose[:, :3]
-
-        for i in range(self.frame_skip):
-            self._env._world.step(render=True)
-
-        curr_position, curr_orientation = self._end_effector.get_local_poses()
-        self.cartesian_error = torch.linalg.norm(
-            curr_position - torch.as_tensor(target_ee_pos).to(self.device),
-            dim=1)
-
-        # self.robot_joints_buffer.append([
-        #     self._robots.get_joint_positions()[0].cpu().numpy(),
-        #     curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
-        # ])
-
-        # # print(curr_position[0],self._robots.get_local_poses())
-        # np.save("joint.npy", self.robot_joints_buffer)
-
-        # print(
-        #     quaternion_multiply(
-        #         quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
-        #         pre_orientation), curr_orientation)
+      
+        for i in range(1):
+            self._env._world.step(render=False)
+        curr_position, _ = self._end_effector.get_local_poses()
+        self.cartesian_error = torch.linalg.norm(curr_position -
+                                                 target_ee_pos,
+                                                 dim=1)
 
     def transform_mesh(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(

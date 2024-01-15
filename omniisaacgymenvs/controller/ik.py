@@ -26,15 +26,21 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
     return delta_dof_pos / 2, delta_pose
 
 
-def recover_action(action, limit, control_time):
+def recover_action(action, limit, _env, _robots):
 
     # delta pose
     action = torch.clip(action, -1, 1)
 
     delta_pose = (action + 1) / 2 * (limit[:, 1] - limit[:, 0]) + limit[:, 0]
+    control_time = _env._world.get_physics_dt()
     delta_pose = delta_pose * control_time
 
-    return delta_pose
+    jacobians = _robots.get_jacobians(clone=False)
+    delta_dof_pos = diffik(jacobian_end_effector=jacobians[:, 6, :, :],
+                       delta_pose=delta_pose)
+    delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
+
+    return delta_dof_pos, delta_pose
 
 
 def diffik(jacobian_end_effector, delta_pose, damping_factor=0.05):
