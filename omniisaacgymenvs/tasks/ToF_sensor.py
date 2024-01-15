@@ -30,94 +30,60 @@
 #################  isaac sim   ##############################
 ############################################################
 
+# init extension
 from omni.isaac.core.utils.extensions import enable_extension
 
 enable_extension("omni.isaac.debug_draw")
 enable_extension("omni.isaac.manipulators")
 enable_extension("omni.isaac.motion_generation")
 
+# import env setting
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
-from omniisaacgymenvs.robots.articulations.cartpole import Cartpole
-# from omniisaacgymenvs.robots.articulations.ur10 import UR10
 from omniisaacgymenvs.robots.articulations.ur_robot import UR
-
 from omni.isaac.core.objects import DynamicSphere
-
 from omni.isaac.core.objects import DynamicCuboid
-from omni.isaac.core.objects import DynamicCylinder
 from omni.isaac.core.objects import FixedCuboid
+from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
 
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
-from omni.isaac.core.utils.rotations import quat_to_euler_angles
-from omni.isaac.core.simulation_context import SimulationContext
+
+from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.core.utils.stage import add_reference_to_stage
+import omni.isaac.core.utils.prims as prim_utils
+
+from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
+from pxr import UsdPhysics
+from omni.physx.scripts import utils
+from omni.physx import acquire_physx_interface
+from omni.isaac.debug_draw import _debug_draw
+
+import omni
+import carb
+
+import omni.isaac.core.utils.nucleus as nucleus_utils
+from omniisaacgymenvs.utils.tools.rotation_conversions import *
+from omni.isaac.core.utils.torch.transformations import *
+from omni.isaac.core.utils.torch.rotations import *
+import omniisaacgymenvs.utils.tools.transform_utils as tf
+
+from .raycast import Raycast
+
+from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_action, diffik
+from omniisaacgymenvs.controller.curobo import MotionGeneration
+
+# import util package
 import numpy as np
 import torch
 import math
 import trimesh
-from trimesh import creation, transformations
-
-# from omni.isaac.universal_robots import UR10
-from omni.isaac.core.utils.prims import create_prim
-from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.utils.stage import add_reference_to_stage, clear_stage
-
-from omni.isaac.debug_draw import _debug_draw
-from omni.isaac.dynamic_control import _dynamic_control
-from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper
-from pxr import Usd, UsdGeom
-from .raycast import Raycast, find_plane_normal, circle_points, draw_raytrace
-import pdb
-from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_action
-
 import os
-import omni.isaac.core.utils.prims as prim_utils
-import omni
-from pxr import UsdPhysics
-from omni.physx.scripts import utils
-from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
-
-from omni.physx import acquire_physx_interface
-
-import carb
-
 import gym
-
 import warp as wp
-import omni.isaac.core.utils.nucleus as nucleus_utils
-
-# ISAAC_NUCLEUS_DIR = f"{nucleus_utils.get_assets_root_path()}/Isaac"
-from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
-
-from omniisaacgymenvs.utils.tools.rotation_conversions import *
-
-from omni.isaac.core.utils.stage import get_current_stage
-
-from omni.isaac.core.utils.torch.transformations import *
-from omni.isaac.core.utils.torch.rotations import *
-import omniisaacgymenvs.utils.tools.transform_utils as tf
 from cprint import *
-import xml.etree.ElementTree as ET
-# 3D transformations functions
-from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply
-from omni.isaac.surface_gripper._surface_gripper import Surface_Gripper_Properties
-from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
-
 import time
-
-############################################################
-#################  curobo  ##############################
-############################################################
-
-from typing import Dict
-import warp as wp
-# Third Party
-import carb
-import numpy as np
-
-from omni.isaac.core import World
-from omni.isaac.core.objects import cuboid, sphere
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
 
 
 class TofSensorTask(RLTask):
@@ -162,13 +128,15 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 1
+        self.frame_skip = 5
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
         self.velocity_limit = torch.as_tensor(torch.stack(
             [-velocity_limit, velocity_limit], dim=1),
                                               device=self.device)
+
+        self.robot_joints_buffer = []
 
         return
 
@@ -199,6 +167,10 @@ class TofSensorTask(RLTask):
                                  [self.mesh_vertices[0]], [self.mesh_faces[0]])
         self.raytracer.init_setting(self._task_cfg, self._cfg, self.num_envs,
                                     self.debug_draw, self.device)
+
+        if self._task_cfg["sim"]["Control"] == "MotionGeneration":
+            self.motion_generation = MotionGeneration(
+                self._robots)
 
     def init_mesh(self):
 
@@ -266,8 +238,6 @@ class TofSensorTask(RLTask):
         # Raytracing
 
         self.init_data()
-        if self._task_cfg["Curobo"]:
-            self.curo_ik_solver = self.init_curobo()
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
@@ -469,36 +439,34 @@ class TofSensorTask(RLTask):
             # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
             # self.load_object(usd_path=object_path,env_index=i,object_index=2)
 
-    
     def update_cache_state(self):
 
         self.robot_joints = self._robots.get_joint_positions()
         self._wrist2_local_pos, _ = self.wrist_2_link.get_local_poses()
         self._ee_local_pos, _ = self._end_effector.get_local_poses()
-        
+
     def get_observations(self) -> dict:
-        
+
         self.update_cache_state()
-        
+
         current_euler_angles_x = torch.atan2(
             self._ee_local_pos[:, 1] - self._wrist2_local_pos[:, 1],
             self._ee_local_pos[:, 0] - self._wrist2_local_pos[:, 0])
-        
+
         self.angle_x_dev = torch.atan2(
             self._ee_local_pos[:, 2] - self._wrist2_local_pos[:, 2],
-            torch.linalg.norm(self._ee_local_pos[:, :2] - self._wrist2_local_pos[:, :2],
+            torch.linalg.norm(self._ee_local_pos[:, :2] -
+                              self._wrist2_local_pos[:, :2],
                               dim=1))
-        
+
         self.angle_z_dev = (current_euler_angles_x -
-                          torch.pi / 2) - self.target_angle
-        
-        
-        
+                            torch.pi / 2) - self.target_angle
+
         cur_position = self._ee_local_pos.clone()
         cur_position[:, 0] = -cur_position[:, 0]
         self.ee_object_dist = torch.linalg.norm(self.target_ee_position -
-                                          cur_position,
-                                          dim=1)
+                                                cur_position,
+                                                dim=1)
 
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
@@ -506,7 +474,6 @@ class TofSensorTask(RLTask):
             _, _, transformed_vertices = self.transform_mesh()
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose, gripper_rot, transformed_vertices)
-            
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -524,13 +491,7 @@ class TofSensorTask(RLTask):
         #     ],
         #                              dim=1)
 
-       
-
-           
-
         return self.obs_buf
-
-   
 
     def get_target_pose(self):
 
@@ -558,38 +519,75 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        if not self._task_cfg["sim"]["Control"]["rule-base"]:
+        actions = actions.to(self._device)
+        actions[:, [2, 3, 4]] = 0
+        control_time = self._env._world.get_physics_dt()
+        delta_pose = recover_action(actions, self.velocity_limit, control_time)
 
-            actions = actions.to(self._device)
-            actions[:,[2,3,4]] = 0
-            delta_dof_pos, delta_pose = recover_action(actions,
-                                                       self.velocity_limit,
-                                                       self._env, self._robots)
-        else:
-            delta_dof_pos, delta_pose = recover_rule_based_action(
-                self.num_envs, self.device, self._end_effector,
-                self.target_ee_position, self.angle_z_dev, self._robots)
-        
+        if self._task_cfg["sim"]["Control"] == "diffik":
 
-        # current dof and current joint velocity
-        current_dof = self._robots.get_joint_positions()
-        targets_dof = current_dof + delta_dof_pos[:, :6]
+            jacobians = self._robots.get_jacobians(clone=False)
+            delta_dof_pos = diffik(jacobian_end_effector=jacobians[:, 6, :, :],
+                                   delta_pose=delta_pose)
+            delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
+            current_dof = self._robots.get_joint_positions()
+            targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
+            targets_dof = current_dof + delta_dof_pos[:6]
+
+        elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
+            cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
+            )
+            from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
+
+            sim_js = JointsState(
+                positions=self._robots.get_joint_positions()[0],
+                velocities=self._robots.get_joint_velocities()[0],
+                efforts=None)
+            sim_js_names = self.robot.dof_names
+
+            target_ee_orientation = quaternion_multiply(
+                quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
+                cur_ee_orientation)
+            target_ee_pos = cur_ee_pos + delta_pose[:, :3]
+            print(target_ee_pos[0], target_ee_orientation[0])
+
+            targets_dof = self.motion_generation.step_path(
+                target_ee_pos, target_ee_orientation)
+            targets_dof = targets_dof[None]
+
+        # else:
+        #     delta_dof_pos, delta_pose = recover_rule_based_action(
+        #         self.num_envs, self.device, self._end_effector,
+        #         self.target_ee_position, self.angle_z_dev, self._robots)
+        #     current_dof = self._robots.get_joint_positions()
+        #     targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
+        #     targets_dof = current_dof + delta_dof_pos[:6]
 
         targets_dof[:, -1] = 0
 
         self._robots.set_joint_position_targets(targets_dof)
-        
 
         pre_position, pre_orientation = self._end_effector.get_local_poses()
         target_position = pre_position + delta_pose[:, :3]
 
-        for i in range(5):
+        for i in range(self.frame_skip):
             self._env._world.step(render=False)
         curr_position, curr_orientation = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position -
                                                  target_position,
                                                  dim=1)
-        # print(quaternion_to_axis_angle(quaternion_multiply(pre_orientation,quaternion_invert(curr_orientation)))[:,-1],delta_pose[:,-1])
+        self.robot_joints_buffer.append([
+            self._robots.get_joint_positions()[0].cpu().numpy(),
+            curr_position[0].cpu().numpy(), curr_orientation[0].cpu().numpy()
+        ])
+
+        # print(curr_position[0],self._robots.get_local_poses())
+        np.save("joint.npy", self.robot_joints_buffer)
+
+        # print(
+        #     quaternion_multiply(
+        #         quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
+        #         pre_orientation), curr_orientation)
 
     def transform_mesh(self):
         self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(

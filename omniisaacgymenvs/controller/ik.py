@@ -35,15 +35,10 @@ def recover_action(action, limit, _env, _robots):
     control_time = _env._world.get_physics_dt()
     delta_pose = delta_pose * control_time
 
-    jacobians = _robots.get_jacobians(clone=False)
-    delta_dof_pos = ik(jacobian_end_effector=jacobians[:, 6, :, :],
-                       delta_pose=delta_pose)
-    delta_dof_pos = torch.clip(delta_dof_pos, -torch.pi, torch.pi)
-
-    return delta_dof_pos, delta_pose
+    return delta_pose
 
 
-def ik(jacobian_end_effector, delta_pose, damping_factor=0.05):
+def diffik(jacobian_end_effector, delta_pose, damping_factor=0.05):
     """
         Damped Least Squares method: https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf
         """

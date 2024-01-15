@@ -1,41 +1,63 @@
-def init_curobo(self):
+# Standard Library
+from typing import Dict
 
-        # # CuRobo
-        from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
+# Third Party
+import carb
+import numpy as np
+from omni.isaac.core import World
+from omni.isaac.core.objects import cuboid, sphere
 
-        # from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-        from curobo.geom.sdf.world import CollisionCheckerType
-        from curobo.geom.types import WorldConfig
-        from curobo.rollout.rollout_base import Goal
-        from curobo.types.base import TensorDeviceType
-        from curobo.types.math import Pose
-        from curobo.types.robot import JointState, RobotConfig
-        from curobo.types.state import JointState
-        from curobo.util.logger import setup_curobo_logger
-        from curobo.util.usd_helper import UsdHelper
-        from curobo.util_file import (
-            get_assets_path,
-            get_filename,
-            get_path_of_dir,
-            get_robot_configs_path,
-            get_world_configs_path,
-            join_path,
-            load_yaml,
-        )
-        from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-        from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-        from curobo.wrap.reacher.mpc import MpcSolver, MpcSolverConfig
+########### OV #################
+from omni.isaac.core.utils.types import ArticulationAction
 
-        self.tensor_args = TensorDeviceType()
+# CuRobo
+# from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+from curobo.geom.sdf.world import CollisionCheckerType
+from curobo.geom.types import WorldConfig
+from curobo.types.base import TensorDeviceType
+from curobo.types.math import Pose
+from curobo.types.robot import JointState
+from curobo.types.state import JointState
+from curobo.util.logger import setup_curobo_logger
+from curobo.util.usd_helper import UsdHelper
+from curobo.util_file import (
+    get_assets_path,
+    get_filename,
+    get_path_of_dir,
+    get_robot_configs_path,
+    get_world_configs_path,
+    join_path,
+    load_yaml,
+)
+from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+import torch
+
+
+class MotionGeneration:
+
+    def __init__(self,
+                
+                 robot_prim_path,
+                 collisions_prim_path,
+                 word,
+                 frame_skip,
+                 robot_path="ur16e.yml") -> None:
+
+        n_obstacle_cuboids = 30
+        n_obstacle_mesh = 10
+      
+        tensor_args = TensorDeviceType()
+
         robot_cfg = load_yaml(join_path(get_robot_configs_path(),
-                                        "ur16e.yml"))["robot_cfg"]
+                                        robot_path))["robot_cfg"]
+
         j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
         default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
 
         world_cfg_table = WorldConfig.from_dict(
             load_yaml(
                 join_path(get_world_configs_path(), "collision_table.yml")))
-        world_cfg_table.cuboid[0].pose[2] -= 0.002
+        world_cfg_table.cuboid[0].pose[2] -= 0.04
         world_cfg1 = WorldConfig.from_dict(
             load_yaml(
                 join_path(get_world_configs_path(),
@@ -43,123 +65,109 @@ def init_curobo(self):
         world_cfg1.mesh[0].name += "_mesh"
         world_cfg1.mesh[0].pose[2] = -10.5
 
-        n_obstacle_cuboids = 30
-        n_obstacle_mesh = 10
-
         world_cfg = WorldConfig(cuboid=world_cfg_table.cuboid,
                                 mesh=world_cfg1.mesh)
 
-        ik_config = IKSolverConfig.load_from_robot_config(
+        motion_gen_config = MotionGenConfig.load_from_robot_config(
             robot_cfg,
             world_cfg,
-            rotation_threshold=0.05,
-            position_threshold=0.005,
-            num_seeds=20,
-            self_collision_check=True,
-            self_collision_opt=True,
-            tensor_args=self.tensor_args,
-            use_cuda_graph=True,
+            tensor_args,
+            trajopt_tsteps=32,
             collision_checker_type=CollisionCheckerType.MESH,
+            use_cuda_graph=True,
+            num_trajopt_seeds=12,
+            num_graph_seeds=12,
+            interpolation_dt=0.03,
             collision_cache={
                 "obb": n_obstacle_cuboids,
                 "mesh": n_obstacle_mesh
             },
-            # use_fixed_samples=True,
+            collision_activation_distance=0.025,
+            acceleration_scale=1.0,
+            self_collision_check=True,
+            maximum_trajectory_dt=0.25,
+            fixed_iters_trajopt=True,
+            finetune_dt_scale=1.05,
+            velocity_scale=[0.25, 1, 1, 1, 1.0, 1.0, 1.0, 1.0, 1.0],
         )
-        ik_solver = IKSolver(ik_config)
+        self.motion_gen = MotionGen(motion_gen_config)
+        print("warming up...")
+        self.motion_gen.warmup(enable_graph=False, warmup_js_trajopt=False)
 
-        self.position_grid_offset = self.tensor_args.to_device(
-            self.get_pose_grid(10, 10, 5, 0.5, 0.5, 0.5))
+        self.plan_config = MotionGenPlanConfig(enable_graph=False,
+                                               enable_graph_attempt=4,
+                                               max_attempts=2,
+                                               enable_finetune_trajopt=True)
 
-        fk_state = ik_solver.fk(ik_solver.get_retract_config().view(1, -1))
-        self.goal_pose = fk_state.ee_pose
-        self.goal_pose = self.goal_pose.repeat(
-            self.position_grid_offset.shape[0])
-        self.goal_pose.position += self.position_grid_offset
+        usd_help = UsdHelper()
 
-        return ik_solver
+        # obstacles = usd_help.get_obstacles_from_stage(
+        #     # only_paths=[obstacles_path],
+        #     reference_prim_path=robot_prim_path,
+        #     ignore_substring=[
+        #         robot_prim_path,
+        #         "/curobo",
+        #     ],
+        # ).get_collision_check_world()
 
+        # self.motion_gen.update_world(obstacles)
+        self.tensor_args = TensorDeviceType()
 
-# def render_curobo(self):
+        self.target_pose = None
+        self.past_pose = None
 
-#         # frame skip
-#         ee_translation_goal, ee_orientation_teleop_goal = self._manipulated_object.get_local_poses(
-#         )
+        self._world = word
+        self.frame_skip = frame_skip
 
-#         ee_world_pose, _ = self._manipulated_object.get_world_poses()
+    def step_path(self, target_ee_pos, target_ee_orientation,sim_js,sim_js_names):
+        from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
 
-#         self.goal_pose.position[:] = torch.as_tensor([-0.3, 0.6, 1.04]).to(
-#             self.device) + self.position_grid_offset
-#         self.goal_pose.quaternion[:] = torch.as_tensor([1, 0, 0, 0]).to(
-#             self.device)  # ik_goal.quaternion[:]
-#         # tranformed
-#         pre_transoform_goal_pose = self.goal_pose.clone()
+      
+        cmd_plan = None
 
-#         pre_transoform_goal_pose.position[:, 0] += ee_world_pose[
-#             0, 0] - ee_translation_goal[0, 0]
+        # sim_js = self.robot.get_joints_state()
+        # sim_js_names = self.robot.dof_names
+        cu_js = JointState(
+            position=self.tensor_args.to_device(sim_js.positions),
+            velocity=self.tensor_args.to_device(sim_js.velocities),
+            acceleration=self.tensor_args.to_device(sim_js.velocities),
+            jerk=self.tensor_args.to_device(sim_js.velocities),
+            joint_names=sim_js_names,
+        )
+        cu_js = cu_js.get_ordered_joint_state(
+            self.motion_gen.kinematics.joint_names)
 
-#         transform = Transform3d(device=self.device).rotate(
-#             quaternion_to_matrix((torch.as_tensor(
-#                 self._robot_rotations).to(device=self.device))))
+        ee_translation_goal = target_ee_pos
+        ee_orientation_teleop_goal = target_ee_orientation
 
-#         # rotation_matrix = quaternion_to_matrix(
-#         #     (torch.as_tensor(orientation).to(device)))
+        # compute curobo solution:
+        ik_goal = Pose(
+            position=self.tensor_args.to_device(ee_translation_goal),
+            quaternion=self.tensor_args.to_device(ee_orientation_teleop_goal),
+        )
 
-#         self.goal_pose.position[:] -= torch.as_tensor(
-#             [self._robot_positions]).to(device=self.device)
+        result = self.motion_gen.plan_single(cu_js.unsqueeze(0), ik_goal,
+                                             self.plan_config)
 
-#         self.goal_pose.position[:] = transform.transform_points(
-#             self.goal_pose.position[:].clone().to(device=self.device))
+        succ = result.success.item()  # ik_result.success.item()
+      
+        if succ:
+            
+            cmd_plan = result.get_interpolated_plan()
+            cmd_plan = self.motion_gen.get_full_js(cmd_plan)
+            # get only joint names that are in both:
+            idx_list = []
+            common_js_names = []
+            for x in sim_js_names:
+                if x in cmd_plan.joint_names:
+                    idx_list.append(self.robot.get_dof_index(x))
+                    common_js_names.append(x)
+            # idx_list = [robot.get_dof_index(x) for x in sim_js_names]
 
-#         self.goal_pose.quaternion[:] = quaternion_multiply(
-#             quaternion_invert(
-#                 torch.as_tensor(self._robot_rotations).to(device=self.device)),
-#             self.goal_pose.quaternion[:])
+            cmd_plan = cmd_plan.get_ordered_joint_state(common_js_names)
 
-#         result = self.curo_ik_solver.solve_batch(self.goal_pose)
+            cmd_state = cmd_plan[-1]
 
-#         # succ = torch.any(result.success)
+            return cmd_state.position
 
-#         # get spheres and flags:
-
-#         # transform back
-
-#         self.draw_points(pre_transoform_goal_pose, result.success)
-
-
-# def lock_motion(self, stage, joint_path, prim_path, ee_link, i, lock=True):
-#     from pxr import UsdPhysics, Gf
-#     # D6 fixed joint
-#     d6FixedJoint = UsdPhysics.Joint.Define(stage, joint_path)
-#     d6FixedJoint.CreateBody0Rel().SetTargets(
-#         [f"/World/envs/env_{i}/manipulated_object_1"])
-#     d6FixedJoint.CreateBody1Rel().SetTargets([prim_path])
-
-#     d6FixedJoint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.26, 0.0, 0))
-#     d6FixedJoint.CreateLocalRot0Attr().Set(Gf.Quatf(
-#         1.0, Gf.Vec3f(0, 0, 0)))
-
-#     d6FixedJoint.CreateLocalPos1Attr().Set(Gf.Vec3f(0, 0, 0))
-
-#     d6FixedJoint.CreateLocalRot1Attr().Set(Gf.Quatf(
-#         1.0, Gf.Vec3f(0, 0, 0)))
-#     # lock all DOF (lock - low is greater than high)
-#     d6Prim = stage.GetPrimAtPath(joint_path)
-
-#     if lock:
-#         for name in ["transX", "transY", "transZ"]:
-#             limitAPI = UsdPhysics.LimitAPI.Apply(d6Prim, name)
-#             limitAPI.CreateLowAttr(1.0)
-#             limitAPI.CreateHighAttr(-1.0)
-
-#         # for limit_name in ["rotX", "rotY", "rotZ"]:
-#         #     limit_api = UsdPhysics.LimitAPI.Apply(d6Prim, limit_name)
-
-#         #     limit_api.CreateLowAttr(-45.0)
-#         #     limit_api.CreateHighAttr(45.0)
-
-# def unlock_motion(self, fixed_joint_path):
-#     for i in range(self._num_envs):
-#         is_valid = is_prim_path_valid(fixed_joint_path)
-#         if is_valid:
-#             delete_prim(fixed_joint_path)
+        return self.tensor_args.to_device(sim_js.positions)
