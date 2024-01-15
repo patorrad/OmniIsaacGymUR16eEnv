@@ -36,15 +36,13 @@ import torch
 class MotionGeneration:
 
     def __init__(self,
-                
-                 robot_prim_path,
-                 collisions_prim_path,
+                 robot,
                  word,
-                 frame_skip,
                  robot_path="ur16e.yml") -> None:
 
         n_obstacle_cuboids = 30
         n_obstacle_mesh = 10
+        self.robot = robot
       
         tensor_args = TensorDeviceType()
 
@@ -117,16 +115,16 @@ class MotionGeneration:
         self.past_pose = None
 
         self._world = word
-        self.frame_skip = frame_skip
+        
 
-    def step_path(self, target_ee_pos, target_ee_orientation,sim_js,sim_js_names):
+    def step_path(self, target_ee_pos, target_ee_orientation):
         from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
 
       
         cmd_plan = None
 
-        # sim_js = self.robot.get_joints_state()
-        # sim_js_names = self.robot.dof_names
+        sim_js = self.robot.get_joints_state()
+        sim_js_names = self.robot.dof_names
         cu_js = JointState(
             position=self.tensor_args.to_device(sim_js.positions),
             velocity=self.tensor_args.to_device(sim_js.velocities),

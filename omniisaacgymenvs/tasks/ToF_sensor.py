@@ -169,8 +169,8 @@ class TofSensorTask(RLTask):
                                     self.debug_draw, self.device)
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
-            self.motion_generation = MotionGeneration(
-                self._robots)
+            self.motion_generation = MotionGeneration(self._robots,
+                self._env._world)
 
     def init_mesh(self):
 
