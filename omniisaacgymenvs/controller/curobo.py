@@ -223,6 +223,8 @@ class MotionGeneration:
                                                enable_finetune_trajopt=True)
         
         self.init_common = False
+        
+        self.common_js_names = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
 
     def step_path(self, target_ee_pos, target_ee_orientation, robot_joint):
 
@@ -261,24 +263,16 @@ class MotionGeneration:
         result = self.motion_gen.plan_batch_env(full_js, ik_goal,
                                                 self.plan_config)
 
-        cmd_plan = [None for i in range(self.n_envs)]
+      
         if torch.count_nonzero(result.success) > 0:
             trajs = result.get_paths()
             for s in range(len(result.success)):
                 if result.success[s]:
-                    cmd_plan[s] = self.motion_gen.get_full_js(trajs[s])
-                    if not self.init_common:
-                        idx_list = []
-                        self.common_js_names = []
-                        for x in sim_js_names:
-                            if x in cmd_plan[s].joint_names:
-                                idx_list.append(self.robot.get_dof_index(x))
-                                self.common_js_names.append(x)
-                        self.init_common = True
-
-                    cmd_plan[s] = cmd_plan[s].get_ordered_joint_state(
+              
+                    cmd_plan =self.motion_gen.get_full_js(trajs[s]).get_ordered_joint_state(
                         self.common_js_names)
+                  
 
-                    cmd_joint[s] = cmd_plan[s][-1].position
+                    cmd_joint[s] = cmd_plan[-1].position
 
         return cmd_joint

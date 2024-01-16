@@ -129,7 +129,7 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 1
+        self.frame_skip = 5
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -541,17 +541,21 @@ class TofSensorTask(RLTask):
 
         elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
 
+            
+                target_ee_orientation = quaternion_multiply(
+                    quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
+                    cur_ee_orientation)
+                
+                for i in range(2):
 
-            target_ee_orientation = quaternion_multiply(
-                quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
-                cur_ee_orientation)
+                    robot_joint = self._robots.get_joint_positions()
+                
+                    robot_joint = self.motion_generation.step_path(
+                        target_ee_pos, target_ee_orientation, robot_joint)
 
-            robot_joint = self._robots.get_joint_positions()
-
-            robot_joint = self.motion_generation.step_path(
-                target_ee_pos, target_ee_orientation, robot_joint)
-
-            self._robots.apply_action(ArticulationActions(robot_joint, ))
+                    self._robots.apply_action(ArticulationActions(robot_joint, ))
+                    for i in range(1):
+                        self._env._world.step(render=False)
 
         # else:
         #     delta_dof_pos, delta_pose = recover_rule_based_action(

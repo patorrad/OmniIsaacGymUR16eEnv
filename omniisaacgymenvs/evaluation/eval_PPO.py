@@ -71,7 +71,7 @@ def parse_hydra_configs(cfg: DictConfig):
     task = initialize_task(cfg_dict, env)
 
     policy = PPO.load(
-        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-14/19-56-31/results/114/TofSensor2/model/model_350",
+        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-15/08-57-59/results/115/TofSensor2/model/model_550",
         env, "cuda")
 
     while env._simulation_app.is_running():
@@ -88,7 +88,7 @@ def parse_hydra_configs(cfg: DictConfig):
             abs(env._task.angle_z_dev).sum().cpu().detach().item() /
             env._num_envs / torch.pi * 180)
 
-        for i in range(20):
+        for i in range(198):
 
             action = policy.predict(observation=obs, deterministic=True)[0]
             
