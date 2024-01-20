@@ -72,7 +72,6 @@ from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormP
 from .raycast import Raycast
 
 from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_action, diffik
-from omniisaacgymenvs.controller.curobo import MotionGeneration
 
 # import util package
 import numpy as np
@@ -85,6 +84,8 @@ import warp as wp
 from cprint import *
 import time
 from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+
+from omniisaacgymenvs.controller.controller import Controller
 
 
 class TofSensorTask(RLTask):
@@ -168,13 +169,6 @@ class TofSensorTask(RLTask):
                                  [self.mesh_vertices[0]], [self.mesh_faces[0]])
         self.raytracer.init_setting(self._task_cfg, self._cfg, self.num_envs,
                                     self.debug_draw, self.device)
-        
-        self.motion_generation = None
-
-        if self._task_cfg["sim"]["Control"] == "MotionGeneration":
-            self.motion_generation = MotionGeneration(self.robot,
-                                                      self._env._world,
-                                                      n_envs=self.num_envs)
 
     def init_mesh(self):
 
@@ -242,6 +236,13 @@ class TofSensorTask(RLTask):
         # Raytracing
 
         self.init_data()
+
+        self.controller = Controller(self._robots,
+                                     self._env,
+                                     self._end_effector,
+                                     self.velocity_limit,
+                                     self._device,
+                                     control_type=self._task_cfg["sim"]["Control"])
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
@@ -523,17 +524,7 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        from omniisaacgymenvs.controller.controller import controller
-
-        target_ee_pos = controller(
-            actions,
-            self._robots,
-            self._env,
-            self._end_effector,
-            self.motion_generation,
-            self.velocity_limit,
-            self._device,
-            control_type=self._task_cfg["sim"]["Control"])
+        target_ee_pos = self.controller.forward(actions)
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
