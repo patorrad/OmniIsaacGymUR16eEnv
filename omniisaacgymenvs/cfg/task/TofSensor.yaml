@@ -9,7 +9,7 @@ env:
   envSpacing: 4.0
   resetDist: 3.0
   maxEffort: 400.0
-  num_actions: 6
+  num_actions: 7
   num_observations: 134 #{"state":6,"image":[2,8,8]} #18
 
   clipObservations: 5.0
@@ -98,7 +98,7 @@ sim:
     quaternion: [0, 0, 1, 0]
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
     num_sensors: 2
-    sensor_radius: 0.045
+    sensor_radius: 0.055
   Object:
     category: "cube"
     scale: [0.1, 0.1, 0.3]
@@ -108,6 +108,7 @@ sim:
     scale: [0.8, 0.8, 1.04]
   Control:
     "diffik" # MotionGeneration
+  Design: True
     
 Training:
   use_oracle: False

@@ -117,11 +117,16 @@ class TofSensorTask(RLTask):
                                               "table_view")
 
         if self._cfg["raycast"]:
+
+            self.sensor_radius = torch.as_tensor(
+                self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
+                    self.num_envs, 1).to(self._device)
+
             self.raytracer = Raycast(self._cfg["raycast_width"],
                                      self._cfg["raycast_height"],
                                      self._manipulated_object.prim_paths[0],
                                      self._task_cfg, self._cfg, self.num_envs,
-                                     self._device)
+                                     self._device, self.sensor_radius)
 
         self.controller = Controller(
             self._robots,
@@ -166,8 +171,12 @@ class TofSensorTask(RLTask):
             cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
             )
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
-                gripper_pose, gripper_rot, cur_object_pose, cur_object_rot,
-                self.scale_size)
+                gripper_pose,
+                gripper_rot,
+                cur_object_pose,
+                cur_object_rot,
+                self.scale_size,
+                sensor_radius=self.sensor_radius)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -213,7 +222,12 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        target_ee_pos = self.controller.forward(actions)
+        target_ee_pos = self.controller.forward(actions[:,:6])
+
+        if self._task_cfg["sim"]["Design"] and self._cfg["raycast"]:
+            if self._step == 1:
+                self.sensor_radius = self.raytracer.update_params(actions[:,
+                                                                          6:])
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
@@ -251,11 +265,11 @@ class TofSensorTask(RLTask):
         angle_reward[negative_index] = -abs((1 - dev[negative_index])**3) * 5
         return angle_reward
 
-    # def calculate_targetangledev_reward(self) -> None:
+    def calculate_targetangledev_reward(self) -> None:
 
-    #     angle_reward = -abs(self.angle_x_dev) * 3
+        angle_reward = -abs(self.angle_x_dev) * 3
 
-    #     return angle_reward
+        return angle_reward
 
     def calculate_raytrace_reward(self) -> None:
 
@@ -304,7 +318,7 @@ class TofSensorTask(RLTask):
         # self.rew_buf += self.calculate_targetangledev_reward()
         self.rew_buf += self.calculate_raytrace_reward()
         self.rew_buf += self.calculate_raytrace_dev_reward()
-        self.rew_buf /= 2.0
+        self.rew_buf /= 1.2
 
         controller_penalty = (self.cartesian_error**2) * -1e3
         self.rew_buf += controller_penalty
@@ -315,7 +329,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf += action_penalty
 
-        return self.rew_buf
+        return self.rew_buf / 2
 
     def is_done(self) -> None:
 

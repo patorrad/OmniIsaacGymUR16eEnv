@@ -168,7 +168,8 @@ def circle_points(radius, centers, normals, num_points):
                      2 * torch.pi,
                      step=2 * torch.pi / num_points,
                      device='cuda:0')
-    circles = centers[:, None, :] + radius * (
+
+    circles = centers[:, None, :] + radius[:, None, :] * (
         basis1[:, None, :] * torch.cos(t)[None, :, None] +
         basis2[:, None, :] * torch.sin(t)[None, :, None])
 
@@ -323,7 +324,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 class Raycast:
 
     def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
-                 num_envs, device):
+                 num_envs, device, default_sensor_radius):
         self.width = width  #1024
         self.height = height  #1024
         self.cam_pos = (0.0, 1.5, 2.5)
@@ -335,10 +336,12 @@ class Raycast:
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
-         # draw info
+        # draw info
         self.debug_draw = _debug_draw.acquire_debug_draw_interface()
         self.device = device
-        
+
+        self.default_sensor_radius = default_sensor_radius
+
         # init raycasting buffer
         self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
         self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
@@ -364,7 +367,6 @@ class Raycast:
                                              dtype=torch.float32).repeat(
                                                  (self.num_envs, 1,
                                                   1)).to(self.device)
-
 
     def init_buffer(self, vertices, faces):
         self.warp_mesh_list = []
@@ -428,15 +430,15 @@ class Raycast:
         return self.ray_dist, self.ray_dir, self.normal_vec
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_size) -> None:
+                      cur_object_rot, scale_size, sensor_radius) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
             cur_object_pose, cur_object_rot, scale_size, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
         raycast_circle = circle_points(
-            self._task_cfg['sim']["URRobot"]['sensor_radius'], gripper_pose,
-            normals, self._task_cfg['sim']["URRobot"]['num_sensors'])
+            sensor_radius, gripper_pose, normals,
+            self._task_cfg['sim']["URRobot"]['num_sensors'])
 
         # for draw point
         debug_sensor_ray_pos_list = []
@@ -571,6 +573,12 @@ class Raycast:
                               debug_circle)
 
         return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
+
+    def update_params(self, actions):
+        action = torch.clip(actions, -1, 1)
+       
+        cur_sensor_radius = self.default_sensor_radius + action * 0.02
+        return cur_sensor_radius
 
 
 # if __name__ == "__main__":
