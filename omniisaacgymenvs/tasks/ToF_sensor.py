@@ -190,7 +190,11 @@ class TofSensorTask(RLTask):
 
     def set_up_scene(self, scene) -> None:
 
-        self.load_robot()
+        from omniisaacgymenvs.utils.robot_loader import ROBOT
+        self.robot = ROBOT(
+            self.default_zero_env_path, self._robot_positions,
+            self._robot_rotations, self._robot_dof_target, self._sim_config,
+            self._task_cfg['sim']["URRobot"]['robot_path']).load_UR()
         self.add_gripper()
 
         if self.object_category in ['cube']:
@@ -237,12 +241,13 @@ class TofSensorTask(RLTask):
 
         self.init_data()
 
-        self.controller = Controller(self._robots,
-                                     self._env,
-                                     self._end_effector,
-                                     self.velocity_limit,
-                                     self._device,
-                                     control_type=self._task_cfg["sim"]["Control"])
+        self.controller = Controller(
+            self._robots,
+            self._env,
+            self._end_effector,
+            self.velocity_limit,
+            self._device,
+            control_type=self._task_cfg["sim"]["Control"])
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
@@ -476,9 +481,11 @@ class TofSensorTask(RLTask):
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
-            _, _, transformed_vertices = self.transform_mesh()
+            cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
+            )
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
-                gripper_pose, gripper_rot, transformed_vertices)
+                gripper_pose, gripper_rot, cur_object_pose, cur_object_rot,
+                self.scale_size,self.mesh_vertices)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -529,25 +536,6 @@ class TofSensorTask(RLTask):
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
                                                  dim=1)
-
-    def transform_mesh(self):
-        self.target_object_pose, self.target_object_rot = self._manipulated_object.get_world_poses(
-        )
-        transform = Transform3d(device=self.device).scale(
-            self.scale_size).rotate(
-                quaternion_to_matrix(quaternion_invert(
-                    self.target_object_rot))).translate(
-                        self.target_object_pose)
-
-        transformed_vertices = transform.transform_points(
-            self.mesh_vertices.clone().to(self.device))
-
-        max_xyz = torch.max(transformed_vertices, dim=1).values
-        min_xyz = torch.min(transformed_vertices, dim=1).values
-        bboxes = torch.hstack([min_xyz, max_xyz])
-        center_points = (max_xyz + min_xyz) / 2
-
-        return bboxes, center_points, transformed_vertices
 
     def post_reset(self):
 
@@ -663,8 +651,6 @@ class TofSensorTask(RLTask):
         self.scene.remove_object("robot_view")
 
         self.load_robot()
-        # self.load_sphere()
-        # self.load_manipulated_object()
 
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
                                         name="robot_view",

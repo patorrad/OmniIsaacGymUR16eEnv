@@ -11,7 +11,7 @@ import trimesh
 from trimesh import transformations
 from cprint import *
 import time
-
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
 import cv2
 import torch
 # DEVICE = 'cpu'
@@ -150,7 +150,7 @@ def circle_points(radius, centers, normals, num_points):
     normals = normals / torch.norm(normals, dim=-1, keepdim=True)
 
     # Generate random vectors not in the same direction as the normals
-    not_normals = torch.rand(batch_size, 3, device='cuda:0') 
+    not_normals = torch.rand(batch_size, 3, device='cuda:0')
     while (normals * not_normals).sum(
             dim=-1).max() > 0.99:  # Ensure they're not too similar
         not_normals = torch.rand(batch_size, 3, device='cuda:0')
@@ -335,7 +335,7 @@ class Raycast:
 
         self.init_buffer(vertices, faces)
 
-    def init_setting(self, _task_cfg, _cfg, num_envs,debug_draw,device):
+    def init_setting(self, _task_cfg, _cfg, num_envs, debug_draw, device):
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
@@ -352,6 +352,23 @@ class Raycast:
                                     dtype=wp.int32,
                                 ))
             self.warp_mesh_list.append(warp_mesh)
+
+    def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
+                       mesh_vertices):
+
+        transform = Transform3d(device=self.device).scale(scale_size).rotate(
+            quaternion_to_matrix(
+                quaternion_invert(cur_object_rot))).translate(cur_object_pose)
+
+        transformed_vertices = transform.transform_points(
+            mesh_vertices.clone().to(self.device))
+
+        max_xyz = torch.max(transformed_vertices, dim=1).values
+        min_xyz = torch.min(transformed_vertices, dim=1).values
+        bboxes = torch.hstack([min_xyz, max_xyz])
+        center_points = (max_xyz + min_xyz) / 2
+
+        return bboxes, center_points, transformed_vertices
 
     def set_geom(self, vertices, mesh_index):
         wp.build.clear_kernel_cache()
@@ -386,8 +403,11 @@ class Raycast:
 
         return self.ray_dist, self.ray_dir, self.normal_vec
 
-    def raytrace_step(self, gripper_pose, gripper_rot,
-                      transformed_vertices) -> None:
+    def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
+                      cur_object_rot, scale_size, mesh_vertices) -> None:
+
+        _, _, transformed_vertices = self.transform_mesh(
+            cur_object_pose, cur_object_rot, scale_size, mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
         raycast_circle = circle_points(
@@ -432,9 +452,9 @@ class Raycast:
                     self._task_cfg['sim']["URRobot"]['num_sensors'])):
 
             self.set_geom(wp.from_torch(transformed_vertices[env]),
-                                    mesh_index=0)
-            ray_t, ray_dir, normal = self.render(
-                raycast_circle[env][i], gripper_rot[env])
+                          mesh_index=0)
+            ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
+                                                 gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
 
@@ -525,8 +545,8 @@ class Raycast:
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
-        
-        return self.raycast_reading,self.raytrace_cover_range,self.raytrace_dev
+
+        return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
 
 
 # if __name__ == "__main__":
