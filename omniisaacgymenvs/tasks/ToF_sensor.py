@@ -1,35 +1,3 @@
-# Copyright (c) 2018-2022, NVIDIA Corporation
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-#    list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-#    contributors may be used to endorse or promote products derived from
-#    this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-############################################################
-#################  isaac sim   ##############################
-############################################################
-
 # init extension
 from omni.isaac.core.utils.extensions import enable_extension
 
@@ -40,31 +8,20 @@ enable_extension("omni.isaac.motion_generation")
 # import env setting
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 
-from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
-
-from omni.isaac.debug_draw import _debug_draw
-
 from omniisaacgymenvs.utils.tools.rotation_conversions import *
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
 import omniisaacgymenvs.utils.tools.transform_utils as tf
-from omni.isaac.core.utils.types import ArticulationActions, JointsState, XFormPrimViewState
 
 from .raycast import Raycast
-
-from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_action, diffik
 
 # import util package
 import numpy as np
 import torch
-import math
-import trimesh
-import os
-import gym
-import warp as wp
+
 from cprint import *
 import time
-from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+from pytorch3d.transforms import axis_angle_to_quaternion
 
 from omniisaacgymenvs.controller.controller import Controller
 
@@ -106,9 +63,6 @@ class TofSensorTask(RLTask):
             torch.tensor([-0.6, -0.25, 1.9])
         ]
 
-        # draw info
-        self.debug_draw = _debug_draw.acquire_debug_draw_interface()
-
         # control parameter
         self._step = 0
         self.frame_skip = 5
@@ -123,33 +77,6 @@ class TofSensorTask(RLTask):
 
         return
 
-    def init_data(self) -> None:
-
-        def get_env_local_pose(env_pos, xformable, device):
-            """Compute pose in env-local coordinates"""
-            world_transform = xformable.ComputeLocalToWorldTransform(0)
-            world_pos = world_transform.ExtractTranslation()
-            world_quat = world_transform.ExtractRotationQuat()
-
-            px = world_pos[0] - env_pos[0]
-            py = world_pos[1] - env_pos[1]
-            pz = world_pos[2] - env_pos[2]
-            qx = world_quat.imaginary[0]
-            qy = world_quat.imaginary[1]
-            qz = world_quat.imaginary[2]
-            qw = world_quat.real
-
-            return torch.tensor([px, py, pz, qw, qx, qy, qz],
-                                device=device,
-                                dtype=torch.float)
-
-        if self._cfg["raycast"]:
-            self.raytracer = Raycast(self._cfg["raycast_width"],
-                                     self._cfg["raycast_height"],
-                                     self._manipulated_object.prim_paths[0],
-                                     self._task_cfg, self._cfg, self.num_envs,
-                                     self.debug_draw, self.device)
-            
     def set_up_scene(self, scene) -> None:
 
         from omniisaacgymenvs.utils.robot_loader import ROBOT
@@ -189,7 +116,12 @@ class TofSensorTask(RLTask):
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
 
-        self.init_data()
+        if self._cfg["raycast"]:
+            self.raytracer = Raycast(self._cfg["raycast_width"],
+                                     self._cfg["raycast_height"],
+                                     self._manipulated_object.prim_paths[0],
+                                     self._task_cfg, self._cfg, self.num_envs,
+                                     self._device)
 
         self.controller = Controller(
             self._robots,
@@ -319,11 +251,11 @@ class TofSensorTask(RLTask):
         angle_reward[negative_index] = -abs((1 - dev[negative_index])**3) * 5
         return angle_reward
 
-    def calculate_targetangledev_reward(self) -> None:
+    # def calculate_targetangledev_reward(self) -> None:
 
-        angle_reward = -abs(self.angle_x_dev) * 3
+    #     angle_reward = -abs(self.angle_x_dev) * 3
 
-        return angle_reward
+    #     return angle_reward
 
     def calculate_raytrace_reward(self) -> None:
 
@@ -369,10 +301,10 @@ class TofSensorTask(RLTask):
         self.rew_buf = self.calculate_dist_reward()
 
         self.rew_buf += self.calculate_angledev_reward()
-        self.rew_buf += self.calculate_targetangledev_reward()
+        # self.rew_buf += self.calculate_targetangledev_reward()
         self.rew_buf += self.calculate_raytrace_reward()
         self.rew_buf += self.calculate_raytrace_dev_reward()
-        self.rew_buf /= 1.2
+        self.rew_buf /= 2.0
 
         controller_penalty = (self.cartesian_error**2) * -1e3
         self.rew_buf += controller_penalty

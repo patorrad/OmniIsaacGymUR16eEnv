@@ -12,6 +12,7 @@ from trimesh import transformations
 from cprint import *
 import time
 from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.core.utils.prims import get_prim_at_path
 import cv2
 import torch
@@ -322,7 +323,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 class Raycast:
 
     def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
-                 num_envs, debug_draw, device):
+                 num_envs, device):
         self.width = width  #1024
         self.height = height  #1024
         self.cam_pos = (0.0, 1.5, 2.5)
@@ -334,7 +335,8 @@ class Raycast:
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
-        self.debug_draw = debug_draw
+         # draw info
+        self.debug_draw = _debug_draw.acquire_debug_draw_interface()
         self.device = device
         
         # init raycasting buffer
