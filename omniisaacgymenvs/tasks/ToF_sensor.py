@@ -168,6 +168,8 @@ class TofSensorTask(RLTask):
                                  [self.mesh_vertices[0]], [self.mesh_faces[0]])
         self.raytracer.init_setting(self._task_cfg, self._cfg, self.num_envs,
                                     self.debug_draw, self.device)
+        
+        self.motion_generation = None
 
         if self._task_cfg["sim"]["Control"] == "MotionGeneration":
             self.motion_generation = MotionGeneration(self.robot,
@@ -521,56 +523,20 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        actions = actions.to(self._device)
-        actions[:, [2, 3, 4]] = 0
-        delta_dof_pos, delta_pose = recover_action(actions,
-                                                   self.velocity_limit,
-                                                   self._env, self._robots)
-        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses(
-            )
-        target_ee_pos = cur_ee_pos + delta_pose[:, :3]
-        
-        if self._task_cfg["sim"]["Control"] == "diffik":
+        from omniisaacgymenvs.controller.controller import controller
 
-            current_dof = self._robots.get_joint_positions()
-            targets_dof = current_dof + delta_dof_pos[:, :6]
+        target_ee_pos = controller(
+            actions,
+            self._robots,
+            self._env,
+            self._end_effector,
+            self.motion_generation,
+            self.velocity_limit,
+            self._device,
+            control_type=self._task_cfg["sim"]["Control"])
 
-            targets_dof[:, -1] = 0
-
-            self._robots.set_joint_position_targets(targets_dof)
-
-        elif self._task_cfg["sim"]["Control"] == "MotionGeneration":
-
-            
-                target_ee_orientation = quaternion_multiply(
-                    quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
-                    cur_ee_orientation)
-                
-                for i in range(2):
-
-                    robot_joint = self._robots.get_joint_positions()
-                
-                    robot_joint = self.motion_generation.step_path(
-                        target_ee_pos, target_ee_orientation, robot_joint)
-
-                    self._robots.apply_action(ArticulationActions(robot_joint, ))
-                    for i in range(1):
-                        self._env._world.step(render=False)
-
-        # else:
-        #     delta_dof_pos, delta_pose = recover_rule_based_action(
-        #         self.num_envs, self.device, self._end_effector,
-        #         self.target_ee_position, self.angle_z_dev, self._robots)
-        #     current_dof = self._robots.get_joint_positions()
-        #     targets_dof = torch.zeros((self.num_envs, 6)).to(self.device)
-        #     targets_dof = current_dof + delta_dof_pos[:6]
-
-      
-        for i in range(1):
-            self._env._world.step(render=False)
         curr_position, _ = self._end_effector.get_local_poses()
-        self.cartesian_error = torch.linalg.norm(curr_position -
-                                                 target_ee_pos,
+        self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
                                                  dim=1)
 
     def transform_mesh(self):
