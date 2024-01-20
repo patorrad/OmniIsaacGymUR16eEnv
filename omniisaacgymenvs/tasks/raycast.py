@@ -12,6 +12,7 @@ from trimesh import transformations
 from cprint import *
 import time
 from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+from omni.isaac.core.utils.prims import get_prim_at_path
 import cv2
 import torch
 # DEVICE = 'cpu'
@@ -320,7 +321,8 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
 class Raycast:
 
-    def __init__(self, width, height, vertices, faces):
+    def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
+                 num_envs, debug_draw, device):
         self.width = width  #1024
         self.height = height  #1024
         self.cam_pos = (0.0, 1.5, 2.5)
@@ -328,19 +330,39 @@ class Raycast:
         self.step = 0
         self.result = np.zeros((self.height, self.width, 3))
 
-        self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
-        self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
-        self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
-        self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
-
-        self.init_buffer(vertices, faces)
-
-    def init_setting(self, _task_cfg, _cfg, num_envs, debug_draw, device):
+        self.object_prime_path = object_prime_path
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
         self.debug_draw = debug_draw
         self.device = device
+        
+        # init raycasting buffer
+        self.pixels = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
+        self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
+
+        self.init_mesh()
+        self.init_buffer([self.mesh_vertices[0]], [self.mesh_faces[0]])
+
+    def init_mesh(self):
+        from pxr import Usd, UsdGeom
+
+        cube = UsdGeom.Cube(get_prim_at_path(self.object_prime_path))
+
+        size = cube.GetSizeAttr().Get()
+        cube = trimesh.creation.box(extents=(1, 1, 1))
+
+        self.mesh_faces = torch.as_tensor(cube.faces[None, :, :],
+                                          dtype=torch.int32).repeat(
+                                              (self.num_envs, 1,
+                                               1)).to(self.device)
+        self.mesh_vertices = torch.as_tensor(cube.vertices[None, :, :],
+                                             dtype=torch.float32).repeat(
+                                                 (self.num_envs, 1,
+                                                  1)).to(self.device)
+
 
     def init_buffer(self, vertices, faces):
         self.warp_mesh_list = []
@@ -404,10 +426,10 @@ class Raycast:
         return self.ray_dist, self.ray_dir, self.normal_vec
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_size, mesh_vertices) -> None:
+                      cur_object_rot, scale_size) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
-            cur_object_pose, cur_object_rot, scale_size, mesh_vertices)
+            cur_object_pose, cur_object_rot, scale_size, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
         raycast_circle = circle_points(

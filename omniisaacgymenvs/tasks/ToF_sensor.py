@@ -143,33 +143,13 @@ class TofSensorTask(RLTask):
                                 device=device,
                                 dtype=torch.float)
 
-        self.init_mesh()
-
-        self.raytracer = Raycast(self._cfg["raycast_width"],
-                                 self._cfg["raycast_height"],
-                                 [self.mesh_vertices[0]], [self.mesh_faces[0]])
-        self.raytracer.init_setting(self._task_cfg, self._cfg, self.num_envs,
-                                    self.debug_draw, self.device)
-
-    def init_mesh(self):
-        from pxr import Usd, UsdGeom
-
-        cube = UsdGeom.Cube(
-            get_prim_at_path(self._manipulated_object.prim_paths[0]))
-
-        if self.object_category in ['cube']:
-            size = cube.GetSizeAttr().Get()
-            cube = trimesh.creation.box(extents=(1, 1, 1))
-
-            self.mesh_faces = torch.as_tensor(cube.faces[None, :, :],
-                                              dtype=torch.int32).repeat(
-                                                  (self.num_envs, 1,
-                                                   1)).to(self.device)
-            self.mesh_vertices = torch.as_tensor(cube.vertices[None, :, :],
-                                                 dtype=torch.float32).repeat(
-                                                     (self.num_envs, 1,
-                                                      1)).to(self.device)
-
+        if self._cfg["raycast"]:
+            self.raytracer = Raycast(self._cfg["raycast_width"],
+                                     self._cfg["raycast_height"],
+                                     self._manipulated_object.prim_paths[0],
+                                     self._task_cfg, self._cfg, self.num_envs,
+                                     self.debug_draw, self.device)
+            
     def set_up_scene(self, scene) -> None:
 
         from omniisaacgymenvs.utils.robot_loader import ROBOT
@@ -255,7 +235,7 @@ class TofSensorTask(RLTask):
             )
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose, gripper_rot, cur_object_pose, cur_object_rot,
-                self.scale_size, self.mesh_vertices)
+                self.scale_size)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
