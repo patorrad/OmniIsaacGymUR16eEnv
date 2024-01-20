@@ -39,30 +39,11 @@ enable_extension("omni.isaac.motion_generation")
 
 # import env setting
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
-from omniisaacgymenvs.robots.articulations.ur_robot import UR
-from omni.isaac.core.objects import DynamicSphere
-from omni.isaac.core.objects import DynamicCuboid
-from omni.isaac.core.objects import FixedCuboid
-from omniisaacgymenvs.robots.articulations.surface_gripper import SurfaceGripper
 
-from omni.isaac.core.articulations import ArticulationView
-from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
 
-from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.utils.stage import add_reference_to_stage
-import omni.isaac.core.utils.prims as prim_utils
-
-from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
-from pxr import UsdPhysics
-from omni.physx.scripts import utils
-from omni.physx import acquire_physx_interface
 from omni.isaac.debug_draw import _debug_draw
 
-import omni
-import carb
-
-import omni.isaac.core.utils.nucleus as nucleus_utils
 from omniisaacgymenvs.utils.tools.rotation_conversions import *
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
@@ -171,6 +152,7 @@ class TofSensorTask(RLTask):
                                     self.debug_draw, self.device)
 
     def init_mesh(self):
+        from pxr import Usd, UsdGeom
 
         cube = UsdGeom.Cube(
             get_prim_at_path(self._manipulated_object.prim_paths[0]))
@@ -191,53 +173,41 @@ class TofSensorTask(RLTask):
     def set_up_scene(self, scene) -> None:
 
         from omniisaacgymenvs.utils.robot_loader import ROBOT
-        self.robot = ROBOT(
-            self.default_zero_env_path, self._robot_positions,
-            self._robot_rotations, self._robot_dof_target, self._sim_config,
-            self._task_cfg['sim']["URRobot"]['robot_path']).load_UR()
-        self.add_gripper()
+        from omniisaacgymenvs.utils.object_loader import Object
+
+        # load robot
+        robot = ROBOT(self.num_envs, self.default_zero_env_path,
+                      self._robot_positions, self._robot_rotations,
+                      self._robot_dof_target, self._sim_config,
+                      self._task_cfg['sim']["URRobot"]['robot_path'])
+
+        self.robot = robot.load_UR()
+        self.grippers = robot.add_gripper()
+
+        # load object
+        object_loader = Object(self._sim_config, self.num_envs, self.device,
+                               self.default_zero_env_path)
 
         if self.object_category in ['cube']:
-            self.load_cube()
+            self.scale_size = object_loader.load_cube(
+                self._task_cfg["sim"]["Object"]["scale"])
 
-        # self.load_pod()
         # Table
-        self.load_table()
+        object_loader.load_table(
+            self._task_cfg['sim']["Table"]["position"],
+            self._task_cfg['sim']["Table"]["quaternion"],
+            np.array(self._task_cfg['sim']["Table"]["scale"]))
 
         super().set_up_scene(scene)
 
-        self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
-                                        name="robot_view",
-                                        reset_xform_properties=False)
-        scene.add(self._robots)
+        self._robots, self._end_effector, self.wrist_2_link = robot.add_scene(
+            scene)
 
-        # end-effectors view
-        self._end_effector = RigidPrimView(
-            prim_paths_expr="/World/envs/.*/robot/ee_link",
-            name="end_effector_view",
-            reset_xform_properties=False)
-        scene.add(self._end_effector)
-
-        self.wrist_2_link = RigidPrimView(
-            prim_paths_expr="/World/envs/.*/robot/wrist_2_link",
-            name="wrist_2_link_view",
-            reset_xform_properties=False)
-        scene.add(self.wrist_2_link)
-
-        # manipulated object
-        self._manipulated_object = RigidPrimView(
-            prim_paths_expr="/World/envs/.*/manipulated_object_1",
-            name="manipulated_object_view",
-            reset_xform_properties=False)
-        scene.add(self._manipulated_object)
-
-        # table
-        self._table = RigidPrimView(prim_paths_expr="/World/envs/.*/table",
-                                    name="table_view",
-                                    reset_xform_properties=False)
-        scene.add(self._table)
-
-        # Raytracing
+        self._manipulated_object = object_loader.add_scene(
+            scene, "/World/envs/.*/manipulated_object_1",
+            "manipulated_object_view")
+        self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
+                                              "table_view")
 
         self.init_data()
 
@@ -248,206 +218,6 @@ class TofSensorTask(RLTask):
             self.velocity_limit,
             self._device,
             control_type=self._task_cfg["sim"]["Control"])
-
-    def add_gripper(self):
-        assets_root_path = get_assets_root_path()
-
-        gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
-
-        self.grippers = []
-
-        for i in range(self.num_envs):
-
-            add_reference_to_stage(
-                usd_path=gripper_usd,
-                prim_path=f"/World/envs/env_{i}/robot/ee_link")
-
-            surface_gripper = SurfaceGripper(
-                end_effector_prim_path=f"/World/envs/env_{i}/robot/ee_link",
-                translate=0.1611,
-                direction="y")
-            surface_gripper.set_force_limit(value=8.0e1)
-            surface_gripper.set_torque_limit(value=10.0e0)
-            # surface_gripper.initialize(physics_sim_view=None, articulation_num_dofs=self.robot.num_dof)
-            self.grippers.append(surface_gripper)
-
-    def load_robot(self):
-
-        from omniisaacgymenvs.robots.articulations.ur10 import UR10
-
-        self.robot = UR10(
-            prim_path=self.default_zero_env_path + "/robot",
-            name="robot",
-            position=self._robot_positions,
-            orientation=self._robot_rotations,
-            attach_gripper=False,
-            usd_path=self._task_cfg['sim']["URRobot"]['robot_path'])
-
-        self.robot.set_joint_positions(self._robot_dof_target)
-        self.robot.set_joints_default_state(self._robot_dof_target)
-
-        self._sim_config.apply_articulation_settings(
-            "robot", get_prim_at_path(self.robot.prim_path),
-            self._sim_config.parse_actor_config("robot"))
-
-    def load_sphere(self):
-
-        target = DynamicSphere(prim_path=self.default_zero_env_path +
-                               "/target",
-                               name="target",
-                               radius=0.025,
-                               color=torch.tensor([1, 0, 0]))
-        self._sim_config.apply_articulation_settings(
-            "target", get_prim_at_path(target.prim_path),
-            self._sim_config.parse_actor_config("target"))
-        target.set_collision_enabled(False)
-
-    def load_object(self,
-                    usd_path,
-                    env_index,
-                    object_index,
-                    translaton=[-0.69, 0.1, 1.3],
-                    orientation=[0, 0, 0.707, 0.707],
-                    scale=[0.4, 0.4, 0.4]):
-
-        # ================================= load object ========================================
-        prim_utils.create_prim(f"/World/envs/env_{env_index}" +
-                               f"/manipulated_object_{object_index}",
-                               usd_path=usd_path,
-                               translation=translaton,
-                               orientation=orientation,
-                               scale=scale)
-
-        stage = omni.usd.get_context().get_stage()
-        object_prim = stage.GetPrimAtPath(
-            f"/World/envs/env_{env_index}" +
-            f"/manipulated_object_{object_index}")
-
-        # ================================= set property ========================================
-        # Make it a rigid body
-        # utils.setRigidBody(object_prim, "convexHull", True)
-        # # mass_api = UsdPhysics.MassAPI.Apply(object_prim)
-        # # mass_api.CreateMassAttr(10)
-        # # # Alternatively set the density
-        # # mass_api.CreateDensityAttr(1000)
-        # UsdPhysics.CollisionAPI.Apply(object_prim)
-
-        # self._sim_config.apply_rigid_body_settings("Object", object_prim.GetPrim(),self._sim_config.parse_actor_config("Object"),is_articulation=False)
-        # Make it a rigid body with kinematic
-        # utils.setRigidBody(object_prim, "convexMeshSimplification", True)
-
-        # mass_api = UsdPhysics.MassAPI.Apply(object_prim)
-        # mass_api.CreateMassAttr(10)
-        # # Alternatively set the density
-        # mass_api.CreateDensityAttr(1000)
-        # UsdPhysics.CollisionAPI.Apply(object_prim)
-
-        # ================================= set property ========================================
-        # Make it a rigid body with kinematic
-        # utils.setRigidBody(object_prim, "convexMeshSimplification", True)
-
-        # mass_api = UsdPhysics.MassAPI.Apply(object_prim)
-        # mass_api.CreateMassAttr(10)
-        # # Alternatively set the density
-        # mass_api.CreateDensityAttr(1000)
-        UsdPhysics.CollisionAPI.Apply(object_prim)
-        self._sim_config.apply_rigid_body_settings(
-            "Object",
-            object_prim.GetPrim(),
-            self._sim_config.parse_actor_config("Object"),
-            is_articulation=False)
-
-        # ================================= add texture ========================================
-        # Change the server to your Nucleus install, default is set to localhost in omni.isaac.sim.base.kit
-        default_server = carb.settings.get_settings().get(
-            "/persistent/isaac/asset_root/default")
-        mtl_created_list = []
-        # Create a new material using OmniPBR.mdl
-        omni.kit.commands.execute(
-            "CreateAndBindMdlMaterialFromLibrary",
-            mdl_name="OmniPBR.mdl",
-            mtl_name="OmniPBR",
-            mtl_created_list=mtl_created_list,
-        )
-        stage = omni.usd.get_context().get_stage()
-        mtl_prim = stage.GetPrimAtPath(mtl_created_list[0])
-        # Set material inputs, these can be determined by looking at the .mdl file
-        # or by selecting the Shader attached to the Material in the stage window and looking at the details panel
-        omni.usd.create_material_input(
-            mtl_prim,
-            "diffuse_texture",
-            default_server +
-            "/Isaac/Samples/DR/Materials/Textures/marble_tile.png",
-            Sdf.ValueTypeNames.Asset,
-        )
-
-        # Bind the material to the prim
-        cube_mat_shade = UsdShade.Material(mtl_prim)
-        UsdShade.MaterialBindingAPI(object_prim).Bind(
-            cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
-
-    def load_table(self):
-        table_translation = np.array(
-            self._task_cfg['sim']["Table"]["position"])
-        table_orientation = np.array(
-            self._task_cfg['sim']["Table"]["quaternion"])
-
-        table = FixedCuboid(
-            prim_path=self.default_zero_env_path + "/table",
-            name="table",
-            translation=table_translation,
-            orientation=table_orientation,
-            scale=np.array(self._task_cfg['sim']["Table"]["scale"]),
-            size=1.0,
-            color=np.array([1, 197 / 255, 197 / 255]),
-        )
-        table_usd_path = f"{nucleus_utils.get_assets_root_path()}/NVIDIA/Assets/ArchVis/Residential/Furniture/Tables/Whittershins.usd"
-        # fix table base
-        # table = prim_utils.create_prim(self.default_zero_env_path + "/table",
-        #                                usd_path=table_usd_path,
-        #                                translation=table_translation,
-        #                                scale=(0.005, 0.005, 0.0202))
-        table_prim = get_prim_at_path(self.default_zero_env_path + "/table")
-
-        self._sim_config.apply_rigid_body_settings(
-            "table",
-            table_prim,
-            self._sim_config.parse_actor_config("table"),
-            is_articulation=False)
-
-    def load_cube(self):
-        self.scale_size = torch.as_tensor(
-            self._task_cfg["sim"]["Object"]["scale"]).repeat(self.num_envs,
-                                                             1).to(self.device)
-        for i in range(self.num_envs):
-
-            target_object_1 = DynamicCuboid(
-                prim_path=f"/World/envs/env_{i}/manipulated_object_1",
-                name="manipulated_object_1",
-                position=[0, 0, 2.02],
-                # size=0.2,
-                scale=np.array(self._task_cfg["sim"]["Object"]["scale"]),
-                color=torch.tensor([0, 169 / 255, 1]))
-
-            self._sim_config.apply_articulation_settings(
-                "table", get_prim_at_path(target_object_1.prim_path),
-                self._sim_config.parse_actor_config("manipulated_object_1"))
-
-    def load_manipulated_object(self):
-
-        object_dir = self.current_directory + "/omniisaacgymenvs/assests/objects/shapenet_nomat/" + self._task_cfg[
-            'sim']["Object"]["category"]
-        object_list = os.listdir(object_dir)
-
-        for i in range(self.num_envs):
-            object_name = object_list[i]  # np.random.choice(object_list)
-
-            object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
-            self.load_object(usd_path=object_path, env_index=i, object_index=1)
-            self.object_prim_path.append(object_path)
-
-            # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
-            # self.load_object(usd_path=object_path,env_index=i,object_index=2)
 
     def update_cache_state(self):
 
@@ -485,7 +255,7 @@ class TofSensorTask(RLTask):
             )
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose, gripper_rot, cur_object_pose, cur_object_rot,
-                self.scale_size,self.mesh_vertices)
+                self.scale_size, self.mesh_vertices)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -645,17 +415,6 @@ class TofSensorTask(RLTask):
             return [True for i in range(self.num_envs)]
 
         return [False for i in range(self.num_envs)]
-
-    def reset_internal(self):
-
-        self.scene.remove_object("robot_view")
-
-        self.load_robot()
-
-        self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
-                                        name="robot_view",
-                                        reset_xform_properties=False)
-        self.scene.add(self._robots)
 
     def reset(self):
 
