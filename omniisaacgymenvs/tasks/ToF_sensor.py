@@ -222,12 +222,15 @@ class TofSensorTask(RLTask):
         if not self._env._world.is_playing():
             return
 
-        target_ee_pos = self.controller.forward(actions[:,:6])
-
         if self._task_cfg["sim"]["Design"] and self._cfg["raycast"]:
             if self._step == 1:
                 self.sensor_radius = self.raytracer.update_params(actions[:,
                                                                           6:])
+                target_ee_pos, _ = self._end_effector.get_local_poses()
+            elif self._step >= 1:
+                target_ee_pos = self.controller.forward(actions[:, :6])
+        else:
+            target_ee_pos = self.controller.forward(actions[:, :6])
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
