@@ -580,6 +580,7 @@ class BaseAlgorithm(ABC):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
+      
         return self.policy.predict(observation, state, episode_start,
                                    deterministic)
 

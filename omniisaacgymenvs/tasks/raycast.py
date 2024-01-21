@@ -578,6 +578,7 @@ class Raycast:
         action = torch.clip(actions, -1, 1)
        
         cur_sensor_radius = self.default_sensor_radius + action * 0.02
+        print(cur_sensor_radius)
         return cur_sensor_radius
 
 

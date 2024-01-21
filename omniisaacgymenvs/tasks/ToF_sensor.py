@@ -237,6 +237,7 @@ class TofSensorTask(RLTask):
                                                  dim=1)
 
     def post_reset(self):
+        
 
         self.robot.initialize()
         self.robot.disable_gravity()
