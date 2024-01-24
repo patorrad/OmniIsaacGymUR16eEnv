@@ -368,7 +368,7 @@ class TofSensorTask(RLTask):
         target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2 + 0.2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5
+        self.rand_orientation[:, 2] = -rand_ori_z * torch.pi / 2 / 0.7 * 0.5
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 

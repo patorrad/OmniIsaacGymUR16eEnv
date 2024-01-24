@@ -71,7 +71,7 @@ def parse_hydra_configs(cfg: DictConfig):
     task = initialize_task(cfg_dict, env)
 
     policy = PPO.load(
-        "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/outputs/2024-01-21/07-31-03/results/121/TofSensor2/model/model_540",
+        "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/outputs/2024-01-24/08-24-18/results/124/TofSensor2/model/model_0",
         env, "cuda")
 
     while env._simulation_app.is_running():

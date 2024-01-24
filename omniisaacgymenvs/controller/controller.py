@@ -80,7 +80,7 @@ class Controller:
                 target_ee_position, angle_z_dev, self._robots)
             current_dof = self._robots.get_joint_positions()
             targets_dof = torch.zeros((self.num_envs, 6)).to(self._device)
-            targets_dof = current_dof + delta_dof_pos[:6]
+            targets_dof = current_dof + delta_dof_pos[:,:6]
             
             self._robots.set_joint_position_targets(targets_dof)
 
