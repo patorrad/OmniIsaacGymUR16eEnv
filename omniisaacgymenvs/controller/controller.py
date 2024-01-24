@@ -13,6 +13,7 @@ class Controller:
                  _end_effector,
                  velocity_limit,
                  _device,
+                 num_envs,
                  control_type="diffik") -> None:
 
         self._robots = _robots
@@ -21,15 +22,19 @@ class Controller:
         self.velocity_limit = velocity_limit
         self._device = _device
         self.control_type = control_type
+        
+        self.num_envs = num_envs
 
         if control_type == "MotionGeneration":
-            self.motion_generation = MotionGeneration(self.robot,
+            self.motion_generation = MotionGeneration(self._robots,
                                                       self._env._world,
                                                       n_envs=self.num_envs)
 
     def forward(
         self,
         actions,
+        target_ee_position=None,
+        angle_z_dev=None,
     ):
         actions = actions.to(self._device)
         actions[:, [2, 3, 4]] = 0
@@ -68,11 +73,18 @@ class Controller:
                 for i in range(1):
                     self._env._world.step(render=False)
 
-        # else:
-        #     delta_dof_pos, delta_pose = recover_rule_based_action(
-        #         num_envs, device, _end_effector,
-        #         target_ee_position, angle_z_dev, _robots)
-        #     current_dof = _robots.get_joint_positions()
-        #     targets_dof = torch.zeros((num_envs, 6)).to(device)
-        #     targets_dof = current_dof + delta_dof_pos[:6]
+        else:
+            import torch
+            delta_dof_pos, delta_pose = recover_rule_based_action(
+                self.num_envs, self._device, self._end_effector,
+                target_ee_position, angle_z_dev, self._robots)
+            current_dof = self._robots.get_joint_positions()
+            targets_dof = torch.zeros((self.num_envs, 6)).to(self._device)
+            targets_dof = current_dof + delta_dof_pos[:6]
+            
+            self._robots.set_joint_position_targets(targets_dof)
+
+            for i in range(1):
+                self._env._world.step(render=False)
+
         return target_ee_pos

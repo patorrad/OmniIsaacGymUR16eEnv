@@ -65,7 +65,8 @@ class TofSensorTask(RLTask):
 
         # control parameter
         self._step = 0
-        self.frame_skip = 5
+        self.frame_skip = 2
+        self.angle_z_dev = torch.zeros((self.num_envs,1)).to(self._device)
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -133,7 +134,7 @@ class TofSensorTask(RLTask):
             self._env,
             self._end_effector,
             self.velocity_limit,
-            self._device,
+            self._device,self.num_envs,
             control_type=self._task_cfg["sim"]["Control"])
 
     def update_cache_state(self):
@@ -198,10 +199,10 @@ class TofSensorTask(RLTask):
 
     def get_target_pose(self):
 
-        target_x = 0.3 * torch.sin(torch.as_tensor(self.target_angle)).to(
+        target_x = 0.2 * torch.sin(torch.as_tensor(self.target_angle)).to(
             self.device) + self.init_ee_dev_local_pos[:, 0]
 
-        target_y = 0.3 * (1 - torch.cos(torch.as_tensor(self.target_angle))
+        target_y = 0.2 * (1 - torch.cos(torch.as_tensor(self.target_angle))
                           ).to(self.device) + self.init_ee_dev_local_pos[:, 1]
 
         self.target_ee_position = torch.cat([
@@ -230,7 +231,11 @@ class TofSensorTask(RLTask):
             elif self._step >= 1:
                 target_ee_pos = self.controller.forward(actions[:, :6])
         else:
-            target_ee_pos = self.controller.forward(actions[:, :6])
+           
+            from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+        
+            
+            target_ee_pos = self.controller.forward(actions[:, :6],self.target_ee_position,self.angle_z_dev)
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
@@ -349,7 +354,7 @@ class TofSensorTask(RLTask):
     def reset(self):
 
         self._robots.set_joint_positions(
-            torch.tensor([0, -1.57, 1.57 / 2 * 2, -1.57 * 2, 0, 0],
+            torch.tensor([1.57, -1.57, 1.57 / 2 * 2, -1.57 * 2, -1.57, 0],
                          dtype=torch.float).repeat(self.num_envs,
                                                    1).clone().detach())
 
@@ -369,8 +374,8 @@ class TofSensorTask(RLTask):
 
         # init position
         object_target_position = target_obj_position.clone()
-        object_target_position[:, 1] += 0.4
-        random_x = torch.rand(self.num_envs).to(self.device) * 0.2
+        object_target_position[:, 1] += 0.3
+        random_x = torch.rand(self.num_envs).to(self.device) * 0.0
         object_target_position[:, 0] -= random_x
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
@@ -380,7 +385,7 @@ class TofSensorTask(RLTask):
         table_position[:, 0] = self.init_ee_link_position[:, 0]
         self._table.set_world_poses(table_position)
 
-        for i in range(10):
+        for i in range(2):
             self._env._world.step(render=False)
 
         self.init_ee_dev_local_pos, _ = self._end_effector.get_local_poses()

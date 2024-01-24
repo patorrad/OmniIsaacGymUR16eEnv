@@ -20,7 +20,7 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
         delta_pose[satified_index, 5] = 0
 
     jacobians = _robots.get_jacobians(clone=False)
-    delta_dof_pos = ik(jacobian_end_effector=jacobians[:, 8, :, :],
+    delta_dof_pos = diffik(jacobian_end_effector=jacobians[:, 8, :, :],
                        delta_pose=delta_pose)
 
     return delta_dof_pos / 2, delta_pose
