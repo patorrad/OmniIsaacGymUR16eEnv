@@ -106,7 +106,7 @@ def parse_hydra_configs(cfg: DictConfig):
     
     # init wandb
     horizon = 200
-    env_iter = training_config['iteraction'] * horizon * training_config['n_env_horizon']
+    env_iter = 10000000
     exp_name = "TofSensor_state"
     config = {
         'n_env_horizon': training_config['n_env_horizon'],
@@ -122,12 +122,11 @@ def parse_hydra_configs(cfg: DictConfig):
                             project="TofSensor")
 
 
-    
     model = PPO(
         policy,
         env,
         n_epochs=training_config['n_epochs'],
-        n_steps=(training_config['n_env_horizon'] //env._num_envs) * horizon,
+        n_steps=200,
         learning_rate=3e-4,
         batch_size=training_config['minibatch_size'],
         seed=cfg.seed,

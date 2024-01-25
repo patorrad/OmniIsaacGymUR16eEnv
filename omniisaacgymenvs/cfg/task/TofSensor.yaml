@@ -10,7 +10,7 @@ env:
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 6
-  num_observations: 134 #{"state":6,"image":[2,8,8]} #18
+  num_observations: 18 #{"state":6,"image":[2,8,8]} #18
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -111,7 +111,7 @@ sim:
   Design: False
     
 Training:
-  use_oracle: False
+  use_oracle: True
 
 Curobo: False
 

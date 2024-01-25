@@ -441,14 +441,15 @@ class Raycast:
             self._task_cfg['sim']["URRobot"]['num_sensors'])
 
         # for draw point
-        debug_sensor_ray_pos_list = []
-        debug_ray_hit_points_list = []
-        debug_ray_colors = []
-        debug_ray_sizes = []
-        debug_point_sizes = []
-        debug_end_point_colors = []
-        debug_start_point_colors = []
-        debug_circle = []
+        if self._cfg["debug"]:
+            debug_sensor_ray_pos_list = []
+            debug_ray_hit_points_list = []
+            debug_ray_colors = []
+            debug_ray_sizes = []
+            debug_point_sizes = []
+            debug_end_point_colors = []
+            debug_start_point_colors = []
+            debug_circle = []
 
         self.raycast_reading = torch.zeros(
             (self.num_envs,
@@ -469,7 +470,7 @@ class Raycast:
             (self.num_envs, 2)).to(self.device)
         # ray trace max min dist
         self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
-
+        
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -479,9 +480,13 @@ class Raycast:
 
             self.set_geom(wp.from_torch(transformed_vertices[env]),
                           mesh_index=0)
+           
+            # import time 
+            # start = time.time()
             ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
                                                  gripper_rot[env])
-
+            # print(time.time()-start)
+          
             ray_t = wp.torch.to_torch(ray_t)
 
             if len(torch.where(ray_t > 0)[0]) > 0:
@@ -550,17 +555,18 @@ class Raycast:
                         (0, 0.75, 0, 1) for _ in range(hits_len)
                     ]  # start (camera) points: green
                     end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
+                    
+                    if self._cfg["debug"]:
+                        debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
+                        debug_ray_hit_points_list.append(ray_hit_points_list)
+                        debug_ray_colors.append(ray_colors)
+                        debug_ray_sizes.append(ray_sizes)
 
-                    debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
-                    debug_ray_hit_points_list.append(ray_hit_points_list)
-                    debug_ray_colors.append(ray_colors)
-                    debug_ray_sizes.append(ray_sizes)
+                        debug_end_point_colors.append(end_point_colors)
+                        debug_point_sizes.append(point_sizes)
+                        debug_start_point_colors.append(start_point_colors)
 
-                    debug_end_point_colors.append(end_point_colors)
-                    debug_point_sizes.append(point_sizes)
-                    debug_start_point_colors.append(start_point_colors)
-
-                    debug_circle.append([raycast_circle[env][i].cpu().numpy()])
+                        debug_circle.append([raycast_circle[env][i].cpu().numpy()])
 
         if self._cfg["debug"]:
 

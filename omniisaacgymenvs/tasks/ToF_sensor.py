@@ -116,7 +116,8 @@ class TofSensorTask(RLTask):
             "manipulated_object_view")
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
-
+        
+        
         if self._cfg["raycast"]:
 
             self.sensor_radius = torch.as_tensor(
@@ -166,6 +167,7 @@ class TofSensorTask(RLTask):
                                                 cur_position,
                                                 dim=1)
 
+     
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -181,19 +183,20 @@ class TofSensorTask(RLTask):
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
+     
         # if isinstance(self._num_observations, dict):
         #     self.obs_buf = {}
         #     self.obs_buf["state"] = self.robot_joints
         #     self.obs_buf["image"] = self.raycast_reading * 255
         #     return self.obs_buf
 
-        # if self._task_cfg['Training']["use_oracle"]:
-        #     self.obs_buf = torch.cat([
-        #         current_euler_angles_x[:, None], self.target_angle[:, None],
-        #         self.angle_z_dev[:, None], cur_position, self.target_ee_position,
-        #         self.target_ee_position - cur_position, self.robot_joints
-        #     ],
-        #                              dim=1)
+        if self._task_cfg['Training']["use_oracle"]:
+            self.obs_buf = torch.cat([
+                current_euler_angles_x[:, None], self.target_angle[:, None],
+                self.angle_z_dev[:, None], cur_position, self.target_ee_position,
+                self.target_ee_position - cur_position, self.robot_joints
+            ],
+                                     dim=1)
 
         return self.obs_buf
 
@@ -338,7 +341,7 @@ class TofSensorTask(RLTask):
 
         self.rew_buf += action_penalty
 
-        return self.rew_buf / 2
+        return self.rew_buf
 
     def is_done(self) -> None:
 
@@ -374,7 +377,7 @@ class TofSensorTask(RLTask):
 
         # init position
         object_target_position = target_obj_position.clone()
-        object_target_position[:, 1] += 0.3
+        object_target_position[:, 1] += 0.4
         random_x = torch.rand(self.num_envs).to(self.device) * 0.0
         object_target_position[:, 0] -= random_x
         self._manipulated_object.set_world_poses(object_target_position,
