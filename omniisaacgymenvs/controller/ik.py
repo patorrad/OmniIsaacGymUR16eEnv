@@ -6,7 +6,7 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
 
     delta_pose = torch.zeros((num_envs, 6)).to(device)
 
-    delta_pose[:, 5] = -torch.as_tensor(torch.pi / 200)
+    delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
 
     cur_pos, _ = _end_effector.get_local_poses()
     cur_pos[:, 0] = -cur_pos[:, 0]

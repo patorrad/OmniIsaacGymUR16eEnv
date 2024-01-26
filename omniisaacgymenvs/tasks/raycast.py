@@ -485,7 +485,7 @@ class Raycast:
             # start = time.time()
             ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
                                                  gripper_rot[env])
-            # print(time.time()-start)
+            
           
             ray_t = wp.torch.to_torch(ray_t)
 
@@ -509,6 +509,7 @@ class Raycast:
                 reading = ray_t
                 average_distance = -0.01
                 cover_percentage = 0
+            # print(time.time()-start,cover_percentage)
 
             self.raytrace_dist[env][i] = average_distance
             self.raytrace_cover_range[env][i] = cover_percentage
