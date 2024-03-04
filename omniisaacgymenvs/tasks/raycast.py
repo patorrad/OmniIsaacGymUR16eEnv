@@ -471,7 +471,7 @@ class Raycast:
         # ray trace max min dist
         self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
         
-        pcs = []
+        point_cloud = []
 
         for i, env in zip(
                 torch.arange(
@@ -539,13 +539,11 @@ class Raycast:
             line_vec = torch.multiply(ray_dir.T, ray_t).T
 
             # Get rid of ray misses (0 values)
-            line_vec = line_vec[torch.any(line_vec)]
-            hit_points_3d_coordinate = line_vec + torch.as_tensor(
-                sensor_ray_pos_tuple).to(self.device)
-           
+            line_vec = line_vec[torch.any(line_vec)][0]
+         
             real_3d_coord = self.get_tof_angles([8,8], 12.5, 12.5, ray_t.cpu().numpy().reshape(8,8)).reshape(-1,3)
             
-            pcs.append(line_vec)
+            point_cloud.append(line_vec)
 
             if self._cfg["debug"]:
 

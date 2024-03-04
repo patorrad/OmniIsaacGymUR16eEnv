@@ -29,23 +29,25 @@ class Object:
         self.device = device
         self.default_zero_env_path = default_zero_env_path
 
-    def load_cube(self, scale):
+    def load_cube(self, scale,num_object=1):
         self.scale_size = torch.as_tensor(scale).repeat(self.num_envs,
                                                         1).to(self.device)
         for i in range(self.num_envs):
+            
+            for j in range(1,num_object+1):
 
-            target_object_1 = DynamicCuboid(
-                prim_path=f"/World/envs/env_{i}/manipulated_object_1",
-                name="manipulated_object_1",
-                position=[0, 0, 2.02],
-                # size=0.2,
-                scale=np.array(
-                    scale),  #self._task_cfg["sim"]["Object"]["scale"]
-                color=torch.tensor([0, 169 / 255, 1]))
+                target_object_1 = DynamicCuboid(
+                    prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                    name=f"manipulated_object_{j}",
+                    position=[0, 0, 2.02],
+                    # size=0.2,
+                    scale=np.array(
+                        scale),  #self._task_cfg["sim"]["Object"]["scale"]
+                    color=torch.tensor([0, 169 / 255, 1]))
 
-            self._sim_config.apply_articulation_settings(
-                "table", get_prim_at_path(target_object_1.prim_path),
-                self._sim_config.parse_actor_config("manipulated_object_1"))
+                self._sim_config.apply_articulation_settings(
+                    "table", get_prim_at_path(target_object_1.prim_path),
+                    self._sim_config.parse_actor_config(f"manipulated_object_{j}"))
         return self.scale_size
 
     def load_manipulated_object(self):

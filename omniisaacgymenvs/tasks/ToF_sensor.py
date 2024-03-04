@@ -99,7 +99,7 @@ class TofSensorTask(RLTask):
 
         if self.object_category in ['cube']:
             self.scale_size = object_loader.load_cube(
-                self._task_cfg["sim"]["Object"]["scale"])
+                self._task_cfg["sim"]["Object"]["scale"], 2)
 
         # Table
         object_loader.load_table(
@@ -115,6 +115,11 @@ class TofSensorTask(RLTask):
         self._manipulated_object = object_loader.add_scene(
             scene, "/World/envs/.*/manipulated_object_1",
             "manipulated_object_view")
+
+        self._manipulated_object_2 = object_loader.add_scene(
+            scene, "/World/envs/.*/manipulated_object_2",
+            "manipulated_object_view_2")
+
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
 
@@ -182,7 +187,7 @@ class TofSensorTask(RLTask):
 
             cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
             )
-            self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, pcs = self.raytracer.raytrace_step(
+            self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
                 cur_object_pose,
@@ -406,6 +411,11 @@ class TofSensorTask(RLTask):
         object_target_position[:, 0] -= random_x
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
+
+        object_target_position[:, 1] += 0.2
+        object_target_position[:, 0] += 0.15
+        self._manipulated_object_2.set_world_poses(object_target_position,
+                                                   object_target_quaternion)
 
         # init table position
         table_position, _ = self._table.get_world_poses()
