@@ -14,6 +14,7 @@ from omni.isaac.core.utils.torch.rotations import *
 import omniisaacgymenvs.utils.tools.transform_utils as tf
 
 from .raycast import Raycast
+from omniisaacgymenvs.utils.camera_renderer import Renderer
 
 # import util package
 import numpy as np
@@ -66,7 +67,7 @@ class TofSensorTask(RLTask):
         # control parameter
         self._step = 0
         self.frame_skip = 2
-        self.angle_z_dev = torch.zeros((self.num_envs,1)).to(self._device)
+        self.angle_z_dev = torch.zeros((self.num_envs, 1)).to(self._device)
         velocity_limit = torch.as_tensor([1.0] * 3 + [3.0] * 3,
                                          device=self.device)  # slow down
 
@@ -116,8 +117,7 @@ class TofSensorTask(RLTask):
             "manipulated_object_view")
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
-        
-        
+
         if self._cfg["raycast"]:
 
             self.sensor_radius = torch.as_tensor(
@@ -129,13 +129,23 @@ class TofSensorTask(RLTask):
                                      self._manipulated_object.prim_paths[0],
                                      self._task_cfg, self._cfg, self.num_envs,
                                      self._device, self.sensor_radius)
+        if self._cfg["depth_renderer"]:
+
+            self.sensor_radius = torch.as_tensor(
+                self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
+                    self.num_envs, 1).to(self._device)
+            self.depth_renderer = Renderer(
+                self._cfg["depth_width"], self._cfg["depth_height"],
+                self._manipulated_object.prim_paths[0], self._task_cfg,
+                self._cfg, self.num_envs, self._device, self.sensor_radius)
 
         self.controller = Controller(
             self._robots,
             self._env,
             self._end_effector,
             self.velocity_limit,
-            self._device,self.num_envs,
+            self._device,
+            self.num_envs,
             control_type=self._task_cfg["sim"]["Control"])
 
     def update_cache_state(self):
@@ -167,7 +177,6 @@ class TofSensorTask(RLTask):
                                                 cur_position,
                                                 dim=1)
 
-     
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -183,7 +192,7 @@ class TofSensorTask(RLTask):
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
-     
+
         # if isinstance(self._num_observations, dict):
         #     self.obs_buf = {}
         #     self.obs_buf["state"] = self.robot_joints
@@ -193,10 +202,24 @@ class TofSensorTask(RLTask):
         if self._task_cfg['Training']["use_oracle"]:
             self.obs_buf = torch.cat([
                 current_euler_angles_x[:, None], self.target_angle[:, None],
-                self.angle_z_dev[:, None], cur_position, self.target_ee_position,
+                self.angle_z_dev[:,
+                                 None], cur_position, self.target_ee_position,
                 self.target_ee_position - cur_position, self.robot_joints
             ],
                                      dim=1)
+
+        if self._cfg["depth_renderer"]:
+            gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+
+            cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
+            )
+            self.depth_renderer.raytrace_step(
+                gripper_pose,
+                gripper_rot,
+                cur_object_pose,
+                cur_object_rot,
+                self.scale_size,
+                sensor_radius=self.sensor_radius)
 
         return self.obs_buf
 
@@ -234,18 +257,18 @@ class TofSensorTask(RLTask):
             elif self._step >= 1:
                 target_ee_pos = self.controller.forward(actions[:, :6])
         else:
-           
+
             from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
-        
-            
-            target_ee_pos = self.controller.forward(actions[:, :6],self.target_ee_position,self.angle_z_dev)
+
+            target_ee_pos = self.controller.forward(actions[:, :6],
+                                                    self.target_ee_position,
+                                                    self.angle_z_dev)
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
                                                  dim=1)
 
     def post_reset(self):
-        
 
         self.robot.initialize()
         self.robot.disable_gravity()
@@ -328,8 +351,8 @@ class TofSensorTask(RLTask):
 
         self.rew_buf += self.calculate_angledev_reward()
         # self.rew_buf += self.calculate_targetangledev_reward()
-        self.rew_buf += self.calculate_raytrace_reward()
-        self.rew_buf += self.calculate_raytrace_dev_reward()
+        # self.rew_buf += self.calculate_raytrace_reward()
+        # self.rew_buf += self.calculate_raytrace_dev_reward()
         self.rew_buf /= 1.2
 
         controller_penalty = (self.cartesian_error**2) * -1e3
@@ -371,8 +394,9 @@ class TofSensorTask(RLTask):
         target_obj_position, _ = self._end_effector.get_world_poses()  # wxyz
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2 + 0.2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
-        
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5 * (torch.randint(0, 2, (self.num_envs,))*2-1).to(self._device)
+
+        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5 * (
+            torch.randint(0, 2, (self.num_envs, )) * 2 - 1).to(self._device)
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 

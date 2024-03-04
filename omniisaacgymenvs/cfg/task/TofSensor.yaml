@@ -81,7 +81,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd" # "../../../omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd" # "../../../omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -98,7 +98,7 @@ sim:
     quaternion: [0, 0, 1, 0]
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
     num_sensors: 2
-    sensor_radius: 0.055
+    sensor_radius: 0.0
   Object:
     category: "cube"
     scale: [0.1, 0.1, 0.3]

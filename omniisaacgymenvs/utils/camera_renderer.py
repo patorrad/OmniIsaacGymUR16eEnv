@@ -324,7 +324,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
 
 
-class Raycast:
+class Renderer:
 
     def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
                  num_envs, device, default_sensor_radius):
@@ -486,49 +486,16 @@ class Raycast:
            
             # import time 
             # start = time.time()
-            ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
-                                                 gripper_rot[env])
-            
           
-            ray_t = wp.torch.to_torch(ray_t)
+            ray_t, ray_dir, normal = self.render(raycast_circle[env][i].clone(),gripper_rot[env])
+        # import pdb
+        # pdb.set_trace()
+        
+        
+        #     # replace the zero value
 
-            if len(torch.where(ray_t > 0)[0]) > 0:
-
-                # normalize tof reading
-                reading = ray_t[torch.where(ray_t > 0)]
-
-                noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
-                                            device=self.device) / 1000 * 20
-                reading += noise_distance
-                reading = (reading - torch.min(reading)) / (
-                    torch.max(reading) - torch.min(reading) + 1e-5)
-
-                self.raycast_reading[env][i * num_pixel +
-                                          torch.where(ray_t > 0)[0]] = reading
-
-                average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
-                cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
-            else:
-                reading = ray_t
-                average_distance = -0.01
-                cover_percentage = 0
-            # print(time.time()-start,cover_percentage)
-
-            self.raytrace_dist[env][i] = average_distance
-            self.raytrace_cover_range[env][i] = cover_percentage
-            self.raytrace_reading[env, :, i] = ray_t
-
-            # replace the zero value
-
-            ray_t_copy = ray_t.clone()
-            if len(torch.where(ray_t <= 0)[0]) > 0:
-                index = torch.where(ray_t <= 0)[0]
-                ray_t[index] = torch.max(ray_t)
-
-            if torch.max(ray_t) < 1e-2:
-                self.raytrace_dev[env][i] = 10
-            else:
-                self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
+        #     ray_t_copy = ray_t.clone()
+         
 
             if self._cfg["debug"]:
 
@@ -537,8 +504,9 @@ class Raycast:
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
 
-                ray_t = ray_t_copy.cpu().numpy()
+        
                 ray_dir = ray_dir.numpy()
+                ray_t = ray_t.numpy()
 
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
@@ -582,7 +550,7 @@ class Raycast:
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
 
-        return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
+        # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
 
     def update_params(self, actions):
         action = torch.clip(actions, -1, 1)

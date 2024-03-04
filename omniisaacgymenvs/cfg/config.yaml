@@ -68,9 +68,18 @@ defaults:
 
 
 # Debug
-raycast: True
+raycast: False
 debug: True 
 debug_with_trimesh: False 
 raycast_width: 8
 raycast_height: 8
+
+
+# depth renderer
+
+depth_renderer: True
+depth_debug: True 
+depth_with_trimesh: False 
+depth_width: 64
+depth_height: 64
 
