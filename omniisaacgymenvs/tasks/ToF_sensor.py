@@ -133,7 +133,7 @@ class TofSensorTask(RLTask):
 
             self.sensor_radius = torch.as_tensor(
                 self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
-                    self.num_envs, 1).to(self._device)
+                    self.num_envs, 1).to(self._device) * 0.0
             self.depth_renderer = Renderer(
                 self._cfg["depth_width"], self._cfg["depth_height"],
                 self._manipulated_object.prim_paths[0], self._task_cfg,
@@ -182,7 +182,7 @@ class TofSensorTask(RLTask):
 
             cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
             )
-            self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
+            self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, pcs = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
                 cur_object_pose,
@@ -213,13 +213,12 @@ class TofSensorTask(RLTask):
 
             cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
             )
-            self.depth_renderer.raytrace_step(
-                gripper_pose,
-                gripper_rot,
-                cur_object_pose,
-                cur_object_rot,
-                self.scale_size,
-                sensor_radius=self.sensor_radius)
+            self.depth_renderer.raytrace_step(gripper_pose,
+                                              gripper_rot,
+                                              cur_object_pose,
+                                              cur_object_rot,
+                                              self.scale_size,
+                                              sensor_radius=self.sensor_radius)
 
         return self.obs_buf
 

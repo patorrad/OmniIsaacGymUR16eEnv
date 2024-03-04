@@ -172,7 +172,7 @@ def circle_points(radius, centers, normals, num_points):
     circles = centers[:, None, :] + radius[:, None, :] * (
         basis1[:, None, :] * torch.cos(t)[None, :, None] +
         basis2[:, None, :] * torch.sin(t)[None, :, None])
-   
+
     return circles
 
 
@@ -269,7 +269,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     z = tid % width
 
     # For 25 degree cone
-    EMITTER_DIAMETER = wp.tan(60.0 * pi / 180.) * 4.
+    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 4.
 
     # For inner edge of noise cone
     NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
@@ -319,9 +319,6 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     ray_dist[tid] = t
     ray_dir[tid] = dir
     normal_vec[tid] = normal
-    
-    
-
 
 
 class Raycast:
@@ -474,6 +471,8 @@ class Raycast:
         # ray trace max min dist
         self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
         
+        pcs = []
+
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -483,14 +482,14 @@ class Raycast:
 
             self.set_geom(wp.from_torch(transformed_vertices[env]),
                           mesh_index=0)
-           
-            # import time 
+
+            # import time
             # start = time.time()
             ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
                                                  gripper_rot[env])
-            
-          
+
             ray_t = wp.torch.to_torch(ray_t)
+            ray_dir = wp.torch.to_torch(ray_dir)
 
             if len(torch.where(ray_t > 0)[0]) > 0:
 
@@ -530,6 +529,24 @@ class Raycast:
             else:
                 self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
 
+            sensor_ray_pos_np = raycast_circle[env][i]
+            sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1],
+                                    sensor_ray_pos_np[2])
+
+            ray_t = ray_t_copy
+            ray_dir = ray_dir
+
+            line_vec = torch.multiply(ray_dir.T, ray_t).T
+
+            # Get rid of ray misses (0 values)
+            line_vec = line_vec[torch.any(line_vec)]
+            hit_points_3d_coordinate = line_vec + torch.as_tensor(
+                sensor_ray_pos_tuple).to(self.device)
+           
+            real_3d_coord = self.get_tof_angles([8,8], 12.5, 12.5, ray_t.cpu().numpy().reshape(8,8)).reshape(-1,3)
+            
+            pcs.append(line_vec)
+
             if self._cfg["debug"]:
 
                 sensor_ray_pos_np = raycast_circle[env][i].cpu().numpy()
@@ -538,7 +555,7 @@ class Raycast:
                                         sensor_ray_pos_np[2])
 
                 ray_t = ray_t_copy.cpu().numpy()
-                ray_dir = ray_dir.numpy()
+                ray_dir = ray_dir.cpu().numpy()
 
                 line_vec = np.transpose(
                     np.multiply(np.transpose(ray_dir), ray_t))
@@ -559,7 +576,7 @@ class Raycast:
                         (0, 0.75, 0, 1) for _ in range(hits_len)
                     ]  # start (camera) points: green
                     end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
-                    
+
                     if self._cfg["debug"]:
                         debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
                         debug_ray_hit_points_list.append(ray_hit_points_list)
@@ -570,7 +587,8 @@ class Raycast:
                         debug_point_sizes.append(point_sizes)
                         debug_start_point_colors.append(start_point_colors)
 
-                        debug_circle.append([raycast_circle[env][i].cpu().numpy()])
+                        debug_circle.append(
+                            [raycast_circle[env][i].cpu().numpy()])
 
         if self._cfg["debug"]:
 
@@ -583,10 +601,27 @@ class Raycast:
                               debug_circle)
 
         return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
+    
+    
+    def get_tof_angles(self,sensor_resolution, fov_h, fov_v, distances):
+        h = np.arange(0, fov_h, fov_h/sensor_resolution[0]) + fov_h / 16 - fov_h / 2
+        v = np.arange(0, fov_v, fov_v/sensor_resolution[1]) + fov_v / 16 - fov_v / 2
+        H, V = np.meshgrid(h, v)
+        points = np.stack((H,V), axis=-1)
+        return self.pixel_to_3d_pose(points, distances)
+    
+    def pixel_to_3d_pose(self,pixel_angles, distance):
+        # Calculate x, y, z coordinates based on spherical coordinates
+        x = distance * np.tan(np.radians(pixel_angles[:, :, 0]))
+        y = distance * np.tan(np.radians(pixel_angles[:, :, 1]))
+        z = distance
+        return np.stack((x, y, z), axis=-1)
+
+
 
     def update_params(self, actions):
         action = torch.clip(actions, -1, 1)
-       
+
         cur_sensor_radius = self.default_sensor_radius + action * 0.02
         print(cur_sensor_radius)
         return cur_sensor_radius

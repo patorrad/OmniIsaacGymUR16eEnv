@@ -98,7 +98,7 @@ sim:
     quaternion: [0, 0, 1, 0]
     dof_target: [1.57, -1.57, 1.57, 0, 1.57, 0]
     num_sensors: 2
-    sensor_radius: 0.0
+    sensor_radius: 0.055
   Object:
     category: "cube"
     scale: [0.1, 0.1, 0.3]

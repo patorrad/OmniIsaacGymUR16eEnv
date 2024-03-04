@@ -243,12 +243,12 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
     debug_start_point_colors = np.concatenate(debug_start_point_colors, axis=0)
     debug_circle = np.concatenate(debug_circle, axis=0)
 
-    debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
-                          debug_ray_colors, debug_ray_sizes)
+    # debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
+    #                       debug_ray_colors, debug_ray_sizes)
     debug_draw.draw_points(debug_ray_hit_points_list, debug_end_point_colors,
                            debug_point_sizes)
-    debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
-                           debug_point_sizes)
+    # debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
+    #                        debug_point_sizes)
     # Debug draw the gripper pose
     debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
@@ -269,7 +269,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     z = tid % width
 
     # For 25 degree cone
-    EMITTER_DIAMETER = wp.tan(60.0 * pi / 180.) * 4.
+    EMITTER_DIAMETER = wp.tan(30.0 * pi / 180.) * 4.
 
     # For inner edge of noise cone
     NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
@@ -430,7 +430,7 @@ class Renderer:
 
         wp.synchronize_device()
 
-        return self.ray_dist, self.ray_dir, self.normal_vec
+        return self.pixels, self.ray_dist, self.ray_dir, self.normal_vec
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
                       cur_object_rot, scale_size, sensor_radius) -> None:
@@ -487,14 +487,9 @@ class Renderer:
             # import time 
             # start = time.time()
           
-            ray_t, ray_dir, normal = self.render(raycast_circle[env][i].clone(),gripper_rot[env])
-        # import pdb
-        # pdb.set_trace()
-        
-        
-        #     # replace the zero value
-
-        #     ray_t_copy = ray_t.clone()
+            pixels,ray_t, ray_dir, normal = self.render(raycast_circle[env][i].clone(),gripper_rot[env])
+            
+            
          
 
             if self._cfg["debug"]:
@@ -515,20 +510,20 @@ class Renderer:
                 line_vec = line_vec[np.any(line_vec, axis=1)]
                 ray_hit_points_list = line_vec + np.array(sensor_ray_pos_tuple)
                 hits_len = len(ray_hit_points_list)
-
+              
                 if hits_len > 0:
                     sensor_ray_pos_list = [
                         sensor_ray_pos_tuple for _ in range(hits_len)
                     ]
                     ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                    ray_sizes = [2 for _ in range(hits_len)]
+                    ray_sizes = [10 for _ in range(hits_len)]
                     point_sizes = [7 for _ in range(hits_len)]
                     start_point_colors = [
                         (0, 0.75, 0, 1) for _ in range(hits_len)
                     ]  # start (camera) points: green
-                    end_point_colors = [(1, i, 1, 1) for _ in range(hits_len)]
+                    end_point_colors = [(1, 0, 0, 1) for _ in range(hits_len)]
                     
-                    if self._cfg["debug"]:
+                    if self._cfg["depth_debug"]:
                         debug_sensor_ray_pos_list.append(sensor_ray_pos_list)
                         debug_ray_hit_points_list.append(ray_hit_points_list)
                         debug_ray_colors.append(ray_colors)
@@ -540,7 +535,7 @@ class Renderer:
 
                         debug_circle.append([raycast_circle[env][i].cpu().numpy()])
 
-        if self._cfg["debug"]:
+        if self._cfg["depth_debug"]:
 
             if len(debug_sensor_ray_pos_list) > 0:
 
@@ -550,13 +545,12 @@ class Renderer:
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
 
-        # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
-
+        
     def update_params(self, actions):
         action = torch.clip(actions, -1, 1)
        
         cur_sensor_radius = self.default_sensor_radius + action * 0.02
-        print(cur_sensor_radius)
+        
         return cur_sensor_radius
 
 
