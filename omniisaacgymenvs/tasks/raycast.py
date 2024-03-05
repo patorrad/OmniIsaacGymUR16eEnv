@@ -243,12 +243,12 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
     debug_start_point_colors = np.concatenate(debug_start_point_colors, axis=0)
     debug_circle = np.concatenate(debug_circle, axis=0)
 
-    # debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
-    #                       debug_ray_colors, debug_ray_sizes)
+    debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
+                          debug_ray_colors, debug_ray_sizes)
     debug_draw.draw_points(debug_ray_hit_points_list, debug_end_point_colors,
                            debug_point_sizes)
-    # debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
-    #                        debug_point_sizes)
+    debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
+                           debug_point_sizes)
     # Debug draw the gripper pose
     debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
@@ -606,7 +606,7 @@ class Raycast:
                         sensor_ray_pos_tuple for _ in range(hits_len)
                     ]
                     ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                    ray_sizes = [10 for _ in range(hits_len)]
+                    ray_sizes = [2 for _ in range(hits_len)]
                     point_sizes = [7 for _ in range(hits_len)]
                     start_point_colors = [
                         (0, 0.75, 0, 1) for _ in range(hits_len)
