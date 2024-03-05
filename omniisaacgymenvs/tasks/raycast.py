@@ -257,8 +257,8 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
 def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          height: int, pixels: wp.array(dtype=wp.vec3),
          ray_dist: wp.array(dtype=wp.float32),
-         ray_dir: wp.array(dtype=wp.vec3),
-         normal_vec: wp.array(dtype=wp.vec3)):
+         ray_dir: wp.array(dtype=wp.vec3), normal_vec: wp.array(dtype=wp.vec3),
+         ray_face: wp.array(dtype=wp.int32)):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
 
@@ -319,6 +319,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     ray_dist[tid] = t
     ray_dir[tid] = dir
     normal_vec[tid] = normal
+    ray_face[tid] = face
 
 
 class Raycast:
@@ -347,9 +348,10 @@ class Raycast:
         self.ray_dist = wp.zeros(self.width * self.height, dtype=wp.float32)
         self.ray_dir = wp.zeros(self.width * self.height, dtype=wp.vec3)
         self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
+        self.ray_faces = wp.zeros(self.width * self.height, dtype=wp.int32)
 
         self.init_mesh()
-        self.init_buffer([ self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
+        self.init_buffer([self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
 
     def init_mesh(self):
         from pxr import Usd, UsdGeom
@@ -357,6 +359,9 @@ class Raycast:
         self.mesh_faces = []
         self.mesh_vertices = []
         self.whole_mesh_vertices = []
+        
+        self.face_catogery_index = []
+        self.face_catogery_index.append(torch.as_tensor([-1]).to(self.device))
 
         face_index = 0
 
@@ -375,17 +380,21 @@ class Raycast:
                 torch.as_tensor(cube.vertices[None, :, :],
                                 dtype=torch.float32).repeat(
                                     (self.num_envs, 1, 1)).to(self.device))
+            self.face_catogery_index.append((torch.ones(len(self.mesh_vertices[index][0]))+index).to(self.device))
+
             face_index += len(self.mesh_vertices[index][0])
-            
-        self.whole_mesh_vertices = torch.cat(self.mesh_vertices,dim=1)
+
+        self.whole_mesh_vertices = torch.cat(self.mesh_vertices, dim=1)
+
+        self.mesh_faces = torch.cat(self.mesh_faces, dim=1)
        
-        self.mesh_faces = torch.cat(self.mesh_faces,dim=1)
+        self.face_catogery_index = torch.cat(self.face_catogery_index, dim=0)
+        
 
     def init_buffer(self, vertices, faces):
         self.warp_mesh_list = []
         for i, vert in enumerate(vertices):
-           
-           
+
             warp_mesh = wp.Mesh(points=wp.empty(shape=vert.shape,
                                                 dtype=wp.vec3),
                                 indices=wp.from_torch(
@@ -393,7 +402,6 @@ class Raycast:
                                     dtype=wp.int32,
                                 ))
             self.warp_mesh_list.append(warp_mesh)
-           
 
     def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
                        mesh_vertices):
@@ -401,13 +409,14 @@ class Raycast:
         vertices = []
         bboxes = []
         center_points = []
-       
-        for index,_ in enumerate(cur_object_pose):
-           
- 
-            transform = Transform3d(device=self.device).scale(scale_size).rotate(
-                quaternion_to_matrix(
-                    quaternion_invert(cur_object_rot[index]))).translate(cur_object_pose[index])
+
+        for index, _ in enumerate(cur_object_pose):
+
+            transform = Transform3d(
+                device=self.device).scale(scale_size).rotate(
+                    quaternion_to_matrix(
+                        quaternion_invert(cur_object_rot[index]))).translate(
+                            cur_object_pose[index])
 
             transformed_vertices = transform.transform_points(
                 mesh_vertices[index].clone().to(self.device))
@@ -416,12 +425,10 @@ class Raycast:
             min_xyz = torch.min(transformed_vertices, dim=1).values
             bboxes.append(torch.hstack([min_xyz, max_xyz]))
             center_points.append((max_xyz + min_xyz) / 2)
-            
+
             vertices.append(transformed_vertices)
-            
-      
-        vertices = torch.cat(vertices,dim=1)
-        
+
+        vertices = torch.cat(vertices, dim=1)
 
         return bboxes, center_points, vertices
 
@@ -429,20 +436,20 @@ class Raycast:
         wp.build.clear_kernel_cache()
 
         wp.copy(self.warp_mesh_list[mesh_index].points, vertices)
-        
+
         self.warp_mesh_list[mesh_index].refit()
 
         self.mesh = self.warp_mesh_list[mesh_index]
-       
+
         # wp.torch.to_torch(self.mesh.points)
         #wp.torch.to_torch(vertices)
-       
 
         # empty buffer
         self.pixels.zero_()
         self.ray_dist.zero_()
         self.ray_dir.zero_()
         self.normal_vec.zero_()
+        self.ray_faces.zero_()
 
     def update(self):
         pass
@@ -456,12 +463,13 @@ class Raycast:
                   dim=self.width * self.height,
                   inputs=[
                       self.mesh.id, cam_pos, cam_dir, self.width, self.height,
-                      self.pixels, self.ray_dist, self.ray_dir, self.normal_vec
+                      self.pixels, self.ray_dist, self.ray_dir,
+                      self.normal_vec, self.ray_faces
                   ])
 
         wp.synchronize_device()
 
-        return self.ray_dist, self.ray_dir, self.normal_vec
+        return self.ray_dist, self.ray_dir, self.normal_vec,self.ray_faces
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
                       cur_object_rot, scale_size, sensor_radius) -> None:
@@ -519,12 +527,13 @@ class Raycast:
 
             # import time
             # start = time.time()
-            ray_t, ray_dir, normal = self.render(raycast_circle[env][i],
+            ray_t, ray_dir, normal,ray_face = self.render(raycast_circle[env][i],
                                                  gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
-            # wp.torch.to_torch(self.mesh.points)
+            print(wp.torch.to_torch(ray_face))
+           
 
             if len(torch.where(ray_t > 0)[0]) > 0:
 
@@ -574,7 +583,7 @@ class Raycast:
             line_vec = torch.multiply(ray_dir.T, ray_t).T
 
             # Get rid of ray misses (0 values)
-           
+
             line_vec = line_vec[torch.any(line_vec)]
 
             real_3d_coord = self.get_tof_angles([8, 8], 12.5, 12.5,
