@@ -380,9 +380,10 @@ class Raycast:
                 torch.as_tensor(cube.vertices[None, :, :],
                                 dtype=torch.float32).repeat(
                                     (self.num_envs, 1, 1)).to(self.device))
-            self.face_catogery_index.append((torch.ones(len(self.mesh_vertices[index][0]))+index).to(self.device))
+            self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
 
             face_index += len(self.mesh_vertices[index][0])
+    
 
         self.whole_mesh_vertices = torch.cat(self.mesh_vertices, dim=1)
 
@@ -402,6 +403,7 @@ class Raycast:
                                     dtype=wp.int32,
                                 ))
             self.warp_mesh_list.append(warp_mesh)
+      
 
     def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
                        mesh_vertices):
@@ -532,7 +534,9 @@ class Raycast:
 
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
-            print(wp.torch.to_torch(ray_face))
+           
+            self.face_catogery_index[wp.torch.to_torch(ray_face)]
+            # print(torch.unique(wp.torch.to_torch(ray_face)))
            
 
             if len(torch.where(ray_t > 0)[0]) > 0:
