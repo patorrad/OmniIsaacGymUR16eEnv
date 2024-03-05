@@ -349,28 +349,42 @@ class Raycast:
         self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
 
         self.init_mesh()
-        self.init_buffer([self.mesh_vertices[0]], [self.mesh_faces[0]])
+        self.init_buffer([ self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
 
     def init_mesh(self):
         from pxr import Usd, UsdGeom
 
-        cube = UsdGeom.Cube(get_prim_at_path(self.object_prime_path))
+        self.mesh_faces = []
+        self.mesh_vertices = []
+        self.whole_mesh_vertices = []
 
-        size = cube.GetSizeAttr().Get()
-        cube = trimesh.creation.box(extents=(1, 1, 1))
+        face_index = 0
 
-        self.mesh_faces = torch.as_tensor(cube.faces[None, :, :],
-                                          dtype=torch.int32).repeat(
-                                              (self.num_envs, 1,
-                                               1)).to(self.device)
-        self.mesh_vertices = torch.as_tensor(cube.vertices[None, :, :],
-                                             dtype=torch.float32).repeat(
-                                                 (self.num_envs, 1,
-                                                  1)).to(self.device)
+        for index, mesh_path in enumerate(self.object_prime_path):
+
+            cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
+
+            size = cube.GetSizeAttr().Get()
+            cube = trimesh.creation.box(extents=(1, 1, 1))
+
+            self.mesh_faces.append(
+                torch.as_tensor(cube.faces[None, :, :] + face_index,
+                                dtype=torch.int32).repeat(
+                                    (self.num_envs, 1, 1)).to(self.device))
+            self.mesh_vertices.append(
+                torch.as_tensor(cube.vertices[None, :, :],
+                                dtype=torch.float32).repeat(
+                                    (self.num_envs, 1, 1)).to(self.device))
+            face_index += len(self.mesh_vertices[index])
+            
+        self.whole_mesh_vertices = torch.cat(self.mesh_vertices,dim=1)
+        self.mesh_faces = torch.cat(self.mesh_faces,dim=1)
 
     def init_buffer(self, vertices, faces):
         self.warp_mesh_list = []
         for i, vert in enumerate(vertices):
+           
+           
             warp_mesh = wp.Mesh(points=wp.empty(shape=vert.shape,
                                                 dtype=wp.vec3),
                                 indices=wp.from_torch(
@@ -378,31 +392,49 @@ class Raycast:
                                     dtype=wp.int32,
                                 ))
             self.warp_mesh_list.append(warp_mesh)
+           
 
     def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
                        mesh_vertices):
 
-        transform = Transform3d(device=self.device).scale(scale_size).rotate(
-            quaternion_to_matrix(
-                quaternion_invert(cur_object_rot))).translate(cur_object_pose)
+        vertices = []
+        bboxes = []
+        center_points = []
+       
+        for index,_ in enumerate(cur_object_pose):
+ 
+            transform = Transform3d(device=self.device).scale(scale_size).rotate(
+                quaternion_to_matrix(
+                    quaternion_invert(cur_object_rot[index]))).translate(cur_object_pose[index])
 
-        transformed_vertices = transform.transform_points(
-            mesh_vertices.clone().to(self.device))
+            transformed_vertices = transform.transform_points(
+                mesh_vertices[index].clone().to(self.device))
 
-        max_xyz = torch.max(transformed_vertices, dim=1).values
-        min_xyz = torch.min(transformed_vertices, dim=1).values
-        bboxes = torch.hstack([min_xyz, max_xyz])
-        center_points = (max_xyz + min_xyz) / 2
+            max_xyz = torch.max(transformed_vertices, dim=1).values
+            min_xyz = torch.min(transformed_vertices, dim=1).values
+            bboxes.append(torch.hstack([min_xyz, max_xyz]))
+            center_points.append((max_xyz + min_xyz) / 2)
+            
+            vertices.append(transformed_vertices)
+            
+      
+        vertices = torch.cat(vertices,dim=1)
+        
 
-        return bboxes, center_points, transformed_vertices
+        return bboxes, center_points, vertices
 
     def set_geom(self, vertices, mesh_index):
         wp.build.clear_kernel_cache()
 
         wp.copy(self.warp_mesh_list[mesh_index].points, vertices)
+        
         self.warp_mesh_list[mesh_index].refit()
 
         self.mesh = self.warp_mesh_list[mesh_index]
+       
+        # wp.torch.to_torch(self.mesh.points)
+        #wp.torch.to_torch(vertices)
+       
 
         # empty buffer
         self.pixels.zero_()
@@ -470,7 +502,7 @@ class Raycast:
             (self.num_envs, 2)).to(self.device)
         # ray trace max min dist
         self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
-        
+
         point_cloud = []
 
         for i, env in zip(
@@ -490,6 +522,7 @@ class Raycast:
 
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
+            # wp.torch.to_torch(self.mesh.points)
 
             if len(torch.where(ray_t > 0)[0]) > 0:
 
@@ -539,10 +572,13 @@ class Raycast:
             line_vec = torch.multiply(ray_dir.T, ray_t).T
 
             # Get rid of ray misses (0 values)
-            line_vec = line_vec[torch.any(line_vec)][0]
-         
-            real_3d_coord = self.get_tof_angles([8,8], 12.5, 12.5, ray_t.cpu().numpy().reshape(8,8)).reshape(-1,3)
-            
+           
+            line_vec = line_vec[torch.any(line_vec)]
+
+            real_3d_coord = self.get_tof_angles([8, 8], 12.5, 12.5,
+                                                ray_t.cpu().numpy().reshape(
+                                                    8, 8)).reshape(-1, 3)
+
             point_cloud.append(line_vec)
 
             if self._cfg["debug"]:
@@ -599,23 +635,22 @@ class Raycast:
                               debug_circle)
 
         return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
-    
-    
-    def get_tof_angles(self,sensor_resolution, fov_h, fov_v, distances):
-        h = np.arange(0, fov_h, fov_h/sensor_resolution[0]) + fov_h / 16 - fov_h / 2
-        v = np.arange(0, fov_v, fov_v/sensor_resolution[1]) + fov_v / 16 - fov_v / 2
+
+    def get_tof_angles(self, sensor_resolution, fov_h, fov_v, distances):
+        h = np.arange(0, fov_h,
+                      fov_h / sensor_resolution[0]) + fov_h / 16 - fov_h / 2
+        v = np.arange(0, fov_v,
+                      fov_v / sensor_resolution[1]) + fov_v / 16 - fov_v / 2
         H, V = np.meshgrid(h, v)
-        points = np.stack((H,V), axis=-1)
+        points = np.stack((H, V), axis=-1)
         return self.pixel_to_3d_pose(points, distances)
-    
-    def pixel_to_3d_pose(self,pixel_angles, distance):
+
+    def pixel_to_3d_pose(self, pixel_angles, distance):
         # Calculate x, y, z coordinates based on spherical coordinates
         x = distance * np.tan(np.radians(pixel_angles[:, :, 0]))
         y = distance * np.tan(np.radians(pixel_angles[:, :, 1]))
         z = distance
         return np.stack((x, y, z), axis=-1)
-
-
 
     def update_params(self, actions):
         action = torch.clip(actions, -1, 1)

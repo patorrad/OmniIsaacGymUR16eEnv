@@ -112,13 +112,16 @@ class TofSensorTask(RLTask):
         self._robots, self._end_effector, self.wrist_2_link = robot.add_scene(
             scene)
 
+        self.manipulated_objects = []
         self._manipulated_object = object_loader.add_scene(
             scene, "/World/envs/.*/manipulated_object_1",
             "manipulated_object_view")
+        self.manipulated_objects.append(self._manipulated_object)
 
         self._manipulated_object_2 = object_loader.add_scene(
             scene, "/World/envs/.*/manipulated_object_2",
             "manipulated_object_view_2")
+        self.manipulated_objects.append(self._manipulated_object_2)
 
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
@@ -129,11 +132,12 @@ class TofSensorTask(RLTask):
                 self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
                     self.num_envs, 1).to(self._device)
 
-            self.raytracer = Raycast(self._cfg["raycast_width"],
-                                     self._cfg["raycast_height"],
-                                     self._manipulated_object.prim_paths[0],
-                                     self._task_cfg, self._cfg, self.num_envs,
-                                     self._device, self.sensor_radius)
+            self.raytracer = Raycast(
+                self._cfg["raycast_width"], self._cfg["raycast_height"], [
+                    self._manipulated_object.prim_paths[0],
+                    self._manipulated_object_2.prim_paths[0]
+                ], self._task_cfg, self._cfg, self.num_envs, self._device,
+                self.sensor_radius)
         if self._cfg["depth_renderer"]:
 
             self.sensor_radius = torch.as_tensor(
@@ -185,8 +189,13 @@ class TofSensorTask(RLTask):
         if self._cfg["raycast"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
-            cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
-            )
+            cur_object_pose = []
+            cur_object_rot = []
+            for object in self.manipulated_objects:
+                pose, rot = object.get_world_poses()
+                cur_object_pose.append(pose)
+                cur_object_rot.append(rot)
+
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
@@ -409,11 +418,13 @@ class TofSensorTask(RLTask):
         object_target_position[:, 1] += 0.4
         random_x = torch.rand(self.num_envs).to(self.device) * 0.0
         object_target_position[:, 0] -= random_x
+        object_target_position[:, 1] += 0.2
+        object_target_position[:, 0] += 0.05
         self._manipulated_object.set_world_poses(object_target_position,
                                                  object_target_quaternion)
 
-        object_target_position[:, 1] += 0.2
-        object_target_position[:, 0] += 0.15
+        object_target_position[:, 1] -= 0.2
+        object_target_position[:, 0] -= 0.05
         self._manipulated_object_2.set_world_poses(object_target_position,
                                                    object_target_quaternion)
 
