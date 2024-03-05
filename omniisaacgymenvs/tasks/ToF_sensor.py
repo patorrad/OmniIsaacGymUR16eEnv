@@ -191,8 +191,10 @@ class TofSensorTask(RLTask):
 
             cur_object_pose = []
             cur_object_rot = []
+            
             for object in self.manipulated_objects:
                 pose, rot = object.get_world_poses()
+                
                 cur_object_pose.append(pose)
                 cur_object_rot.append(rot)
 

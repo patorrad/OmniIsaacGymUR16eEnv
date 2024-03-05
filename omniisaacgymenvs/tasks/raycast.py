@@ -243,12 +243,12 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
     debug_start_point_colors = np.concatenate(debug_start_point_colors, axis=0)
     debug_circle = np.concatenate(debug_circle, axis=0)
 
-    debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
-                          debug_ray_colors, debug_ray_sizes)
+    # debug_draw.draw_lines(debug_sensor_ray_pos_list, debug_ray_hit_points_list,
+    #                       debug_ray_colors, debug_ray_sizes)
     debug_draw.draw_points(debug_ray_hit_points_list, debug_end_point_colors,
                            debug_point_sizes)
-    debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
-                           debug_point_sizes)
+    # debug_draw.draw_points(debug_sensor_ray_pos_list, debug_start_point_colors,
+    #                        debug_point_sizes)
     # Debug draw the gripper pose
     debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
@@ -375,9 +375,10 @@ class Raycast:
                 torch.as_tensor(cube.vertices[None, :, :],
                                 dtype=torch.float32).repeat(
                                     (self.num_envs, 1, 1)).to(self.device))
-            face_index += len(self.mesh_vertices[index])
+            face_index += len(self.mesh_vertices[index][0])
             
         self.whole_mesh_vertices = torch.cat(self.mesh_vertices,dim=1)
+       
         self.mesh_faces = torch.cat(self.mesh_faces,dim=1)
 
     def init_buffer(self, vertices, faces):
@@ -402,6 +403,7 @@ class Raycast:
         center_points = []
        
         for index,_ in enumerate(cur_object_pose):
+           
  
             transform = Transform3d(device=self.device).scale(scale_size).rotate(
                 quaternion_to_matrix(
@@ -604,7 +606,7 @@ class Raycast:
                         sensor_ray_pos_tuple for _ in range(hits_len)
                     ]
                     ray_colors = [(1, i, 0, 1) for _ in range(hits_len)]
-                    ray_sizes = [2 for _ in range(hits_len)]
+                    ray_sizes = [10 for _ in range(hits_len)]
                     point_sizes = [7 for _ in range(hits_len)]
                     start_point_colors = [
                         (0, 0.75, 0, 1) for _ in range(hits_len)
