@@ -49,7 +49,7 @@
 #
 
 import sys
-sys.path.append("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/isaac_sim-2022.2.1")
+# sys.path.append("/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/isaac_sim-2022.2.1")
 from typing import Optional
 import numpy as np
 from omni.isaac.core.robots.robot import Robot

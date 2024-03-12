@@ -61,7 +61,8 @@ class TofSensorTask(RLTask):
         self.object_category = self._task_cfg['sim']["Object"]["category"]
         self._manipulated_object_positions = [
             torch.tensor([-0.6, 0.0, 1.9]),
-            torch.tensor([-0.6, -0.25, 1.9])
+            torch.tensor([-0.6, -0.25, 1.9]),
+            torch.tensor([-0.6, -0.5, 1.9]),
         ]
 
         # control parameter
@@ -99,7 +100,7 @@ class TofSensorTask(RLTask):
 
         if self.object_category in ['cube']:
             self.scale_size = object_loader.load_cube(
-                self._task_cfg["sim"]["Object"]["scale"], 2)
+                self._task_cfg["sim"]["Object"]["scale"], 3)
 
         # Table
         object_loader.load_table(
@@ -123,6 +124,11 @@ class TofSensorTask(RLTask):
             "manipulated_object_view_2")
         self.manipulated_objects.append(self._manipulated_object_2)
 
+        # self._manipulated_object_3 = object_loader.add_scene(
+        #     scene, "/World/envs/.*/manipulated_object_3",
+        #     "manipulated_object_view_3")
+        # self.manipulated_objects.append(self._manipulated_object_3)
+
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
 
@@ -135,7 +141,8 @@ class TofSensorTask(RLTask):
             self.raytracer = Raycast(
                 self._cfg["raycast_width"], self._cfg["raycast_height"], [
                     self._manipulated_object.prim_paths[0],
-                    self._manipulated_object_2.prim_paths[0]
+                    self._manipulated_object_2.prim_paths[0],
+                    # self._manipulated_object_3.prim_paths[0]
                 ], self._task_cfg, self._cfg, self.num_envs, self._device,
                 self.sensor_radius)
         if self._cfg["depth_renderer"]:
@@ -149,6 +156,7 @@ class TofSensorTask(RLTask):
                 self._cfg, self.num_envs, self._device, self.sensor_radius)
 
         self.controller = Controller(
+            self.robot,
             self._robots,
             self._env,
             self._end_effector,

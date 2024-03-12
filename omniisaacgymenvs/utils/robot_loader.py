@@ -72,6 +72,7 @@ class ROBOT:
         self._robots = ArticulationView(prim_paths_expr="/World/envs/.*/robot",
                                         name="robot_view",
                                         reset_xform_properties=False)
+
         scene.add(self._robots)
 
         # end-effectors view

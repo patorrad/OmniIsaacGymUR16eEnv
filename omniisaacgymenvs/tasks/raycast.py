@@ -365,6 +365,8 @@ class Raycast:
 
         face_index = 0
 
+        self.face_tracker = []
+
         for index, mesh_path in enumerate(self.object_prime_path):
 
             cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
@@ -376,6 +378,8 @@ class Raycast:
                 torch.as_tensor(cube.faces[None, :, :] + face_index,
                                 dtype=torch.int32).repeat(
                                     (self.num_envs, 1, 1)).to(self.device))
+            
+            # self.face_tracker.append()
             self.mesh_vertices.append(
                 torch.as_tensor(cube.vertices[None, :, :],
                                 dtype=torch.float32).repeat(
@@ -383,12 +387,13 @@ class Raycast:
             self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
 
             face_index += len(self.mesh_vertices[index][0])
-    
+
+            self.face_tracker.append(cube.faces.shape[0])
 
         self.whole_mesh_vertices = torch.cat(self.mesh_vertices, dim=1)
 
         self.mesh_faces = torch.cat(self.mesh_faces, dim=1)
-       
+
         self.face_catogery_index = torch.cat(self.face_catogery_index, dim=0)
         
 
@@ -517,6 +522,8 @@ class Raycast:
 
         point_cloud = []
 
+        self.face_tracker = []
+
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -537,6 +544,11 @@ class Raycast:
            
             self.face_catogery_index[wp.torch.to_torch(ray_face)]
             # print(torch.unique(wp.torch.to_torch(ray_face)))
+
+            face_category = self.face_catogery_index[1:]
+            faces = face_category[wp.torch.to_torch(ray_face)]
+            faces[(ray_t == 0).nonzero()] = -1
+            self.face_tracker.append(faces)
            
 
             if len(torch.where(ray_t > 0)[0]) > 0:
@@ -639,7 +651,29 @@ class Raycast:
                         debug_circle.append(
                             [raycast_circle[env][i].cpu().numpy()])
 
-        if self._cfg["debug"]:
+        if self._cfg["debug"] and self._task_cfg["sim"]["TofSensor"]["track_objects"]:
+            self.face_tracker = torch.cat(self.face_tracker, dim=0)
+            mask = self.face_tracker != -1
+            ray_colors = [(1, 1 if 1 in element else 0, 0, 1) for element in self.face_tracker[mask]]
+            split_indices = list([0]) + list(np.cumsum([len(sublist) for sublist in debug_ray_colors]))
+            # sublist = [ray_colors[start:end] for start, end in zip(split_indices[::2], split_indices[1::2])]
+
+            debug_ray_colors = []
+            # if len(split_indices) > 1: debug_ray_colors.append(ray_colors[split_indices[0]:split_indices[1]])
+            # if len(split_indices) == 3: debug_ray_colors.append(ray_colors[split_indices[1]:split_indices[2]])
+            if len(split_indices) > 1:
+                debug_ray_colors += [ray_colors[split_indices[i]:split_indices[i+1]] for i in range(len(split_indices)-1)]
+
+            # import pdb; pdb.set_trace()
+            if len(debug_sensor_ray_pos_list) > 0:
+
+                draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
+                              debug_ray_hit_points_list, debug_ray_colors,
+                              debug_ray_sizes, debug_end_point_colors,
+                              debug_point_sizes, debug_start_point_colors,
+                              debug_circle)
+
+        elif self._cfg["debug"] and not self._task_cfg["sim"]["TofSensor"]["track_objects"]:
 
             if len(debug_sensor_ray_pos_list) > 0:
 
@@ -648,6 +682,10 @@ class Raycast:
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
+
+
+
+        # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, self.face_catogery_index
 
         return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
 

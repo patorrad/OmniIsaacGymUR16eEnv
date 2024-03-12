@@ -260,6 +260,7 @@ class MotionGeneration:
 
         full_js = full_js.get_ordered_joint_state(
             self.motion_gen.kinematics.joint_names)
+       
         result = self.motion_gen.plan_batch_env(full_js, ik_goal,
                                                 self.plan_config)
 
