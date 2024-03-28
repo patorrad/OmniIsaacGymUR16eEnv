@@ -82,7 +82,7 @@ sim:
 
   URRobot:
     # -1 to use default values
-    robot_path: "/media/lme/mydata/amazon/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd" # "../../../omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
+    robot_path: "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True
@@ -102,7 +102,7 @@ sim:
     sensor_radius: 0.055
   Object:
     category: "cube"
-    scale: [0.1, 0.1, 0.3]
+    scale: [0.1, 0.1, 0.29]
   Table:
     position: [0.0, 0.9, 0.52]
     quaternion: [1.0, 0.0, 0.0, 0.0]
@@ -110,6 +110,8 @@ sim:
   Control:
     "MotionGeneration" #"diffik" # 
   Design: False
+  Dataset: True
+  Dataset_bounds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # [0.2239, 0.8073, 1.1850]
     
 Training:
   use_oracle: True

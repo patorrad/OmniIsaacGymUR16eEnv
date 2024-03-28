@@ -62,7 +62,7 @@ warp: False
 # set default task and default training config based on task
 defaults:
   - _self_
-  - task: TofSensor #Cartpole
+  - task: TofSensor
   - train: ${task}PPO
   - override hydra/job_logging: disabled
 

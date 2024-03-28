@@ -175,6 +175,19 @@ def circle_points(radius, centers, normals, num_points):
 
     return circles
 
+def get_tof_pose(gripper_pose, sensor_transforms):
+    """
+    Get pose of the ToF sensors.
+    
+    Args:
+    gripper_pose (torch.Tensor): a tensor of shape (batch_size, 3) representing the gripper poses.
+    sensor_transforms (torch.Tensor): a tensor of shape (batch_size, num_sensors, 3) representing the sensor transforms.
+
+    Returns:
+    torch.Tensor: a tensor of shape (batch_size, num_sensors, 3) representing the ToF sensor poses.
+    """
+    return gripper_pose[:, None, :] + sensor_transforms
+
 
 def quaternion_to_rotation_matrix(quaternion):
     """
@@ -350,6 +363,8 @@ class Raycast:
         self.normal_vec = wp.zeros(self.width * self.height, dtype=wp.vec3)
         self.ray_faces = wp.zeros(self.width * self.height, dtype=wp.int32)
 
+        self.circle_test = None
+
         self.init_mesh()
         self.init_buffer([self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
 
@@ -485,9 +500,31 @@ class Raycast:
             cur_object_pose, cur_object_rot, scale_size, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
-        raycast_circle = circle_points(
-            sensor_radius, gripper_pose, normals,
-            self._task_cfg['sim']["URRobot"]['num_sensors'])
+
+        if self.circle_test is None:
+            self.circle_test = circle_points(
+                sensor_radius, gripper_pose, normals,
+                self._task_cfg['sim']["URRobot"]['num_sensors'])
+        # else:
+        #     t1 = Transform3d().translate(gripper_pose).rotate(quaternion_to_matrix(gripper_rot, dtype=torch.float))
+        #     t1 = t1.get_matrix()
+        #     t2 = Transform3d().translate(self.old_gripper_pose).rotate(quaternion_to_matrix(self.old_gripper_rot, dtype=torch.float))
+        #     t2 = t2.get_matrix()
+        #     diff = t1 - t2
+        #     # t12 = t1.inverse().compose(t2).get_matrix()
+
+
+        #     import pdb; pdb.set_trace()
+        #     # self.cicle_test = 
+        
+        # self.old_gripper_pose = gripper_pose
+        # self.old_gripper_rot = gripper_rot
+
+        raycast_circle = self.circle_test
+
+        # raycast_circle = circle_points(
+        #     sensor_radius, gripper_pose, normals,
+        #     self._task_cfg['sim']["URRobot"]['num_sensors'])
 
         # for draw point
         if self._cfg["debug"]:
@@ -614,7 +651,6 @@ class Raycast:
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
-
                 ray_t = ray_t_copy.cpu().numpy()
                 ray_dir = ray_dir.cpu().numpy()
 
@@ -672,6 +708,7 @@ class Raycast:
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
+                
 
         elif self._cfg["debug"] and not self._task_cfg["sim"]["TofSensor"]["track_objects"]:
 
@@ -687,7 +724,7 @@ class Raycast:
 
         # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, self.face_catogery_index
 
-        return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev
+        return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, debug_ray_hit_points_list, self.face_tracker
 
     def get_tof_angles(self, sensor_resolution, fov_h, fov_v, distances):
         h = np.arange(0, fov_h,

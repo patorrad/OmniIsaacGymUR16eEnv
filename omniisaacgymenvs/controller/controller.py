@@ -4,6 +4,8 @@ from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_i
 from omni.isaac.core.utils.types import ArticulationActions
 from omniisaacgymenvs.controller.curobo import MotionGeneration
 
+from cprint import *
+
 
 class Controller:
 
@@ -15,7 +17,8 @@ class Controller:
                  velocity_limit,
                  _device,
                  num_envs,
-                 control_type="diffik") -> None:
+                 control_type="diffik",
+                 datagen=True) -> None:
 
         self._robots = _robots
         self._env = _env
@@ -26,7 +29,8 @@ class Controller:
         self.isaac_sim_robot = isaac_sim_robot
         
         self.num_envs = num_envs
-
+        
+        self.data_gen = datagen
         if control_type == "MotionGeneration":
             self.motion_generation = MotionGeneration(self._robots,
                                                       self._env._world,
@@ -36,6 +40,7 @@ class Controller:
         self,
         actions,
         target_ee_position=None,
+        target_ee_orientation=None,
         angle_z_dev=None,
     ):
         actions = actions.to(self._device)
@@ -57,6 +62,24 @@ class Controller:
 
             for i in range(1):
                 self._env._world.step(render=False)
+
+        elif self.data_gen and self.control_type == "MotionGeneration":
+
+            # target_ee_orientation = quaternion_multiply(
+            #     quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
+            #     cur_ee_orientation)
+
+            for i in range(4):
+
+                robot_joint = self.isaac_sim_robot.get_joint_positions()
+             
+              
+                robot_joint = self.motion_generation.step_path(
+                    target_ee_position, target_ee_orientation, robot_joint)
+
+                self.isaac_sim_robot.apply_action(ArticulationActions(robot_joint, ))
+                for i in range(1):
+                    self._env._world.step(render=False)
 
         elif self.control_type == "MotionGeneration":
 

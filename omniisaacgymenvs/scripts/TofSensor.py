@@ -35,7 +35,7 @@ def get_robot():
         ur10_rotations = torch.tensor([0.0, 0.0, 1.0, 0.0])
         ur10_dof_target = torch.tensor([0.06, -2.5, 2.03, 0.58, 1.67, 1.74,0], device = "GPU") 
         ur10 = UR10(prim_path="/World/envs/.*/ur10"
-                    ,usd_path="/home/aurmr/Documents/Entong/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd", 
+                    ,usd_path="/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd", 
                     name="ur10", position=ur10_positions, orientation=ur10_rotations, attach_gripper=False)
         # applies articulation settings from the task configuration yaml file
         ur10.set_joint_positions(ur10_dof_target)
