@@ -264,7 +264,7 @@ class MotionGeneration:
         result = self.motion_gen.plan_batch_env(full_js, ik_goal,
                                                 self.plan_config)
 
-        print(result.success)
+        # print(result.success)
         if torch.count_nonzero(result.success) > 0:
             trajs = result.get_paths()
             for s in range(len(result.success)):

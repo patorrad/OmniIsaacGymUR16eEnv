@@ -14,6 +14,7 @@ from omni.physx import acquire_physx_interface
 
 import omni
 import carb
+import omni.isaac.core.utils.nucleus as nucleus_utils
 
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
 
@@ -24,7 +25,7 @@ class Object:
 
     def __init__(self, _sim_config, num_envs, device,
                  default_zero_env_path) -> None:
-        self._sim_config = _sim_config
+        self. _sim_config = _sim_config
         self.num_envs = num_envs
         self.device = device
         self.default_zero_env_path = default_zero_env_path
@@ -46,7 +47,7 @@ class Object:
                     color=torch.tensor([0, 169 / 255, 1]))
 
                 self._sim_config.apply_articulation_settings(
-                    "table", get_prim_at_path(target_object_1.prim_path),
+                    f"manipulated_object_{j}", get_prim_at_path(target_object_1.prim_path), # TABLE
                     self._sim_config.parse_actor_config(f"manipulated_object_{j}"))
         return self.scale_size
 
@@ -66,21 +67,22 @@ class Object:
             # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
             # self.load_object(usd_path=object_path,env_index=i,object_index=2)
 
-    def load_table(self, position, orientation,scale):
+    def load_table(self, position, orientation, scale, name="table"):
         table_translation = np.array(
             position)  #  self._task_cfg['sim']["Table"]["position"]
         table_orientation = np.array(
             orientation)  # self._task_cfg['sim']["Table"]["quaternion"]
 
         table = FixedCuboid(
-            prim_path=self.default_zero_env_path + "/table",
-            name="table",
+            prim_path=self.default_zero_env_path + f"/{name}",
+            name=name,
             translation=table_translation,
             orientation=table_orientation,
             scale=scale,
             size=1.0,
             color=np.array([1, 197 / 255, 197 / 255]),
         )
+    
         import omni.isaac.core.utils.nucleus as nucleus_utils
         table_usd_path = f"{nucleus_utils.get_assets_root_path()}/NVIDIA/Assets/ArchVis/Residential/Furniture/Tables/Whittershins.usd"
         # fix table base
@@ -88,14 +90,18 @@ class Object:
         #                                usd_path=table_usd_path,
         #                                translation=table_translation,
         #                                scale=(0.005, 0.005, 0.0202))
-        table_prim = get_prim_at_path(self.default_zero_env_path + "/table")
+        table_prim = get_prim_at_path(table.prim_path) #get_prim_at_path(self.default_zero_env_path + f"/{name}")
+
+     
+        #table_prim.disable_rigid_body_physics()
 
         self._sim_config.apply_rigid_body_settings(
-            "table",
+            name,
             table_prim,
-            self._sim_config.parse_actor_config("table"),
+            self._sim_config.parse_actor_config(name),
             is_articulation=False)
 
+        
     def load_object(self,
                     usd_path,
                     env_index,
@@ -199,6 +205,13 @@ class Object:
             prim_paths_expr,  #"/World/envs/.*/manipulated_object_1"
             name=name,  #manipulated_object_view
             reset_xform_properties=False)
+        
+        # if name == "table_view":
+        #     object.disable_rigid_body_physics()
+
+            # import omni.isaac.core.utils.physics as physics_utils
+            # print(physics_utils.get_rigid_body_enabled(object.prim_paths[0]))
+
         scene.add(object)
 
         return object

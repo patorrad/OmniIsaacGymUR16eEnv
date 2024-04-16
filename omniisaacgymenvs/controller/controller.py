@@ -54,11 +54,11 @@ class Controller:
         if self.control_type == "diffik":
 
             current_dof = self.isaac_sim_robot.get_joint_positions()
-            targets_dof = current_dof + delta_dof_pos[:, :6]
+            targets_joint = current_dof + delta_dof_pos[:, :6]
 
-            targets_dof[:, -1] = 0
+            targets_joint[:, -1] = 0
 
-            self.isaac_sim_robot.set_joint_position_targets(targets_dof)
+            self.isaac_sim_robot.set_joint_position_targets(targets_joint)
 
             for i in range(1):
                 self._env._world.step(render=False)
@@ -69,7 +69,7 @@ class Controller:
             #     quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
             #     cur_ee_orientation)
 
-            for i in range(4):
+            for i in range(2):
 
                 robot_joint = self.isaac_sim_robot.get_joint_positions()
              

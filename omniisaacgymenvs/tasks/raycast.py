@@ -133,7 +133,7 @@ def load_trimesh_from_usdgeom(mesh: UsdGeom.Mesh):
     return baked_trimesh
 
 
-def circle_points(radius, centers, normals, num_points):
+def circle_points(radius, centers, normals, num_points, t):
     """
     Generate points on a batch of circles in 3D space.
 
@@ -163,11 +163,11 @@ def circle_points(radius, centers, normals, num_points):
     basis2 = torch.cross(normals, basis1)
     basis2 /= torch.norm(basis2, dim=-1, keepdim=True)
 
-    # Generate points on the circles
-    t = torch.arange(0,
-                     2 * torch.pi,
-                     step=2 * torch.pi / num_points,
-                     device='cuda:0')
+    # # Generate points on the circles
+    # t = torch.arange(0,
+    #                  2 * torch.pi,
+    #                  step=2 * torch.pi / num_points,
+    #                  device='cuda:0')
 
     circles = centers[:, None, :] + radius[:, None, :] * (
         basis1[:, None, :] * torch.cos(t)[None, :, None] +
@@ -502,25 +502,40 @@ class Raycast:
         normals = find_plane_normal(self.num_envs, gripper_rot)
 
         if self.circle_test is None:
+            # Generate points on the circles
+            self.t = torch.arange(0,
+                            2 * torch.pi,
+                            step=2 * torch.pi / 2, #num_points,
+                            device='cuda:0')
             self.circle_test = circle_points(
                 sensor_radius, gripper_pose, normals,
-                self._task_cfg['sim']["URRobot"]['num_sensors'])
-        # else:
-        #     t1 = Transform3d().translate(gripper_pose).rotate(quaternion_to_matrix(gripper_rot, dtype=torch.float))
-        #     t1 = t1.get_matrix()
-        #     t2 = Transform3d().translate(self.old_gripper_pose).rotate(quaternion_to_matrix(self.old_gripper_rot, dtype=torch.float))
-        #     t2 = t2.get_matrix()
-        #     diff = t1 - t2
-        #     # t12 = t1.inverse().compose(t2).get_matrix()
+                self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
+        else:
+            # t1 = Transform3d(device='cuda:0').rotate(quaternion_to_matrix(self.old_gripper_rot)).translate(self.old_gripper_pose)#
+            # # t1 = t1.get_matrix()
+            # t2 = Transform3d(device='cuda:0').rotate(quaternion_to_matrix(gripper_rot)).translate(gripper_pose)#
+            # # t2 = t2.get_matrix()
+            # # diff = t1 - t2
+            # # diff = torch.repeat_interleave(diff,2,0)
+            # # ones = torch.ones(self.circle_test.shape[0], self.circle_test.shape[1], 1, device='cuda:0')
+            # # circle = torch.cat((self.circle_test, ones), dim=-1)
+            # # t12 = t1.inverse().compose(t2).get_matrix()
+            # t1_inv = t1.inverse()
+            # t = t1_inv.transform_points(self.circle_test)
+            # self.circle_test = t2.transform_points(t)
+            # print(self.circle_test)
+            self.circle_test = circle_points(
+                sensor_radius, gripper_pose, normals,
+                self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
 
 
-        #     import pdb; pdb.set_trace()
-        #     # self.cicle_test = 
+            # import pdb; pdb.set_trace()
         
         # self.old_gripper_pose = gripper_pose
+        # cprint.ok("gripper_pose", gripper_pose)
         # self.old_gripper_rot = gripper_rot
 
-        raycast_circle = self.circle_test
+        raycast_circle = self.circle_test #tensor 2 x 2 
 
         # raycast_circle = circle_points(
         #     sensor_radius, gripper_pose, normals,
@@ -708,6 +723,7 @@ class Raycast:
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
+                pass
                 
 
         elif self._cfg["debug"] and not self._task_cfg["sim"]["TofSensor"]["track_objects"]:

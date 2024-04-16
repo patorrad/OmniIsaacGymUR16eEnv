@@ -35,6 +35,7 @@ import numpy as np
 import omni.usd
 import torch
 from omni.isaac.core.utils.extensions import enable_extension
+from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.utils.config_utils.default_scene_params import *
 
 
@@ -378,8 +379,11 @@ class SimConfig:
         from pxr import PhysxSchema, UsdPhysics
 
         stage = omni.usd.get_context().get_stage()
-        rb_api = UsdPhysics.RigidBodyAPI.Get(stage, prim.GetPath())
-        physx_rb_api = PhysxSchema.PhysxRigidBodyAPI.Get(stage, prim.GetPath())
+
+        prim_path = prim.GetPath()
+
+        rb_api = UsdPhysics.RigidBodyAPI.Get(stage, prim_path)
+        physx_rb_api = PhysxSchema.PhysxRigidBodyAPI.Get(stage, prim_path)
         if not physx_rb_api:
             physx_rb_api = PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
 
@@ -394,7 +398,7 @@ class SimConfig:
         self.set_gyroscopic_forces(name, prim, cfg["enable_gyroscopic_forces"])
 
         # density and mass
-        mass_api = UsdPhysics.MassAPI.Get(stage, prim.GetPath())
+        mass_api = UsdPhysics.MassAPI.Get(stage, prim_path)
         if mass_api is None:
             mass_api = UsdPhysics.MassAPI.Apply(prim)
         mass_attr = mass_api.GetMassAttr()
@@ -454,6 +458,7 @@ class SimConfig:
             rb = UsdPhysics.RigidBodyAPI.Get(stage, cur_prim.GetPath())
             collision_body = UsdPhysics.CollisionAPI.Get(stage, cur_prim.GetPath())
             articulation = UsdPhysics.ArticulationRootAPI.Get(stage, cur_prim.GetPath())
+
             if rb:
                 self.apply_rigid_body_settings(name, cur_prim, cfg, is_articulation)
             if collision_body:

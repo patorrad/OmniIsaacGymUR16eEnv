@@ -91,6 +91,8 @@ class TofSensorTask(RLTask):
             size=0.05,
         )
 
+        self.episode = 0
+
         if self._task_cfg["sim"]["Dataset"]:
             data = {
                 'Episode': [],
@@ -98,7 +100,6 @@ class TofSensorTask(RLTask):
                 'Step': [],
                 'Joints': [],
                 'Gripper_pose': [],
-                'Sensor': [],
                 'Hits_Pose': [],
                 'Tof_reading': [],
                 'Object_hit': [],
@@ -131,15 +132,27 @@ class TofSensorTask(RLTask):
             self.scale_size = object_loader.load_cube(
                 self._task_cfg["sim"]["Object"]["scale"], 3)
 
-        # Table
+        #Table
         object_loader.load_table(
             self._task_cfg['sim']["Table"]["position"],
             self._task_cfg['sim']["Table"]["quaternion"],
-            np.array(self._task_cfg['sim']["Table"]["scale"]))
+            np.array(self._task_cfg['sim']["Table"]["scale"]), "table")
+
+        #Bin_bottom
+        # object_loader.load_table(
+        # [0.0, 0.9, 1.04],
+        # self._task_cfg['sim']["Table"]["quaternion"],
+        # np.array(np.array([0.8,0.68,0.01])), "bin_bottom")
+
+        # Bin_top
+        # object_loader.load_table(
+        # [0.0, 0.9, 0.6724],
+        # self._task_cfg['sim']["Table"]["quaternion"],
+        # np.array(np.array([0.8,0.68,0.01])), "bin_top")
 
         super().set_up_scene(scene)
 
-        self._robots, self._end_effector, self.wrist_2_link = robot.add_scene(
+        self._robots, self._end_effector, self.wrist_2_link= robot.add_scene(
             scene)
 
         self.manipulated_objects = []
@@ -162,6 +175,15 @@ class TofSensorTask(RLTask):
 
         self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
+        
+        # self._bin_bottom = object_loader.add_scene(scene, "/World/envs/.*/bin_bottom",
+        #                                       "bin_bottom_view")
+        
+        #self._end_effector = RigidPrim(prim_path= "/World/envs/.*/bin_bottom", name=self.name + "_end_effector")
+        # self._bin_bottom.disable_gravity()
+        #
+        # self._bin_top = object_loader.add_scene(scene, "/World/envs/.*/bin_top",
+        #                                       "bin_top_view")
 
         if self._cfg["raycast"]:
 
@@ -341,7 +363,6 @@ class TofSensorTask(RLTask):
 
             # rot = torch.stack([torch.tensor([0.707,0.,0.,0.707]), torch.tensor([0.707,0.,0.,0.707])])
 
-            # cprint.warn(self._robots.get_joint_positions())
 
             # Follow target that follows manipulated object 2
             pose_test, rot_test = self._manipulated_object_2.get_local_poses()
@@ -365,26 +386,6 @@ class TofSensorTask(RLTask):
             # Don't follow target for first few steps; let is stabilize
             if self._step < 15:
                 pose = torch.zeros_like(pose) 
-                
-            # Follow manipulated object 2
-            # pose_test, rot_test = self.target.get_local_pose()
-            # # pose_test, rot_test = self._manipulated_object_2.get_local_poses()
-            # # 
-            # pose = pose_test.clone().detach() 
-            # pose = torch.stack([pose, pose], dim=0)
-            # rot = rot_test.clone().detach() 
-
-            # from pytorch3d.transforms import Transform3d, quaternion_to_matrix 
-            # transform = Transform3d()
-            # t = Transform3d().translate(torch.tensor([self._robot_positions], dtype = torch.float))
-            # # rot_mat = quaternion_to_matrix(torch.tensor([self._robot_rotations], dtype=torch.float))
-            # # t = t.rotate(rot_mat)
-            # t_inv = t.inverse()
-            
-            # import pdb; pdb.set_trace()
-            # if torch.linalg.norm(self.old_target_pose[0] - pose[0], dim=0) > 0.001:
-            #     pose = t_inv.to('cuda:0').transform_points(pose)
-            #     self.target.set_local_pose(pose[0].cpu(), rot[0].cpu())
             
             target_ee_pos = self.controller.forward(actions[:, :6],
                                                     pose, #self.target_ee_position,.
@@ -393,51 +394,43 @@ class TofSensorTask(RLTask):
             
             self.old_target_pose = pose
 
+            # Test
             # get data for all envs
-            self.get_observations()
-            rows = []
-            for i in range(self.num_envs):
-                """
-                data = {
-                'Episode': [],
-                'Env': [],
-                'Step': [],
-                'Joints': [],
-                'Gripper_pose': [],
-                'Sensor': [],
-                'Position': [],
-                'Tof_reading': [],
-                'Object_hit': [],
-                'Object1_position': [],
-                'Object2_position': [],
-                """
-                tof_readings = self.raycast_reading[i].cpu().numpy()
-                row = pd.Series({'Episode': 0, 
-                                 'Env': i,
-                                 'Step': self._step, 
-                                 'Joints': self._robots.get_joint_positions()[i].cpu().numpy(), 
-                                 'Gripper_pose': self._end_effector.get_world_poses()[i].cpu().numpy(), 
-                                 'Sensor': [0] ,
-                                 'Hits_Pose': self.debug_ray_hit_points_list[i*2],
-                                 'Tof_reading': tof_readings[:64],
-                                 'Object_hit': self.object_tracker[:128].cpu().numpy(), # 128 is the total number of rays
-                                 'Object1_position': self._manipulated_object.get_local_poses()[i].cpu().numpy(), 
-                                 'Object2_position': self._manipulated_object_2.get_local_poses()[i].cpu().numpy()})
-                rows.append(row)
-                row = pd.Series({'Episode': 0, 
-                                 'Env': i,
-                                 'Step': self._step, 
-                                 'Joints': self._robots.get_joint_positions()[i].cpu().numpy(), 
-                                 'Gripper_pose': self._end_effector.get_world_poses()[i].cpu().numpy(), 
-                                 'Sensor': [1] ,
-                                 'Hits_Pose': self.debug_ray_hit_points_list[i*2 + 1],
-                                 'Tof_reading': tof_readings[-64:],
-                                 'Object_hit': self.object_tracker[-128:].cpu().numpy(), # 128 is the total number of rays
-                                 'Object1_position': self._manipulated_object.get_local_poses()[i].cpu().numpy(), 
-                                 'Object2_position': self._manipulated_object_2.get_local_poses()[i].cpu().numpy()})
-                rows.append(row)
-            new_data = pd.DataFrame(rows)
-            self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
+            if self._step > 1:
+                rows = []
+                for i in range(self.num_envs):
+                    """
+                    data = {
+                    'Episode': [],
+                    'Env': [],
+                    'Step': [],
+                    'Joints': [],
+                    'Gripper_pose': [],
+                    'Position': [],
+                    'Tof_reading': [],
+                    'Object_hit': [],
+                    'Object1_position': [],
+                    'Object2_position': [],
+                    """
+                    tof_readings = self.raycast_reading[i].cpu().numpy()
+                    gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+                    cprint.warn(f'i {i}')
+                    cprint.ok(self.object_tracker[i*128 : (i + 1)*128].cpu().numpy())
+                    row = pd.Series({
+                                    'Episode': self.episode, 
+                                    'Env': i,
+                                    'Step': self._step, 
+                                    'Joints': self._robots.get_joint_positions()[i].cpu().numpy(), 
+                                    'Gripper_pose': np.array(list(gripper_pose[i].cpu().numpy()) + list(gripper_rot[i].cpu().numpy())), 
+                                    'Hits_Pose': np.array(self.debug_ray_hit_points_list[i].tolist()) if len(self.debug_ray_hit_points_list) > i else '',
+                                    'Tof_reading': tof_readings,
+                                    'Object_hit': self.object_tracker[i*128 : (i + 1)*128].cpu().numpy(), # 128 is the total number of rays
+                                    'Object1_position': self._manipulated_object.get_local_poses()[0][i].cpu().numpy(), 
+                                    'Object2_position': self._manipulated_object_2.get_local_poses()[0][i].cpu().numpy(),
+                                    'Number_sensors': self._task_cfg['sim']["URRobot"]['num_sensors']})
+                    rows.append(row)
+                new_data = pd.DataFrame(rows)
+                self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
 
         else:
 
@@ -552,9 +545,11 @@ class TofSensorTask(RLTask):
     def is_done(self) -> None:
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
-        self.dataset.to_csv('dataset.csv', index=False)
 
         if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
+            # self.dataset.to_csv('dataset.csv', index=False)
+            self.dataset.to_pickle('dataset.pkl')
+            self.episode += 1
             self._step = 0
             self.post_reset()
             return [True for i in range(self.num_envs)]
@@ -587,9 +582,21 @@ class TofSensorTask(RLTask):
             self.rand_orientation)
 
         # init table position
-        table_position, _ = self._table.get_world_poses()
-        table_position[:, 0] = self.init_ee_link_position[:, 0]
-        self._table.set_world_poses(table_position)
+        # table_position, _ = self._table.get_world_poses()
+        # table_position[:, 0] = self.init_ee_link_position[:, 0]
+        # self._table.set_world_poses(table_position)
+
+        # init bin_bottom position
+        # bin_bottom_position, _ = self._bin_bottom.get_world_poses()
+        # bin_bottom_position[:, 0] = self.init_ee_link_position[:, 0]
+        # bin_bottom_position[:, 2] = 1
+        # self._bin_bottom.set_world_poses(bin_bottom_position)
+
+        # # init bin_top position
+        # bin_top_position, _ = self._bin_top.get_world_poses()
+        # bin_top_position[:, 0] = self.init_ee_link_position[:, 0]
+        # bin_top_position[:, 2] = 1
+        # self._bin_top.set_world_poses(bin_top_position)
 
         # init position
         object_target_position = target_obj_position.clone()
