@@ -507,6 +507,7 @@ class Raycast:
                             2 * torch.pi,
                             step=2 * torch.pi / 2, #num_points,
                             device='cuda:0')
+            
             self.circle_test = circle_points(
                 sensor_radius, gripper_pose, normals,
                 self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)

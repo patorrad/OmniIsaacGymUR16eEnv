@@ -321,6 +321,7 @@ class TofSensorTask(RLTask):
     def pre_physics_step(self, actions) -> None:
 
         self.actions = actions
+        
 
         self._step += 1
         if not self._env._world.is_playing():
@@ -526,9 +527,9 @@ class TofSensorTask(RLTask):
         self.rew_buf = self.calculate_dist_reward()
 
         self.rew_buf += self.calculate_angledev_reward()
-        # self.rew_buf += self.calculate_targetangledev_reward()
-        # self.rew_buf += self.calculate_raytrace_reward()
-        # self.rew_buf += self.calculate_raytrace_dev_reward()
+        self.rew_buf += self.calculate_targetangledev_reward()
+        self.rew_buf += self.calculate_raytrace_reward()
+        self.rew_buf += self.calculate_raytrace_dev_reward()
         self.rew_buf /= 1.2
 
         controller_penalty = (self.cartesian_error**2) * -1e3
@@ -547,8 +548,8 @@ class TofSensorTask(RLTask):
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
         if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
-            # self.dataset.to_csv('dataset.csv', index=False)
-            self.dataset.to_pickle('dataset.pkl')
+            if self._task_cfg["sim"]["Dataset"]:
+                self.dataset.to_pickle('dataset.pkl')
             self.episode += 1
             self._step = 0
             self.post_reset()

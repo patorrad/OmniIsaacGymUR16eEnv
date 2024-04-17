@@ -62,7 +62,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length:  #16
-    minibatch_size: 1000 #8192 self.horizon_length * self.num_actors * self.num_agents 16*512*1 => 16*8*1 
+    minibatch_size: 400 #8192 self.horizon_length * self.num_actors * self.num_agents 16*512*1 => 16*8*1 
     mini_epochs: 8
     critic_coef: 4
     clip_value: True
