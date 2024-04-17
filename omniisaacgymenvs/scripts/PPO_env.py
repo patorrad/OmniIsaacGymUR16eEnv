@@ -135,12 +135,12 @@ def parse_hydra_configs(cfg: DictConfig):
         verbose=1
         )
     
-    model.learn(total_timesteps=env_iter,
-                callback=WandbCallback(model_save_freq=10,
-                model_save_path=str(result_path / "model"),
-                eval_freq=10,
-                eval_env_fn=None
-                ))
+    model.learn(total_timesteps=env_iter) #,
+                # callback=WandbCallback(model_save_freq=10,
+                # model_save_path=str(result_path / "model"),
+                # eval_freq=10,
+                # eval_env_fn=None
+                # ))
    
 
     env.close()
