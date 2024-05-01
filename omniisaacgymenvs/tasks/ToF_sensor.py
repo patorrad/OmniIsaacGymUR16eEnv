@@ -547,7 +547,7 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
+        if (self._step + 1) % 201 == 0: # Was 201 Episode length or horizon *1001*
             if self._task_cfg["sim"]["Dataset"]:
                 self.dataset.to_pickle('dataset.pkl')
             self.episode += 1
