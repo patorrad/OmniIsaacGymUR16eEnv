@@ -130,25 +130,47 @@ class TofSensorTask(RLTask):
 
         if self.object_category in ['cube']:
             self.scale_size = object_loader.load_cube(
-                self._task_cfg["sim"]["Object"]["scale"], 3)
-
-        #Table
+                [[0,0,0], self._task_cfg["sim"]["Object"]["scale"]], 2, ['DynamicCylinder', 'DynamicCuboid'])
+   
+        # LOAD BIN
+        #Bin Base
         object_loader.load_table(
             self._task_cfg['sim']["Table"]["position"],
             self._task_cfg['sim']["Table"]["quaternion"],
             np.array(self._task_cfg['sim']["Table"]["scale"]), "table")
+        
+        #[0.18432, 0.59626, 0.52]
+        #[0.2286, 0.1524, 1.04] #0.8, 0.8, 1.04]  0.2032
+        #Bin Back
+        object_loader.load_table(
+            [0.21505, 0.67514, 0.635],
+            self._task_cfg['sim']["Table"]["quaternion"],
+            [0.2286, 0.005, 1.27], "back")
+        
+        #Bin Left
+        object_loader.load_table(
+            [0.10046, 0.59646, 0.635],
+            self._task_cfg['sim']["Table"]["quaternion"],
+            [0.005, 0.1524, 1.27], "left")
+        
+        #Bin Right
+        object_loader.load_table(
+            [0.33005, 0.59646, 0.635],
+            self._task_cfg['sim']["Table"]["quaternion"],
+            [0.005, 0.1524, 1.27], "right")
+        
+        #Bin Top 
+        object_loader.load_table(
+            [0.21445, 0.59494, 1.27231],
+            [0.0, 0.0, -0.707, 0.707],
+            [0.2286, 0.005, 0.1524], "top") #0.015
+        
+        # Pod
+        # object_loader.load_pod(
+        #     [-0.3, 0.45, 0.0],
+        #     self._task_cfg['sim']["Table"]["quaternion"],
+        #     np.array(self._task_cfg['sim']["Table"]["scale"]))
 
-        #Bin_bottom
-        # object_loader.load_table(
-        # [0.0, 0.9, 1.04],
-        # self._task_cfg['sim']["Table"]["quaternion"],
-        # np.array(np.array([0.8,0.68,0.01])), "bin_bottom")
-
-        # Bin_top
-        # object_loader.load_table(
-        # [0.0, 0.9, 0.6724],
-        # self._task_cfg['sim']["Table"]["quaternion"],
-        # np.array(np.array([0.8,0.68,0.01])), "bin_top")
 
         super().set_up_scene(scene)
 
@@ -173,30 +195,57 @@ class TofSensorTask(RLTask):
 
         self.old_target_pose = self._manipulated_object_2.get_local_poses()[0]
 
-        self._table = object_loader.add_scene(scene, "/World/envs/.*/table",
+        self._base = object_loader.add_scene(scene, "/World/envs/.*/table",
                                               "table_view")
         
-        # self._bin_bottom = object_loader.add_scene(scene, "/World/envs/.*/bin_bottom",
-        #                                       "bin_bottom_view")
+        self._back = object_loader.add_scene(scene, "/World/envs/.*/back",
+                                              "back_view")
         
-        #self._end_effector = RigidPrim(prim_path= "/World/envs/.*/bin_bottom", name=self.name + "_end_effector")
-        # self._bin_bottom.disable_gravity()
-        #
-        # self._bin_top = object_loader.add_scene(scene, "/World/envs/.*/bin_top",
-        #                                       "bin_top_view")
+        self.back_positions, self.back_orientations = self._back.get_world_poses()
+
+        self._left = object_loader.add_scene(scene, "/World/envs/.*/left",
+                                              "left_view")
+        
+        self.left_positions, self.left_orientations = self._left.get_world_poses()
+
+        self._right = object_loader.add_scene(scene, "/World/envs/.*/right",
+                                              "right_view")
+        
+        self.right_positions, self.right_orientations = self._right.get_world_poses()
+
+        self._top = object_loader.add_scene(scene, "/World/envs/.*/top",
+                                              "top_view")
+        
+        self.top_positions, self.top_orientations= self._top.get_world_poses()
+
+        self.bin = []
+        self.bin.append(self._base)
+        self.bin.append(self._back)
+        self.bin.append(self._left)
+        self.bin.append(self._right)
+        self.bin.append(self._top)
+
+        # self._pod = object_loader.add_scene(scene, "/World/envs/.*/pod",
+        #                                       "pod_view")
+
+        # self.pod_positions = self._pod.get_world_poses()
 
         if self._cfg["raycast"]:
 
             self.sensor_radius = torch.as_tensor(
                 self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
                     self.num_envs, 1).to(self._device)
-
+            
             self.raytracer = Raycast(
                 self._cfg["raycast_width"], self._cfg["raycast_height"], [
                     self._manipulated_object.prim_paths[0],
                     self._manipulated_object_2.prim_paths[0],
-                    # self._manipulated_object_3.prim_paths[0]
-                ], self._task_cfg, self._cfg, self.num_envs, self._device,
+                    self._base.prim_paths[0],
+                    self._back.prim_paths[0],
+                    self._left.prim_paths[0],
+                    self._right.prim_paths[0],
+                    self._top.prim_paths[0],
+                ], ['Cylinder', 'Cube', 'Cube', 'Cube','Cube', 'Cube', 'Cube'], self._task_cfg, self._cfg, self.num_envs, self._device,
                 self.sensor_radius)
         if self._cfg["depth_renderer"]:
 
@@ -254,18 +303,23 @@ class TofSensorTask(RLTask):
             cur_object_pose = []
             cur_object_rot = []
             
-            for object in self.manipulated_objects:
+            for object in self.manipulated_objects + self.bin:
                 pose, rot = object.get_world_poses()
                 
                 cur_object_pose.append(pose)
                 cur_object_rot.append(rot)
-                
+
+            # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right
+            #manip1, manip2, base, back, left,right, top
+            other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
+            self.scale_sizes = torch.cat((self.scale_size, other_scale))
+       
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
                 cur_object_pose,
                 cur_object_rot,
-                self.scale_size,
+                self.scale_sizes,
                 sensor_radius=self.sensor_radius)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
@@ -412,23 +466,40 @@ class TofSensorTask(RLTask):
                     'Object1_position': [],
                     'Object2_position': [],
                     """
+                    gripper_pose, gripper_rot = self._end_effector.get_world_poses()
+
+                    # data = [
+                    #     torch.tensor([self.episode]), 
+                    #     torch.tensor([i]),
+                    #     torch.tensor([self._step]),
+                    #     torch.clone(self._robots.get_joint_positions()[i]),
+                    #     torch.clone(torch.cat((gripper_pose[i], gripper_rot[i]))),
+                    #     torch.clone(self.raycast_reading[i]),
+                    #     torch.clone(self.object_tracker[i*128 : (i + 1)*128]),
+                    #     torch.clone(self._manipulated_object.get_local_poses()[0][i]),
+                    #     torch.clone(self._manipulated_object_2.get_local_poses()[0][i]),
+                    #     torch.tensor([self._task_cfg['sim']["URRobot"]['num_sensors']])
+                    # ]
                     tof_readings = self.raycast_reading[i].cpu().numpy()
                     gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-                    cprint.warn(f'i {i}')
-                    cprint.ok(self.object_tracker[i*128 : (i + 1)*128].cpu().numpy())
+
+                    while len(self.debug_ray_hit_points_list) < 4: #% 2 != 0:
+                        self.debug_ray_hit_points_list.append(np.array([]))
+
                     row = pd.Series({
                                     'Episode': self.episode, 
                                     'Env': i,
                                     'Step': self._step, 
                                     'Joints': self._robots.get_joint_positions()[i].cpu().numpy(), 
                                     'Gripper_pose': np.array(list(gripper_pose[i].cpu().numpy()) + list(gripper_rot[i].cpu().numpy())), 
-                                    'Hits_Pose': np.array(self.debug_ray_hit_points_list[i].tolist()) if len(self.debug_ray_hit_points_list) > i else '',
+                                    'Hits_Pose': np.array(self.debug_ray_hit_points_list[2*i].tolist() + self.debug_ray_hit_points_list[2*i + 1].tolist()) if len(self.debug_ray_hit_points_list) > i else '',
                                     'Tof_reading': tof_readings,
                                     'Object_hit': self.object_tracker[i*128 : (i + 1)*128].cpu().numpy(), # 128 is the total number of rays
                                     'Object1_position': self._manipulated_object.get_local_poses()[0][i].cpu().numpy(), 
                                     'Object2_position': self._manipulated_object_2.get_local_poses()[0][i].cpu().numpy(),
                                     'Number_sensors': self._task_cfg['sim']["URRobot"]['num_sensors']})
                     rows.append(row)
+                # self.epidsode_data.append(rows)
                 new_data = pd.DataFrame(rows)
                 self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
 
@@ -547,10 +618,14 @@ class TofSensorTask(RLTask):
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
         if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
-            # self.dataset.to_csv('dataset.csv', index=False)
+
+            #SAVE DATA TO DISK
+            #torch.save(self.episode_data, 'dataset.pt')
             self.dataset.to_pickle('dataset.pkl')
+
             self.episode += 1
             self._step = 0
+            self.epidsode_data = []
             self.post_reset()
             return [True for i in range(self.num_envs)]
 
@@ -581,25 +656,31 @@ class TofSensorTask(RLTask):
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 
-        # init table position
-        # table_position, _ = self._table.get_world_poses()
-        # table_position[:, 0] = self.init_ee_link_position[:, 0]
-        # self._table.set_world_poses(table_position)
+        # init base position
+        base_position, _ = self._base.get_world_poses()
+        base_position[:, 0] = self.init_ee_link_position[:, 0]
+        self._base.set_world_poses(base_position)
 
-        # init bin_bottom position
-        # bin_bottom_position, _ = self._bin_bottom.get_world_poses()
-        # bin_bottom_position[:, 0] = self.init_ee_link_position[:, 0]
-        # bin_bottom_position[:, 2] = 1
-        # self._bin_bottom.set_world_poses(bin_bottom_position)
+        # #init back position
+        # self._back.set_world_poses(self.back_positions, self.back_orientations)
 
-        # # init bin_top position
-        # bin_top_position, _ = self._bin_top.get_world_poses()
-        # bin_top_position[:, 0] = self.init_ee_link_position[:, 0]
-        # bin_top_position[:, 2] = 1
-        # self._bin_top.set_world_poses(bin_top_position)
+        # # init left position
+        # self._left.set_world_poses(self.left_positions, self.left_orientations)
+
+        # # init right position
+        # self._right.set_world_poses(self.right_positions, self.right_orientations)
+
+        # # init top position
+        # self._top.set_world_poses(self.top_positions, self.top_orientations)
+
+        #init pod position 
+        # pod_position, _ = self._pod.get_world_poses()
+        # pod_position[:, 0] = self.init_ee_link_position[:, 0]
+        # self._pod.set_world_poses(self.pod_positions[0])#pod_position
 
         # init position
         object_target_position = target_obj_position.clone()
+        
         object_target_position[:, 1] += 0.4 
         random_x = torch.rand(self.num_envs).to(self.device) * 0.0
         object_target_position[:, 0] -= random_x
@@ -615,12 +696,13 @@ class TofSensorTask(RLTask):
 
         if self._task_cfg["sim"]["Dataset"]:
             # real life bin bounds for env 1
-            bound1 = torch.tensor([-1.8 - 0.1143, 0.55, 1.1850], device='cuda:0') # middle of table: -1.8
-            bound2 = torch.tensor([-1.8 + 0.1143, 0.55 + 0.1524, 1.1850], device='cuda:0')
+            #1.1850
+            bound1 = torch.tensor([-1.8 - 0.12, 0.55, 1.0668], device='cuda:0') # middle of table: -1.8
+            bound2 = torch.tensor([-1.8 + 0.12, 0.55 + 0.13 , 1.0668], device='cuda:0') #0.1524
  
             # real life bin bounds for env 0
-            bound3 = torch.tensor([2.2 - 0.1143, 0.55, 1.1850], device='cuda:0') # middle of table: 2.2
-            bound4 = torch.tensor([2.2 + 0.1143, 0.55 + 0.1524, 1.1850], device='cuda:0')
+            bound3 = torch.tensor([2.2 - 0.10, 0.55, 1.0668], device='cuda:0') # middle of table: 2.2 #0.1143
+            bound4 = torch.tensor([2.2 + 0.10, 0.55 + 0.13, 1.0668], device='cuda:0')
 
 
             object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3

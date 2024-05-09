@@ -327,6 +327,16 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
         #     if wp.randf(rng_state) <= 9./34.:
         #         t = float(0.)
         #         # t = float(1.)
+    #wp.torch.to_torch(self.ray_dist)
+    # print(t)
+    # print('------------------------')
+    # print(ray_dist)
+    # print('------------------------')
+    # print(t)
+    # print('------------------------')
+    # print(ray_face)
+    # print('------------------------')
+    # print(face)
 
     pixels[tid] = color
     ray_dist[tid] = t
@@ -337,7 +347,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
 class Raycast:
 
-    def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
+    def __init__(self, width, height, object_prime_path, objects, _task_cfg, _cfg,
                  num_envs, device, default_sensor_radius):
         self.width = width  #1024
         self.height = height  #1024
@@ -347,6 +357,7 @@ class Raycast:
         self.result = np.zeros((self.height, self.width, 3))
 
         self.object_prime_path = object_prime_path
+        self.objects = objects
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
@@ -366,7 +377,7 @@ class Raycast:
         self.circle_test = None
 
         self.init_mesh()
-        self.init_buffer([self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
+        self.init_buffer([self.whole_mesh_vertices[0]], [self.mesh_faces[0]]) #env0 mesh information - includes all box meshes
 
     def init_mesh(self):
         from pxr import Usd, UsdGeom
@@ -384,33 +395,47 @@ class Raycast:
 
         for index, mesh_path in enumerate(self.object_prime_path):
 
-            cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
+            if self.objects[index] == 'Cube':
 
-            size = cube.GetSizeAttr().Get()
-            cube = trimesh.creation.box(extents=(1, 1, 1))
+                cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
 
-            self.mesh_faces.append(
-                torch.as_tensor(cube.faces[None, :, :] + face_index,
-                                dtype=torch.int32).repeat(
-                                    (self.num_envs, 1, 1)).to(self.device))
-            
-            # self.face_tracker.append()
-            self.mesh_vertices.append(
-                torch.as_tensor(cube.vertices[None, :, :],
-                                dtype=torch.float32).repeat(
-                                    (self.num_envs, 1, 1)).to(self.device))
-            self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
+                size = cube.GetSizeAttr().Get()
+                cube = trimesh.creation.box(extents=(1, 1, 1))
 
-            face_index += len(self.mesh_vertices[index][0])
+                self.mesh_faces.append(torch.as_tensor(cube.faces[None, :, :] + face_index, dtype=torch.int32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.mesh_vertices.append(torch.as_tensor(cube.vertices[None, :, :],dtype=torch.float32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
 
-            self.face_tracker.append(cube.faces.shape[0])
+                face_index += len(self.mesh_vertices[index][0])
+
+                self.face_tracker.append(cube.faces.shape[0])
+
+            elif self.objects[index] == 'Cylinder':
+
+                cylinder = UsdGeom.Cylinder(get_prim_at_path(mesh_path))
+
+                cylinder = trimesh.creation.cylinder(
+                                                    radius=cylinder.GetRadiusAttr().Get(),
+                                                    height=cylinder.GetHeightAttr().Get())
+
+                self.mesh_faces.append(torch.as_tensor(cylinder.faces[None, :, :] + face_index, dtype=torch.int32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.mesh_vertices.append(torch.as_tensor(cylinder.vertices[None, :, :],dtype=torch.float32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.face_catogery_index.append((torch.zeros(len(cylinder.faces))+index).to(self.device))
+
+                face_index += len(self.mesh_vertices[index][0])
+
+                self.face_tracker.append(cylinder.faces.shape[0])
+
 
         self.whole_mesh_vertices = torch.cat(self.mesh_vertices, dim=1)
 
         self.mesh_faces = torch.cat(self.mesh_faces, dim=1)
 
         self.face_catogery_index = torch.cat(self.face_catogery_index, dim=0)
-        
 
     def init_buffer(self, vertices, faces):
         self.warp_mesh_list = []
@@ -425,7 +450,7 @@ class Raycast:
             self.warp_mesh_list.append(warp_mesh)
       
 
-    def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
+    def transform_mesh(self, cur_object_pose, cur_object_rot, scale_sizes,
                        mesh_vertices):
 
         vertices = []
@@ -433,13 +458,21 @@ class Raycast:
         center_points = []
 
         for index, _ in enumerate(cur_object_pose):
-
-            transform = Transform3d(
-                device=self.device).scale(scale_size).rotate(
-                    quaternion_to_matrix(
-                        quaternion_invert(cur_object_rot[index]))).translate(
-                            cur_object_pose[index])
-
+            
+            arr = scale_sizes[index].cpu().numpy()
+            if (arr == [0,0,0]).all():
+                transform = Transform3d(
+                    device=self.device).rotate(
+                        quaternion_to_matrix(
+                            quaternion_invert(cur_object_rot[index]))).translate(
+                                cur_object_pose[index])
+            else:
+                transform = Transform3d(
+                    device=self.device).scale(torch.stack((scale_sizes[index], scale_sizes[index]))).rotate(
+                        quaternion_to_matrix(
+                            quaternion_invert(cur_object_rot[index]))).translate(
+                                cur_object_pose[index])
+            
             transformed_vertices = transform.transform_points(
                 mesh_vertices[index].clone().to(self.device))
 
@@ -481,23 +514,17 @@ class Raycast:
                cam_dir=np.array([1, 0, 0, 0]),
                is_live=False):
 
-        wp.launch(kernel=draw,
-                  dim=self.width * self.height,
-                  inputs=[
-                      self.mesh.id, cam_pos, cam_dir, self.width, self.height,
-                      self.pixels, self.ray_dist, self.ray_dir,
-                      self.normal_vec, self.ray_faces
-                  ])
+        wp.launch(kernel=draw,dim=self.width * self.height,inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height,self.pixels, self.ray_dist, self.ray_dir,self.normal_vec, self.ray_faces])
 
         wp.synchronize_device()
 
-        return self.ray_dist, self.ray_dir, self.normal_vec,self.ray_faces
+        return self.ray_dist, self.ray_dir, self.normal_vec, self.ray_faces
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_size, sensor_radius) -> None:
+                      cur_object_rot, scale_sizes, sensor_radius) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
-            cur_object_pose, cur_object_rot, scale_size, self.mesh_vertices)
+            cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
 
@@ -527,9 +554,6 @@ class Raycast:
             self.circle_test = circle_points(
                 sensor_radius, gripper_pose, normals,
                 self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
-
-
-            # import pdb; pdb.set_trace()
         
         # self.old_gripper_pose = gripper_pose
         # cprint.ok("gripper_pose", gripper_pose)
@@ -540,7 +564,6 @@ class Raycast:
         # raycast_circle = circle_points(
         #     sensor_radius, gripper_pose, normals,
         #     self._task_cfg['sim']["URRobot"]['num_sensors'])
-
         # for draw point
         if self._cfg["debug"]:
             debug_sensor_ray_pos_list = []
@@ -590,7 +613,7 @@ class Raycast:
             # start = time.time()
             ray_t, ray_dir, normal,ray_face = self.render(raycast_circle[env][i],
                                                  gripper_rot[env])
-
+        
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
            
@@ -601,7 +624,6 @@ class Raycast:
             faces = face_category[wp.torch.to_torch(ray_face)]
             faces[(ray_t == 0).nonzero()] = -1
             self.face_tracker.append(faces)
-           
 
             if len(torch.where(ray_t > 0)[0]) > 0:
 
@@ -644,7 +666,9 @@ class Raycast:
             sensor_ray_pos_np = raycast_circle[env][i]
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1],
                                     sensor_ray_pos_np[2])
+            
 
+            #IF YOU WANT FULL COORDINATES comment out line below
             ray_t = ray_t_copy
             ray_dir = ray_dir
 
@@ -666,11 +690,12 @@ class Raycast:
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
+
                 ray_t = ray_t_copy.cpu().numpy()
+                #ray_t = ray_t.cpu().numpy()
                 ray_dir = ray_dir.cpu().numpy()
 
-                line_vec = np.transpose(
-                    np.multiply(np.transpose(ray_dir), ray_t))
+                line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
 
                 # Get rid of ray misses (0 values)
                 line_vec = line_vec[np.any(line_vec, axis=1)]
@@ -715,7 +740,8 @@ class Raycast:
             if len(split_indices) > 1:
                 debug_ray_colors += [ray_colors[split_indices[i]:split_indices[i+1]] for i in range(len(split_indices)-1)]
 
-            # import pdb; pdb.set_trace()
+            # debug_ray_colors = debug_ray_colors[:1]
+
             if len(debug_sensor_ray_pos_list) > 0:
 
                 draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
@@ -735,8 +761,6 @@ class Raycast:
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
                               debug_circle)
-
-
 
         # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, self.face_catogery_index
 

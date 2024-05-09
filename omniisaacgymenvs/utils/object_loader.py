@@ -3,12 +3,13 @@ import numpy as np
 
 from omni.isaac.core.objects import DynamicSphere
 from omni.isaac.core.objects import DynamicCuboid
+from omni.isaac.core.objects import DynamicCylinder
 from omni.isaac.core.objects import FixedCuboid
 import omni.isaac.core.utils.prims as prim_utils
 from omni.isaac.core.prims import RigidPrimView
 
 from pxr import Usd, UsdGeom, UsdPhysics, UsdShade, Sdf, Gf, Tf
-from pxr import UsdPhysics
+from pxr import UsdPhysics, PhysxSchema
 from omni.physx.scripts import utils
 from omni.physx import acquire_physx_interface
 
@@ -17,7 +18,6 @@ import carb
 import omni.isaac.core.utils.nucleus as nucleus_utils
 
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
-
 import os
 
 
@@ -30,25 +30,43 @@ class Object:
         self.device = device
         self.default_zero_env_path = default_zero_env_path
 
-    def load_cube(self, scale,num_object=1):
-        self.scale_size = torch.as_tensor(scale).repeat(self.num_envs,
-                                                        1).to(self.device)
+    def load_cube(self, scale, num_object=1 , objects=['DyanmicCylinder', 'DynamicCuboid']):
+        self.scale_size = torch.as_tensor(scale).to(self.device)
+        #self.scale_size = torch.as_tensor(scale).repeat(self.num_envs,1).to(self.device)
+
         for i in range(self.num_envs):
             
             for j in range(1,num_object+1):
-
-                target_object_1 = DynamicCuboid(
-                    prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
-                    name=f"manipulated_object_{j}",
-                    position=[0, 0, 2.02],
-                    # size=0.2,
-                    scale=np.array(
-                        scale),  #self._task_cfg["sim"]["Object"]["scale"]
-                    color=torch.tensor([0, 169 / 255, 1]))
+                
+                if objects[j-1] == 'DynamicCuboid':
+                    target = DynamicCuboid(
+                        prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                        name=f"manipulated_object_{j}",
+                        position=[0, 0, 2.02],
+                        # scale = np.array(scale),
+                        scale=np.array(scale[j-1]),
+                        color=torch.tensor([0, 169 / 255, 1]))
+                else:
+                    target = DynamicCylinder(
+                        prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                        name=f"manipulated_object_{j}",
+                        position=[0, 0, 2.02],
+                        # scale=np.array(scale[j-1]),
+                        radius=0.0381,
+                        height=0.0889,
+                        color=torch.tensor([1, 0, 0]))
+                    # target = DynamicSphere(
+                    #     prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                    #     name=f"manipulated_object_{j}",
+                    #     position=[0, 0, 2.02],
+                    #     #scale=np.array(scale[j-1]),
+                    #     radius=0.0381,
+                    #     color=torch.tensor([1, 0, 0]))
 
                 self._sim_config.apply_articulation_settings(
-                    f"manipulated_object_{j}", get_prim_at_path(target_object_1.prim_path), # TABLE
+                    f"manipulated_object_{j}", get_prim_at_path(target.prim_path), # TABLE
                     self._sim_config.parse_actor_config(f"manipulated_object_{j}"))
+       
         return self.scale_size
 
     def load_manipulated_object(self):
@@ -92,15 +110,46 @@ class Object:
         #                                scale=(0.005, 0.005, 0.0202))
         table_prim = get_prim_at_path(table.prim_path) #get_prim_at_path(self.default_zero_env_path + f"/{name}")
 
-     
-        #table_prim.disable_rigid_body_physics()
+        rigid_api = UsdPhysics.RigidBodyAPI.Apply(table_prim)   
+        rigid_api.CreateKinematicEnabledAttr(True)
+
+        # # # apply rigid body API and schema
+        # # # physicsAPI = UsdPhysics.RigidBodyAPI.Apply(prim)
+        # # PhysxSchema.PhysxRigidBodyAPI.Apply(table_prim)
+        # attr = table_prim.GetAttribute("physics:kinematicEnabled")
+        # # print(attr)
 
         self._sim_config.apply_rigid_body_settings(
             name,
             table_prim,
             self._sim_config.parse_actor_config(name),
             is_articulation=False)
+        
 
+    def load_pod(self, position, orientation, scale):
+        prim_utils.create_prim(self.default_zero_env_path + "/pod",
+                               usd_path="/home/shaktis/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/pod/pod.usd",
+                               translation=position,
+                               orientation=orientation,
+                               scale=scale)
+
+        stage = omni.usd.get_context().get_stage()
+        pod_prim = stage.GetPrimAtPath(self.default_zero_env_path + "/pod")
+
+        # self._sim_config.apply_rigid_body_settings(
+        #     "pod",
+        #     pod_prim,
+        #     self._sim_config.parse_actor_config("pod"),
+        #     is_articulation=False)
+        
+        # pod = RigidPrim(
+        #     prim_path=self.default_zero_env_path + "/pod",
+        #     name="pod",
+        #     translation=position,
+        #     orientation=orientation,
+        #     scale=scale
+        # )
+        # pod.disable_rigid_body_physics()
         
     def load_object(self,
                     usd_path,
@@ -185,32 +234,26 @@ class Object:
         cube_mat_shade = UsdShade.Material(mtl_prim)
         UsdShade.MaterialBindingAPI(object_prim).Bind(
             cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
-
+        
     def load_sphere(self):
 
         target = DynamicSphere(prim_path=self.default_zero_env_path +
-                               "/target",
-                               name="target",
-                               radius=0.025,
-                               color=torch.tensor([1, 0, 0]))
+                                "/target",
+                                name="target",
+                                radius=0.025,
+                                color=torch.tensor([1, 0, 0]))
         self._sim_config.apply_articulation_settings(
             "target", get_prim_at_path(target.prim_path),
             self._sim_config.parse_actor_config("target"))
+        
         target.set_collision_enabled(False)
 
     def add_scene(self, scene, prim_paths_expr, name):
 
         object = RigidPrimView(
-            prim_paths_expr=
-            prim_paths_expr,  #"/World/envs/.*/manipulated_object_1"
+            prim_paths_expr=prim_paths_expr,  #"/World/envs/.*/manipulated_object_1"
             name=name,  #manipulated_object_view
             reset_xform_properties=False)
-        
-        # if name == "table_view":
-        #     object.disable_rigid_body_physics()
-
-            # import omni.isaac.core.utils.physics as physics_utils
-            # print(physics_utils.get_rigid_body_enabled(object.prim_paths[0]))
 
         scene.add(object)
 
