@@ -45,6 +45,9 @@ from omniisaacgymenvs.utils.wandb_util import setup_wandb,WandbCallback
 
 from stable_baselines3.ppo import PPO
 import pdb
+import os
+
+os.environ["WANDB_MODE"] = "disabled"
 
 
 
@@ -65,6 +68,7 @@ def parse_hydra_configs(cfg: DictConfig):
     from omniisaacgymenvs.utils.vec_env_base import VecEnvBase
    
     env = VecEnvBase(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
+    
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
@@ -117,9 +121,14 @@ def parse_hydra_configs(cfg: DictConfig):
     }
     
     wandb_run = setup_wandb(config,
-                            exp_name,
-                            tags=["PPO", "Tof"],
-                            project="TofSensor")
+                        exp_name,
+                        tags=["PPO", "Tof"],
+                        project="TofSensor")
+    wandbCallback = WandbCallback(model_save_freq=10,
+            model_save_path=str(result_path / "model"),
+            eval_freq=10,
+            eval_env_fn=None
+            )
 
 
     model = PPO(
@@ -134,13 +143,9 @@ def parse_hydra_configs(cfg: DictConfig):
         policy_kwargs=policy_kwargs,
         verbose=1
         )
-    
+
     model.learn(total_timesteps=env_iter,
-                callback=WandbCallback(model_save_freq=10,
-                model_save_path=str(result_path / "model"),
-                eval_freq=10,
-                eval_env_fn=None
-                ))
+                callback=wandbCallback)
    
 
     env.close()
