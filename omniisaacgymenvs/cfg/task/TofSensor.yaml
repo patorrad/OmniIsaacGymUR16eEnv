@@ -10,7 +10,7 @@ env:
   resetDist: 3.0
   maxEffort: 400.0
   num_actions: 6
-  num_observations: 18 #{"state":6,"image":[2,8,8]} #18
+  num_observations: 134 #{"state":6,"image":[2,8,8]} #18
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -78,7 +78,7 @@ sim:
     # per-shape
     contact_offset: 0.02
     rest_offset: 0.001
-    track_objects: True
+    track_objects: False
 
   URRobot:
     # -1 to use default values
@@ -104,12 +104,12 @@ sim:
     category: "cube"
     scale: [0.1, 0.1, 0.29]
   Table:
-    position: [0.0, 0.9, 0.52]
+    position: [0.18432, 0.59626, 0.52] #[0, 0.9, 0.52]
     quaternion: [1.0, 0.0, 0.0, 0.0]
-    scale: [0.8, 0.8, 1.04]
+    scale: [0.2286, 0.1524, 1.0668] #0.8, 0.8, 1.04] 
   Control:
-    "diffik"   # "diffik" or "MotionGeneration"
-  Design: False
+    "PPO"   # "diffik" or "MotionGeneration"
+  Design: True
   Dataset: False
     
 Training:

@@ -337,7 +337,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
 class Raycast:
 
-    def __init__(self, width, height, object_prime_path, _task_cfg, _cfg,
+    def __init__(self, width, height, object_prime_path, objects, _task_cfg, _cfg,
                  num_envs, device, default_sensor_radius):
         self.width = width  #1024
         self.height = height  #1024
@@ -347,6 +347,7 @@ class Raycast:
         self.result = np.zeros((self.height, self.width, 3))
 
         self.object_prime_path = object_prime_path
+        self.objects = objects
         self._task_cfg = _task_cfg
         self._cfg = _cfg
         self.num_envs = num_envs
@@ -384,26 +385,61 @@ class Raycast:
 
         for index, mesh_path in enumerate(self.object_prime_path):
 
-            cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
+            if self.objects[index] == 'Cube':
 
-            size = cube.GetSizeAttr().Get()
-            cube = trimesh.creation.box(extents=(1, 1, 1))
+                cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
 
-            self.mesh_faces.append(
-                torch.as_tensor(cube.faces[None, :, :] + face_index,
-                                dtype=torch.int32).repeat(
-                                    (self.num_envs, 1, 1)).to(self.device))
+                size = cube.GetSizeAttr().Get()
+                cube = trimesh.creation.box(extents=(1, 1, 1))
+
+                self.mesh_faces.append(torch.as_tensor(cube.faces[None, :, :] + face_index, dtype=torch.int32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.mesh_vertices.append(torch.as_tensor(cube.vertices[None, :, :],dtype=torch.float32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
+
+                face_index += len(self.mesh_vertices[index][0])
+
+                self.face_tracker.append(cube.faces.shape[0])
+
+            elif self.objects[index] == 'Cylinder':
+
+                cylinder = UsdGeom.Cylinder(get_prim_at_path(mesh_path))
+
+                cylinder = trimesh.creation.cylinder(
+                                                    radius=cylinder.GetRadiusAttr().Get(),
+                                                    height=cylinder.GetHeightAttr().Get())
+
+                self.mesh_faces.append(torch.as_tensor(cylinder.faces[None, :, :] + face_index, dtype=torch.int32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.mesh_vertices.append(torch.as_tensor(cylinder.vertices[None, :, :],dtype=torch.float32).repeat((self.num_envs, 1, 1)).to(self.device))
+                
+                self.face_catogery_index.append((torch.zeros(len(cylinder.faces))+index).to(self.device))
+
+                face_index += len(self.mesh_vertices[index][0])
+
+                self.face_tracker.append(cylinder.faces.shape[0])
+
+            # cube = UsdGeom.Cube(get_prim_at_path(mesh_path))
+
+            # size = cube.GetSizeAttr().Get()
+            # cube = trimesh.creation.box(extents=(1, 1, 1))
+
+            # self.mesh_faces.append(
+            #     torch.as_tensor(cube.faces[None, :, :] + face_index,
+            #                     dtype=torch.int32).repeat(
+            #                         (self.num_envs, 1, 1)).to(self.device))
             
-            # self.face_tracker.append()
-            self.mesh_vertices.append(
-                torch.as_tensor(cube.vertices[None, :, :],
-                                dtype=torch.float32).repeat(
-                                    (self.num_envs, 1, 1)).to(self.device))
-            self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
+            # # self.face_tracker.append()
+            # self.mesh_vertices.append(
+            #     torch.as_tensor(cube.vertices[None, :, :],
+            #                     dtype=torch.float32).repeat(
+            #                         (self.num_envs, 1, 1)).to(self.device))
+            # self.face_catogery_index.append((torch.zeros(len(cube.faces))+index).to(self.device))
 
-            face_index += len(self.mesh_vertices[index][0])
+            # face_index += len(self.mesh_vertices[index][0])
 
-            self.face_tracker.append(cube.faces.shape[0])
+            # self.face_tracker.append(cube.faces.shape[0])
 
         self.whole_mesh_vertices = torch.cat(self.mesh_vertices, dim=1)
 

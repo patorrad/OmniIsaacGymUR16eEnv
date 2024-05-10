@@ -44,13 +44,15 @@ class Controller:
         angle_z_dev=None,
     ):
         actions = actions.to(self._device)
-        actions[:, [2, 3, 4]] = 0
-        delta_dof_pos, delta_pose = recover_action(actions,
-                                                   self.velocity_limit,
-                                                   self._env, self.isaac_sim_robot)
-        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
-        target_ee_pos = cur_ee_pos + delta_pose[:, :3]
-
+        
+        # actions[:, [2, 3, 4]] = 0
+        # delta_dof_pos, delta_pose = recover_action(actions,
+        #                                            self.velocity_limit,
+        #                                            self._env, self.isaac_sim_robot)
+        # cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
+        # target_ee_pos = cur_ee_pos + delta_pose[:, :3]
+        target_ee_pos = target_ee_position + actions
+        
         if self.control_type == "diffik":
 
             current_dof = self.isaac_sim_robot.get_joint_positions()
@@ -83,11 +85,11 @@ class Controller:
 
         elif self.control_type == "MotionGeneration":
 
-            target_ee_orientation = quaternion_multiply(
-                quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
-                cur_ee_orientation)
+            # target_ee_orientation = quaternion_multiply(
+            #     quaternion_invert(axis_angle_to_quaternion(delta_pose[:, 3:])),
+            #     cur_ee_orientation)
 
-            for i in range(4):
+            for i in range(2):
 
                 robot_joint = self.isaac_sim_robot.get_joint_positions()
              

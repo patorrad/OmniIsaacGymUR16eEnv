@@ -29,7 +29,7 @@ rl_device: 'cuda:0'
 multi_gpu: False
 
 ## PhysX arguments
-num_threads: 4 # Number of worker threads per scene used by PhysX - for CPU PhysX only.
+num_threads: 8 # Number of worker threads per scene used by PhysX - for CPU PhysX only.
 solver_type: 1 # 0: pgs, 1: tgs
 
 # RLGames Arguments
@@ -47,9 +47,9 @@ enable_livestream: False
 # timeout for MT script
 mt_timeout: 90
 
-wandb_activate: False
+wandb_activate: True
 wandb_group: ''
-wandb_name: ${train.params.config.name}
+wandb_name:  patorrad #${train.params.config.name}
 wandb_entity: ''
 wandb_project: 'omniisaacgymenvs'
 
