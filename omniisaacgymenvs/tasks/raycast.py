@@ -461,7 +461,7 @@ class Raycast:
             self.warp_mesh_list.append(warp_mesh)
       
 
-    def transform_mesh(self, cur_object_pose, cur_object_rot, scale_size,
+    def transform_mesh(self, cur_object_pose, cur_object_rot, scale_sizes,
                        mesh_vertices):
 
         vertices = []
@@ -469,9 +469,9 @@ class Raycast:
         center_points = []
 
         for index, _ in enumerate(cur_object_pose):
-
-            transform = Transform3d(
-                device=self.device).scale(scale_size).rotate(
+            
+            transform = Transform3d( 
+                device=self.device).scale(scale_sizes[index][0], scale_sizes[index][1], scale_sizes[index][2]).rotate(
                     quaternion_to_matrix(
                         quaternion_invert(cur_object_rot[index]))).translate(
                             cur_object_pose[index])
@@ -530,10 +530,10 @@ class Raycast:
         return self.ray_dist, self.ray_dir, self.normal_vec,self.ray_faces
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_size, sensor_radius) -> None:
+                      cur_object_rot, scale_sizes, sensor_radius) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
-            cur_object_pose, cur_object_rot, scale_size, self.mesh_vertices)
+            cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
 

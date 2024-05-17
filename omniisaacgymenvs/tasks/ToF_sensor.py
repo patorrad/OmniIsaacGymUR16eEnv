@@ -23,7 +23,7 @@ import torch
 
 from cprint import *
 import time
-from pytorch3d.transforms import axis_angle_to_quaternion
+from pytorch3d.transforms import axis_angle_to_quaternion, quaternion_multiply, Transform3d, quaternion_to_matrix
 
 from omniisaacgymenvs.controller.controller import Controller
 
@@ -85,7 +85,7 @@ class TofSensorTask(RLTask):
 
         self.target = cuboid.VisualCuboid(
             "/World/envs/env_0/target",
-            position=np.array([0., 0., 0.]),
+            position=np.array([0.18432, 0.59626, 1.2]),
             orientation=np.array([0, 1, 0, 0]),
             color=np.array([1.0, 0, 0]),
             size=0.05,
@@ -107,6 +107,11 @@ class TofSensorTask(RLTask):
                 'Object2_position': [],
             }
             self.dataset = pd.DataFrame(data)
+
+        rot_mat = quaternion_to_matrix(torch.tensor([self._robot_rotations], dtype=torch.float))
+        self.t = Transform3d().rotate(rot_mat).translate(torch.tensor([self._robot_positions], dtype = torch.float))
+        self.t_inv = self.t.inverse()
+        self.target_pose = torch.tensor([0.18432, 0.59626, 1.2  ]).repeat(self.num_envs, 1).to(self.device)
         
         return
 
@@ -165,11 +170,11 @@ class TofSensorTask(RLTask):
             [0.0, 0.0, -0.707, 0.707],
             [0.2286, 0.005, 0.1524], "top") #0.015
         
-        #Table
-        object_loader.load_table(
-            self._task_cfg['sim']["Table"]["position"],
-            self._task_cfg['sim']["Table"]["quaternion"],
-            np.array(self._task_cfg['sim']["Table"]["scale"]), "table")
+        # #Table
+        # object_loader.load_table(
+        #     self._task_cfg['sim']["Table"]["position"],
+        #     self._task_cfg['sim']["Table"]["quaternion"],
+        #     np.array(self._task_cfg['sim']["Table"]["scale"]), "table")
 
         super().set_up_scene(scene)
 
@@ -310,17 +315,23 @@ class TofSensorTask(RLTask):
                 
                 cur_object_pose.append(pose)
                 cur_object_rot.append(rot)
-                
+            
+            # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right
+            #manip1, manip2, base, back, left,right, top
+            other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
+            self.scale_sizes = torch.cat((self.scale_size, other_scale))
+
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
                 cur_object_pose,
                 cur_object_rot,
-                self.scale_size,
+                self.scale_sizes,
                 sensor_radius=self.sensor_radius)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
+
 
         # if isinstance(self._num_observations, dict):
         #     self.obs_buf = {}
@@ -337,7 +348,8 @@ class TofSensorTask(RLTask):
                 # cur_position, # 3
                 # self.target_ee_position, # 3
                 # self.target_ee_position - cur_position, # 3
-                self.raycast_reading, # 128
+                # self.raycast_reading, # 128
+                # self._end_effector.get_local_poses()[0], # 3
                 self.robot_joints # 6
             ], dim=1)
         # import pdb; pdb.set_trace()
@@ -389,7 +401,11 @@ class TofSensorTask(RLTask):
             #     target_ee_pos, _ = self._end_effector.get_local_poses()
             # elif self._step >= 1:
             #     target_ee_pos = self.controller.forward(actions[:, :6])
-            self._robots.set_joint_position_targets(actions[:, :6])
+            
+            self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
+
+        elif self._task_cfg["sim"]["Design"]:
+            self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
 
         else:
 
@@ -407,9 +423,7 @@ class TofSensorTask(RLTask):
             # pose_test, rot_test = self.target.get_local_pose()
             pose = torch.tensor(pose_test, device='cuda:0')
             # pose = torch.stack([pose, pose], dim=0)
-            rot = torch.tensor(rot_test, device='cuda:0')
-
-            from pytorch3d.transforms import Transform3d, quaternion_to_matrix 
+            rot = torch.tensor(rot_test, device='cuda:0') 
 
             rot_mat = quaternion_to_matrix(torch.tensor([self._robot_rotations], dtype=torch.float))
             t = Transform3d().rotate(rot_mat).translate(torch.tensor([self._robot_positions], dtype = torch.float))
@@ -506,7 +520,7 @@ class TofSensorTask(RLTask):
         dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 1
 
         # dist_reward = self._end_effector.get_local_poses()[0] - self._manipulated_object.get_local_poses()[0]
-
+        
         return dist_reward
 
     def calculate_raytrace_dev_reward(self):
@@ -517,7 +531,37 @@ class TofSensorTask(RLTask):
 
     def calculate_metrics(self) -> None:
 
-        self.rew_buf = self.calculate_dist_reward()
+        # Distance to target reward
+        # self.target = torch.tensor([[ 12.2123,  -9.4055,   1.2737], [ 12.2123,  -5.4055,   1.2737], [ 12.2123,  -1.4055,   1.2737], [ 12.2123,   2.5945,   1.2737], [ 12.2123,   6.5945,   1.2737],
+        #                        [ 12.2123,  10.5945,   1.2737], [  8.2123,  -9.4055,   1.2737], [  8.2123,  -5.4055,   1.2737], [  8.2123,  -1.4055,   1.2737],
+        #                        [  8.2123,   2.5945,   1.2737], [  8.2123,   6.5945,   1.2737], [  8.2123,  10.5945,   1.2737], [  4.2123,  -9.4055,   1.2737],
+        #                        [  4.2123,  -5.4055,   1.2737], [  4.2123,  -1.4055,   1.2737], [  4.2123,   2.5945,   1.2737], [  4.2123,   6.5945,   1.2737],
+        #                        [  4.2123,  10.5945,   1.2737], [  0.2123,  -9.4055,   1.2737], [  0.2123,  -5.4055,   1.2737], [  0.2123,  -1.4055,   1.2737],
+        #                        [  0.2123,   2.5945,   1.2737], [  0.2123,   6.5945,   1.2737], [  0.2123,  10.5945,   1.2737], [ -3.7877,  -9.4055,   1.2737],
+        #                        [ -3.7877,  -5.4055,   1.2737], [ -3.7877,  -1.4055,   1.2737], [ -3.7877,   2.5945,   1.2737], [ -3.7877,   6.5945,   1.2737],
+        #                        [ -3.7877,  10.5945,   1.2737], [ -7.7877,  -9.4055,   1.2737], [ -7.7877,  -5.4055,   1.2737], [ -7.7877,  -1.4055,   1.2737],
+        #                        [ -7.7877,   2.5945,   1.2737], [ -7.7877,   6.5945,   1.2737], [ -7.7877,  10.5945,   1.2737], [-11.7877,  -9.4055,   1.2737],
+        #                        [-11.7877,  -5.4055,   1.2737], [-11.7877,  -1.4055,   1.2737], [-11.7877,   2.5945,   1.2737]]).to(self.device)
+        # target = torch.tensor([0.18432, 0.59626, 1.2  ]).repeat(self.num_envs, 1).to(self.device)
+        robot_pose = self.t.to('cuda:0').transform_points(self._end_effector.get_local_poses()[0])
+        # dist = torch.cdist(robot_pose, self.target_pose, p=2)
+        dist = torch.norm(robot_pose - self.target_pose, dim=1)
+
+        # self.rew_buf = -torch.where(rew <= 0.1, torch.tensor(-100.0), rew * 100)
+        self.rew_buf = -10 * (dist - 0.5)
+
+        # Angle of gripper reward
+        
+        end_effector_target = torch.tensor([ 0.6995, 0.1027, 0.1306, 0.6951]).repeat(self.num_envs, 1).to(self.device)
+        angle = self._end_effector.get_local_poses()[1]
+        # angle_dev = torch.abs(torch.mean(angle - end_effector_target, dim = 1))
+        angle_dev = torch.norm(angle - end_effector_target, dim=1)
+        self.rew_buf -= angle_dev * 5
+
+        # 2*acos(abs(parts(p*conj(q))))
+        # quaternion_multiply(end_effector_target, torch.conj(angle[1]))
+
+        # self.rew_buf = self.calculate_dist_reward()
 
         # self.rew_buf += self.calculate_angledev_reward()
         # self.rew_buf += self.calculate_targetangledev_reward()
@@ -532,7 +576,13 @@ class TofSensorTask(RLTask):
             torch.clip(self._robots.get_joint_velocities(), -1, 1)**2, dim=1
         ) * -1 + torch.sum(torch.clip(self.actions, -1, 1)**2, dim=1) * -0.5
 
-        self.rew_buf += action_penalty
+        self.rew_buf += action_penalty / 10
+
+        if self._step % 100 == 0:
+            print("Reward: ", dist)
+            # print("Angle: ", angle_dev)
+            # print("Action Penalty: ", action_penalty)
+            print("Total Reward: ", self.rew_buf)
 
         return self.rew_buf
 
@@ -626,12 +676,12 @@ class TofSensorTask(RLTask):
 
         if self._task_cfg["sim"]["Dataset"]:
             # real life bin bounds for env 1
-            bound1 = torch.tensor([-1.8 - 0.1143, 0.55, 1.1850], device='cuda:0') # middle of table: -1.8
-            bound2 = torch.tensor([-1.8 + 0.1143, 0.55 + 0.1524, 1.1850], device='cuda:0')
+            bound1 = torch.tensor([-1.8 - 0.12, 0.55, 1.0668], device='cuda:0') # middle of table: -1.8
+            bound2 = torch.tensor([-1.8 + 0.12, 0.55 + 0.13 , 1.0668], device='cuda:0') #0.1524
  
             # real life bin bounds for env 0
-            bound3 = torch.tensor([2.2 - 0.1143, 0.55, 1.1850], device='cuda:0') # middle of table: 2.2
-            bound4 = torch.tensor([2.2 + 0.1143, 0.55 + 0.1524, 1.1850], device='cuda:0')
+            bound3 = torch.tensor([2.2 - 0.10, 0.55, 1.0668], device='cuda:0') # middle of table: 2.2 #0.1143
+            bound4 = torch.tensor([2.2 + 0.10, 0.55 + 0.13, 1.0668], device='cuda:0')
 
 
             object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3

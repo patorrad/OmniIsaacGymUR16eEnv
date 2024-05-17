@@ -122,6 +122,30 @@ class Object:
             self._sim_config.parse_actor_config(name),
             is_articulation=False)
 
+    def load_pod(self, position, orientation, scale):
+        prim_utils.create_prim(self.default_zero_env_path + "/pod",
+                               usd_path="/home/shaktis/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/pod/pod.usd",
+                               translation=position,
+                               orientation=orientation,
+                               scale=scale)
+
+        stage = omni.usd.get_context().get_stage()
+        pod_prim = stage.GetPrimAtPath(self.default_zero_env_path + "/pod")
+
+        # self._sim_config.apply_rigid_body_settings(
+        #     "pod",
+        #     pod_prim,
+        #     self._sim_config.parse_actor_config("pod"),
+        #     is_articulation=False)
+        
+        # pod = RigidPrim(
+        #     prim_path=self.default_zero_env_path + "/pod",
+        #     name="pod",
+        #     translation=position,
+        #     orientation=orientation,
+        #     scale=scale
+        # )
+        # pod.disable_rigid_body_physics()
         
     def load_object(self,
                     usd_path,

@@ -9,6 +9,7 @@ import wandb
 from wandb.sdk.lib import telemetry as wb_telemetry
 
 import numpy as np
+import torch
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +63,8 @@ class WandbCallback(BaseCallback):
 
         self.roll_out = 0
 
+        self.total_reward = 0
+
     def _init_callback(self) -> None:
         d = {}
         if "algo" not in d:
@@ -114,6 +117,9 @@ class WandbCallback(BaseCallback):
                                                         caption=f"Reward: {reward_sum:.2f}")})
         self.roll_out += 1
 
+        self.logger.record('reward', self.total_reward)
+        self.total_reward = 0
+
     def _on_training_end(self) -> None:
         if self.model_save_path is not None:
             self.save_model()
@@ -129,6 +135,10 @@ class WandbCallback(BaseCallback):
         """
         :return: If the callback returns False, training is aborted early.
         """
+        # self.logger.record('reward', torch.mean(self.locals['rewards']))
+        # import pdb; pdb.set_trace()
+        self.total_reward += torch.mean(self.locals['rewards'])
+
         return True
 
 
