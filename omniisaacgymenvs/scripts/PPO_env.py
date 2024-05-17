@@ -47,7 +47,7 @@ from stable_baselines3.ppo import PPO
 import pdb
 import os
 
-os.environ["WANDB_MODE"] = "disabled"
+# os.environ["WANDB_MODE"] = "disabled"
 
 
 
@@ -109,7 +109,7 @@ def parse_hydra_configs(cfg: DictConfig):
     #     }
     
     # init wandb
-    horizon = 200
+    horizon = 1000
     env_iter = 10000000
     exp_name = "TofSensor_state"
     config = {
@@ -135,7 +135,7 @@ def parse_hydra_configs(cfg: DictConfig):
         policy,
         env,
         n_epochs=training_config['n_epochs'],
-        n_steps=200,
+        n_steps=horizon,
         learning_rate=3e-4,
         batch_size=training_config['minibatch_size'],
         seed=cfg.seed,
