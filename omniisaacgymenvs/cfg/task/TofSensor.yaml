@@ -9,7 +9,7 @@ env:
   envSpacing: 4.0
   resetDist: 3.0
   maxEffort: 400.0
-  num_actions: 6
+  num_actions: 3 #6
   num_observations: 6 #134 #{"state":6,"image":[2,8,8]} #18
 
   clipObservations: 5.0
@@ -108,10 +108,9 @@ sim:
     quaternion: [1.0, 0.0, 0.0, 0.0]
     scale: [0.2286, 0.1524, 1.0668] #0.8, 0.8, 1.04] 
   Control:
-    "MotionGeneration"   # "diffik" or "MotionGeneration" "PPO"
-  Design: False
-  Dataset: False
-    
+    "PPO"   # "diffik" or "MotionGeneration" "PPO"
+  Design: True
+  Dataset: False    
 Training:
   use_oracle: True
 

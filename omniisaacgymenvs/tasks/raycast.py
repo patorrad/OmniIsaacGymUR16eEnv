@@ -560,13 +560,10 @@ class Raycast:
             # t1_inv = t1.inverse()
             # t = t1_inv.transform_points(self.circle_test)
             # self.circle_test = t2.transform_points(t)
-            # print(self.circle_test)
+
             self.circle_test = circle_points(
                 sensor_radius, gripper_pose, normals,
                 self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
-
-
-            # import pdb; pdb.set_trace()
         
         # self.old_gripper_pose = gripper_pose
         # cprint.ok("gripper_pose", gripper_pose)
@@ -752,7 +749,6 @@ class Raycast:
             if len(split_indices) > 1:
                 debug_ray_colors += [ray_colors[split_indices[i]:split_indices[i+1]] for i in range(len(split_indices)-1)]
 
-            # import pdb; pdb.set_trace()
             if len(debug_sensor_ray_pos_list) > 0:
 
                 draw_raytrace(self.debug_draw, debug_sensor_ray_pos_list,
@@ -799,7 +795,7 @@ class Raycast:
         action = torch.clip(actions, -1, 1)
 
         cur_sensor_radius = self.default_sensor_radius + action * 0.02
-        print(cur_sensor_radius)
+
         return cur_sensor_radius
 
 

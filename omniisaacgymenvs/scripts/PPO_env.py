@@ -30,7 +30,6 @@
 import numpy as np
 import torch
 import hydra
-import pdb
 from omegaconf import DictConfig
 from pathlib import Path
 import torch.nn as nn
@@ -42,12 +41,14 @@ from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_d
 from omniisaacgymenvs.utils.task_util import initialize_task
 from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
 from omniisaacgymenvs.utils.wandb_util import setup_wandb,WandbCallback
+from omniisaacgymenvs.utils.sencond_agent import CustomCallback
+
+from stable_baselines3.common.callbacks import BaseCallback
 
 from stable_baselines3.ppo import PPO
-import pdb
 import os
 
-# os.environ["WANDB_MODE"] = "disabled"
+os.environ["WANDB_MODE"] = "disabled"
 
 
 
@@ -124,12 +125,14 @@ def parse_hydra_configs(cfg: DictConfig):
                         exp_name,
                         tags=["PPO", "Tof"],
                         project="TofSensor")
+    
     wandbCallback = WandbCallback(model_save_freq=10,
             model_save_path=str(result_path / "model"),
             eval_freq=10,
             eval_env_fn=None
             )
-
+            
+    second_agent_callback = CustomCallback()
 
     model = PPO(
         policy,
@@ -145,7 +148,7 @@ def parse_hydra_configs(cfg: DictConfig):
         )
 
     model.learn(total_timesteps=env_iter,
-                callback=wandbCallback)
+                callback=[wandbCallback, second_agent_callback])
    
 
     env.close()

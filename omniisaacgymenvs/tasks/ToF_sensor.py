@@ -352,7 +352,7 @@ class TofSensorTask(RLTask):
                 # self._end_effector.get_local_poses()[0], # 3
                 self.robot_joints # 6
             ], dim=1)
-        # import pdb; pdb.set_trace()
+
         if self._cfg["depth_renderer"]:
             gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -402,10 +402,12 @@ class TofSensorTask(RLTask):
             # elif self._step >= 1:
             #     target_ee_pos = self.controller.forward(actions[:, :6])
             
-            self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
+            # self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
+            pass
 
         elif self._task_cfg["sim"]["Design"]:
-            self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
+            # self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
+            pass
 
         else:
 
@@ -590,7 +592,7 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step + 1) % 201 == 0: # Was 201 Episode length or horizon *1001*
+        if (self._step + 1) % 11 == 0: # Was 201 Episode length or horizon *1001*
             if self._task_cfg["sim"]["Dataset"]:
                 self.dataset.to_pickle('dataset.pkl')
             self.episode += 1
