@@ -38,7 +38,7 @@ from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_d
 from omniisaacgymenvs.utils.task_util import initialize_task
 
 
-@hydra.main(config_name="config", config_path="../cfg") #TODO version_base=None, 
+@hydra.main(config_name="config_opt", config_path="../cfg") #TODO version_base=None, 
 def parse_hydra_configs(cfg: DictConfig):
 
     cfg_dict = omegaconf_to_dict(cfg)
@@ -75,10 +75,8 @@ def parse_hydra_configs(cfg: DictConfig):
             actions = torch.tensor(
                 np.array([env.action_space.sample() for _ in range(env.num_envs)]), device=task.rl_device
             )
-            begin = time.time()
+            env._task.get_observations()
             env._task.pre_physics_step(actions)
-            avg_time_step = (avg_time_step  + time.time() - begin) / (env._world.current_time_step_index + 1)
-            print("pre_physics_step time: ", avg_time_step)
             env._world.step(render=render)
             env.sim_frame_count += 1
             env._task.post_physics_step()

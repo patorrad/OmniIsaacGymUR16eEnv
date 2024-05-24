@@ -19,7 +19,8 @@ def parse_hydra_configs(cfg: DictConfig):
     from stable_baselines3 import PPO
 
     # Run inference on the trained policy
-    model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-12/18-02-16/results/512/TofSensor2/model/model_50.zip")
+    # model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-12/18-02-16/results/512/TofSensor2/model/model_50.zip")
+    model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-20/15-32-49/results/520/TofSensor2/model/model_50.zip")
     env._world.reset()
     obs = env.reset()
     while env._simulation_app.is_running():
