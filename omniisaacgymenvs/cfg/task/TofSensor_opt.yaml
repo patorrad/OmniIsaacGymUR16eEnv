@@ -1,5 +1,5 @@
 # used to create the object
-name: TofSensor
+name: TofOpt
 
 physics_engine: ${..physics_engine}
 
