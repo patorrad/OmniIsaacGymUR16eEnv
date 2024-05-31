@@ -106,7 +106,7 @@ sim:
   Table:
     position: [0.18432, 0.59626, 0.52] #[0, 0.9, 0.52]
     quaternion: [1.0, 0.0, 0.0, 0.0]
-    scale: [0.2286, 0.1524, 1.0668] #0.8, 0.8, 1.04] 
+    scale: [0.2286, 0.1524, 1.0668]
   Control:
     "MotionGeneration" #"diffik"
   Design: False
