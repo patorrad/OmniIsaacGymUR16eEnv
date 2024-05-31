@@ -129,8 +129,8 @@ class TofSensorTask(RLTask):
                                self.default_zero_env_path)
 
         if self.object_category in ['cube']:
-            self.scale_size = object_loader.load_cube(
-                [[0,0,0], self._task_cfg["sim"]["Object"]["scale"]], 2, ['DynamicCylinder', 'DynamicCuboid'])
+            self.scale_size = object_loader.load_manipulated_objects_sizes(
+                [[0,0,0], self._task_cfg["sim"]["Object"]["scale"]], [(0.0381, 0.0889)], 2, ['DynamicCylinder', 'DynamicCuboid'])
    
         # LOAD BIN
         #Bin Base
@@ -139,8 +139,6 @@ class TofSensorTask(RLTask):
             self._task_cfg['sim']["Table"]["quaternion"],
             np.array(self._task_cfg['sim']["Table"]["scale"]), "table")
         
-        #[0.18432, 0.59626, 0.52]
-        #[0.2286, 0.1524, 1.04] #0.8, 0.8, 1.04]  0.2032
         #Bin Back
         object_loader.load_table(
             [0.21505, 0.67514, 0.635],
@@ -246,7 +244,7 @@ class TofSensorTask(RLTask):
                     self._right.prim_paths[0],
                     self._top.prim_paths[0],
                 ], ['Cylinder', 'Cube', 'Cube', 'Cube','Cube', 'Cube', 'Cube'], self._task_cfg, self._cfg, self.num_envs, self._device,
-                self.sensor_radius)
+                self.sensor_radius) 
         if self._cfg["depth_renderer"]:
 
             self.sensor_radius = torch.as_tensor(
@@ -467,19 +465,6 @@ class TofSensorTask(RLTask):
                     'Object2_position': [],
                     """
                     gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-
-                    # data = [
-                    #     torch.tensor([self.episode]), 
-                    #     torch.tensor([i]),
-                    #     torch.tensor([self._step]),
-                    #     torch.clone(self._robots.get_joint_positions()[i]),
-                    #     torch.clone(torch.cat((gripper_pose[i], gripper_rot[i]))),
-                    #     torch.clone(self.raycast_reading[i]),
-                    #     torch.clone(self.object_tracker[i*128 : (i + 1)*128]),
-                    #     torch.clone(self._manipulated_object.get_local_poses()[0][i]),
-                    #     torch.clone(self._manipulated_object_2.get_local_poses()[0][i]),
-                    #     torch.tensor([self._task_cfg['sim']["URRobot"]['num_sensors']])
-                    # ]
                     tof_readings = self.raycast_reading[i].cpu().numpy()
                     gripper_pose, gripper_rot = self._end_effector.get_world_poses()
 
@@ -618,7 +603,6 @@ class TofSensorTask(RLTask):
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
         if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
-
             #SAVE DATA TO DISK
             #torch.save(self.episode_data, 'dataset.pt')
             self.dataset.to_pickle('dataset.pkl')

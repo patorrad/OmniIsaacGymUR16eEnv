@@ -30,7 +30,44 @@ class Object:
         self.device = device
         self.default_zero_env_path = default_zero_env_path
 
-    def load_cube(self, scale, num_object=1 , objects=['DyanmicCylinder', 'DynamicCuboid']):
+    def load_manipulated_objects_sizes(self, scale, sizes, num_object=1 , objects=['DyanmicCylinder', 'DynamicCuboid']):
+        self.scale_size = torch.as_tensor(scale).to(self.device)
+
+        # pass in dimensions
+        for i in range(self.num_envs):
+            
+            for j in range(1,num_object+1):
+                
+                if objects[j-1] == 'DynamicCuboid':
+                    target = DynamicCuboid(
+                        prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                        name=f"manipulated_object_{j}",
+                        position=[0, 0, 2.02],
+                        scale=np.array(scale[j-1]),
+                        color=torch.tensor([0, 169 / 255, 1]))
+                else:
+                    target = DynamicCylinder(
+                        prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                        name=f"manipulated_object_{j}",
+                        position=[0, 0, 2.02],
+                        radius=sizes[j-1][0],
+                        height=sizes[j-1][1],
+                        color=torch.tensor([1, 0, 0]))
+                    # target = DynamicSphere(
+                    #     prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
+                    #     name=f"manipulated_object_{j}",
+                    #     position=[0, 0, 2.02],
+                    #     #scale=np.array(scale[j-1]),
+                    #     radius=0.0381,
+                    #     color=torch.tensor([1, 0, 0]))
+
+                self._sim_config.apply_articulation_settings(
+                    f"manipulated_object_{j}", get_prim_at_path(target.prim_path), # TABLE
+                    self._sim_config.parse_actor_config(f"manipulated_object_{j}"))
+       
+        return self.scale_size
+
+    def load_manipulated_objects(self, scale, num_object=1 , objects=['DyanmicCylinder', 'DynamicCuboid']):
         self.scale_size = torch.as_tensor(scale).to(self.device)
         #self.scale_size = torch.as_tensor(scale).repeat(self.num_envs,1).to(self.device)
 
@@ -69,21 +106,21 @@ class Object:
        
         return self.scale_size
 
-    def load_manipulated_object(self):
+    # def load_manipulated_object(self):
 
-        object_dir = self.current_directory + "/omniisaacgymenvs/assests/objects/shapenet_nomat/" + self._task_cfg[
-            'sim']["Object"]["category"]
-        object_list = os.listdir(object_dir)
+    #     object_dir = self.current_directory + "/omniisaacgymenvs/assests/objects/shapenet_nomat/" + self._task_cfg[
+    #         'sim']["Object"]["category"]
+    #     object_list = os.listdir(object_dir)
 
-        for i in range(self.num_envs):
-            object_name = object_list[i]  # np.random.choice(object_list)
+    #     for i in range(self.num_envs):
+    #         object_name = object_list[i]  # np.random.choice(object_list)
 
-            object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
-            self.load_object(usd_path=object_path, env_index=i, object_index=1)
-            self.object_prim_path.append(object_path)
+    #         object_path = object_dir + "/" + object_name + "/model_normalized_nomat.usd"
+    #         self.load_object(usd_path=object_path, env_index=i, object_index=1)
+    #         self.object_prim_path.append(object_path)
 
-            # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
-            # self.load_object(usd_path=object_path,env_index=i,object_index=2)
+    #         # object_path = object_dir + "/" + np.random.choice(object_list) + "/model_normalized_nomat.usd"
+    #         # self.load_object(usd_path=object_path,env_index=i,object_index=2)
 
     def load_table(self, position, orientation, scale, name="table"):
         table_translation = np.array(
