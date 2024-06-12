@@ -11,7 +11,7 @@ import trimesh
 from trimesh import transformations
 from cprint import *
 import time
-from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion, axis_angle_to_matrix
 from omni.isaac.debug_draw import _debug_draw
 from omni.isaac.core.utils.prims import get_prim_at_path
 import cv2
@@ -294,11 +294,8 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 
     # compute view ray
     start = cam_pos
-    # rd = wp.normalize(output)
     grid_vec = wp.vec3(1.0, sy, sz)
     dir = wp.quat_rotate(q2, grid_vec)
-    # rd = wp.normalize(wp.vec3(0., 0., -1.0))
-    # print(rd)
     t = float(0.0)
     bary_u = float(0.0)
     bary_v = float(0.0)
@@ -338,7 +335,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
 class Raycast:
 
     def __init__(self, width, height, object_prime_path, objects, _task_cfg, _cfg,
-                 num_envs, device, default_sensor_radius = None, sensor_mesh = None):
+                 num_envs, device, default_sensor_radius = None, sensor_mesh = None, sensor_norml = None):
         self.width = width  #1024
         self.height = height  #1024
         self.cam_pos = (0.0, 1.5, 2.5)
@@ -370,6 +367,7 @@ class Raycast:
         self.init_buffer([self.whole_mesh_vertices[0]], [self.mesh_faces[0]])
 
         self.sensor_mesh = sensor_mesh
+        self.sensor_norml = sensor_norml
 
     def init_mesh(self):
         from pxr import Usd, UsdGeom
@@ -530,9 +528,35 @@ class Raycast:
         wp.synchronize_device()
 
         return self.ray_dist, self.ray_dir, self.normal_vec,self.ray_faces
+    
+    def vectors_to_quaternion(self, v1, v2):
+        """
+        Convert a normal vector to a quaternion.
+
+        Parameters:
+        normal_vector (Tensor): The normal vector.
+
+        Returns:
+        Tensor: The quaternion.
+        """
+        # Compute the rotation axis
+        rotation_axis = torch.cross(v1, v2)
+        rotation_axis = rotation_axis / torch.norm(rotation_axis, dim=-1).unsqueeze(-1)
+
+        # Compute the cosine of the angle
+        cos_angle = torch.einsum('bi,bi->b', v1, v2) / (torch.norm(v1, dim=-1) * torch.norm(v2, dim=-1))
+
+        # Compute the angle
+        angle = torch.acos(cos_angle)
+
+        # Create the quaternion
+        quaternion = torch.cat((torch.cos(angle / 2).unsqueeze(-1), rotation_axis * torch.sin(angle / 2).unsqueeze(-1)), dim=-1)
+
+        return quaternion     
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_sizes, sensor_radius=None, sensor_mesh=None) -> None:
+                      cur_object_rot, scale_sizes, sensor_radius=None, 
+                      sensor_mesh=None, sensor_norml=None) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
             cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
@@ -555,6 +579,7 @@ class Raycast:
                 self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
         else:
             self.circle_test = sensor_mesh
+            self.sensor_norml = sensor_norml
 
         raycast_circle = self.circle_test  #tensor 2 x 2 
 
@@ -562,17 +587,38 @@ class Raycast:
         if sensor_mesh is not None:
             self.debug_draw.clear_lines()
             self.debug_draw.clear_points()
-            t = Transform3d().rotate(quaternion_to_matrix(gripper_rot)).translate(gripper_pose[:,0], gripper_pose[:,1], gripper_pose[:,2])
-            raycast_circle = t.to('cuda:0').transform_points(raycast_circle)
-            indices = torch.tensor([1, 3], device='cuda:0')
-            indices2 = torch.tensor([0, 2, 4, 5, 6, 7, 8, 9, 10, 11], device='cuda:0')
-            length = raycast_circle[:,2:].shape[0]*raycast_circle[:,2:].shape[1]
-            sensor_pose_used = raycast_circle.index_select(1, indices2).reshape(length,3)
-            self.debug_draw.draw_points(sensor_pose_used.tolist(), [(0, 1, 0, 1)]*length, [10]*length)
 
+            # Draw axis
+            # zero = torch.tensor([[0., 0., 0.],[0., 0., 0.],[0., 0., 0.]], device='cuda:0')
+            # axis = torch.tensor([[1., 0., 0.],[0., 1., 0.],[0., 0., 1.]], device='cuda:0')
+            # axis_colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1)]
+            # self.debug_draw.draw_lines(zero.tolist(), axis.tolist(), axis_colors, [10]*3)
+
+            normal = self.vectors_to_quaternion(raycast_circle.reshape(self._task_cfg['env']['numEnvs']*12,3), 
+                                                torch.tensor([1., 0., 0.], device='cuda:0').repeat(self._task_cfg['env']['numEnvs']*12,1)) 
+
+          
+            t = Transform3d().rotate(quaternion_to_matrix(quaternion_invert(gripper_rot))).translate(gripper_pose[:,0], gripper_pose[:,1], gripper_pose[:,2])
+            # sensor_norml = raycast_circle + sensor_norml
+            raycast_circle = t.to('cuda:0').transform_points(raycast_circle)
+            # sensor_norml = t.to('cuda:0').transform_points(sensor_norml)
+            
+            # Draw points
+            # indices2 = torch.tensor([0, 2, 4, 5, 6, 7, 8, 9, 10,11], device='cuda:0')
+            # length = raycast_circle[:,2:].shape[0]*raycast_circle[:,2:].shape[1]
+            # sensor_pose_used = raycast_circle.index_select(1, indices2).reshape(length,3)
+            # self.debug_draw.draw_points(sensor_pose_used.tolist(), [(0, 1, 0, 1)]*length, [10]*length)
+            
+            indices = torch.tensor([1, 3], device='cuda:0')
             length = raycast_circle[:,:2].shape[0]*raycast_circle[:,:2].shape[1]
             raycast_circle = raycast_circle.index_select(1, indices) # These are the vertices used from the sensor mesh
             self.debug_draw.draw_points(raycast_circle.reshape(length,3).tolist(), [(0, 0, 1, 1)]*length, [10]*length)
+
+            indices = indices.repeat(self._task_cfg['env']['numEnvs'])
+            _gripper_rot = gripper_rot.unsqueeze(1).repeat(1,self._task_cfg['sim']["URRobot"]['num_sensors'],1).reshape(self._task_cfg['env']['numEnvs']*self._task_cfg['sim']["URRobot"]['num_sensors'],4)
+            _normal = normal.index_select(0, indices)#.unsqueeze(1).repeat(self._task_cfg['sim']["URRobot"]['num_sensors'],1,1).reshape(self._task_cfg['env']['numEnvs'],4)
+            cam_dir = quaternion_multiply(_gripper_rot,quaternion_invert(_normal)).reshape(self._task_cfg['env']['numEnvs'],self._task_cfg['sim']["URRobot"]['num_sensors'],4)
+
 
         # for draw point
         if self._cfg["debug"]:
@@ -608,12 +654,7 @@ class Raycast:
         point_cloud = []
 
         self.face_tracker = []
-        # import pdb; pdb.set_trace()
-        # tensor([[[ 2.2463,  0.1032,  1.1253],
-        #  [ 2.1864,  0.1013,  1.2175]],
 
-        # [[-1.7289,  0.1041,  1.1662],
-        #  [-1.8384,  0.1003,  1.1766]]], device='cuda:0')
         for i, env in zip(
                 torch.arange(
                     self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
@@ -623,9 +664,9 @@ class Raycast:
 
             self.set_geom(wp.from_torch(transformed_vertices[env]),
                           mesh_index=0)
-            
+
             ray_t, ray_dir, normal, ray_face = self.render(raycast_circle[env][i],
-                                                 gripper_rot[env])
+                                                 cam_dir[env][i]) # gripper_rot[env])
 
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)

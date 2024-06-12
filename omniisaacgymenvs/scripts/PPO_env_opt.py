@@ -31,7 +31,7 @@ def parse_hydra_configs(cfg: DictConfig):
     # obs = env.reset()
 
     args = parse_args()
-    run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"Test{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 

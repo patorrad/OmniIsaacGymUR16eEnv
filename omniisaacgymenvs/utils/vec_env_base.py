@@ -196,7 +196,8 @@ class VecEnvBase(gym.Env):
         rewards = self._task.calculate_metrics()
         terminated = self._task.is_done()
         truncated = self._task.is_done() * 0
-        info = self._task.get_info()
+        # info = self._task.get_info()
+        info = {}
 
         return observations, rewards, terminated, truncated, info
 

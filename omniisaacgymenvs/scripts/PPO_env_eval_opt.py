@@ -5,7 +5,7 @@ from omegaconf import DictConfig
 from omniisaacgymenvs.utils.hydra_cfg.hydra_utils import *
 from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_dict
 
-@hydra.main(config_name="config", config_path="../cfg")
+@hydra.main(config_name="config_opt", config_path="../cfg")
 def parse_hydra_configs(cfg: DictConfig):
     env = VecEnvBase(headless=False)
 
@@ -19,8 +19,7 @@ def parse_hydra_configs(cfg: DictConfig):
     from stable_baselines3 import PPO
 
     # Run inference on the trained policy
-    # model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-12/18-02-16/results/512/TofSensor2/model/model_50.zip")
-    model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-06-02/00-41-23/results/62/TofSensor2/model/model_60.zip")
+    model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-06-01/21-52-38/results/61/TofSensor2/model/model_20.zip")
     env._world.reset()
     obs = env.reset()
     while env._simulation_app.is_running():

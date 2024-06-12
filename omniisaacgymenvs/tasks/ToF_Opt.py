@@ -13,6 +13,7 @@ from omniisaacgymenvs.utils.tools.rotation_conversions import *
 from omni.isaac.core.utils.torch.transformations import *
 from omni.isaac.core.utils.torch.rotations import *
 import omniisaacgymenvs.utils.tools.transform_utils as tf
+from omniisaacgymenvs.utils.plot_utils import plot_pointcloud
 
 from .raycast import Raycast
 from omniisaacgymenvs.utils.camera_renderer import Renderer
@@ -103,7 +104,8 @@ class TofOptTask(RLTask):
         self.t_inv = self.t.inverse()
         self.target_pose = torch.tensor([0.18432, 0.59626, 1.2  ]).repeat(self.num_envs, 1).to(self.device)
         
-        self.model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-20/15-32-49/results/520/TofSensor2/model/model_50.zip")
+        # self.model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-20/15-32-49/results/520/TofSensor2/model/model_50.zip")
+        self.model = PPO.load("/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-05-13/09-59-21/results/513/TofSensor2/model/model_200.zip")
         return
 
     def set_up_scene(self, scene) -> None:
@@ -138,22 +140,25 @@ class TofOptTask(RLTask):
         #[0.18432, 0.59626, 0.52]
         #[0.2286, 0.1524, 1.04] #0.8, 0.8, 1.04]  0.2032
         #Bin Back
+        self.back_dimensions = [10.2286, 0.1524, 5.04]
         object_loader.load_table(
+            # [0.21505, 0.67514, 0.635], #[0.21505, 0.67514, 0.635],
             [0.21505, 0.67514, 0.635],
             self._task_cfg['sim']["Table"]["quaternion"],
+            # self.back_dimensions, "back") #[0.2286, 0.005, 1.27], "back")
             [0.2286, 0.005, 1.27], "back")
         
         #Bin Left
         object_loader.load_table(
-            [0.10046, 0.59646, 0.635],
+            [0.10046, 0.29646, 0.635], #[0.10046, 0.59646, 0.635],
             self._task_cfg['sim']["Table"]["quaternion"],
-            [0.005, 0.1524, 1.27], "left")
+            [0.005, 0.01524, 1.27], "left") #[0.005, 0.1524, 1.27]
         
         #Bin Right
         object_loader.load_table(
-            [0.33005, 0.59646, 0.635],
+            [0.33005, 0.29646, 0.635], #[0.33005, 0.59646, 0.635],
             self._task_cfg['sim']["Table"]["quaternion"],
-            [0.005, 0.1524, 1.27], "right")
+            [0.005, 0.01524, 1.27], "right") #[0.005, 0.1524, 1.27]
         
         #Bin Top 
         object_loader.load_table(
@@ -225,8 +230,10 @@ class TofOptTask(RLTask):
         if self._cfg["raycast"]:
 
             self.sensor_meshes = join_meshes_as_batch([ico_sphere(level=0).to(self._device) for mesh in range(self._num_envs)])
-            self.sensor_meshes = self.sensor_meshes.verts_padded() / self._cfg["raycast_mesh_size"]
-
+            self.sensor_meshes_verts = self.sensor_meshes.verts_padded() / self._cfg["raycast_mesh_size"]
+            self.sensor_meshes_norml = self.sensor_meshes.verts_normals_padded()
+            
+            plot_pointcloud(self.sensor_meshes[0], "orig_mesh")
             self.raytracer = Raycast(
                 self._cfg["raycast_width"], self._cfg["raycast_height"], [
                     self._manipulated_object.prim_paths[0],
@@ -238,7 +245,7 @@ class TofOptTask(RLTask):
                     self._right.prim_paths[0],
                     self._top.prim_paths[0]
                 ], ['Cylinder', 'Cube', 'Cube', 'Cube','Cube', 'Cube', 'Cube'], self._task_cfg, self._cfg, self.num_envs, self._device,
-                sensor_mesh=self.sensor_meshes)
+                sensor_mesh=self.sensor_meshes_verts, sensor_norml=self.sensor_meshes_norml)
 
         if not self._task_cfg["sim"]["Design"]:
             self.controller = Controller(
@@ -259,35 +266,20 @@ class TofOptTask(RLTask):
         self._ee_local_pos, _ = self._end_effector.get_local_poses()
         self._target_pose = self._manipulated_object.get_local_poses()[0]
 
-    def get_info(self) -> dict:
+    # def get_info(self) -> dict:
+    #     pass
 
-        info = {
-            "robot_joints": self.robot_joints,
-            "tof_readings": self._step,
-        }
+    #     info = {
+    #         "robot_joints": self.robot_joints,
+    #         "tof_readings": self._step,
+    #     }
 
-        return info
+    #     return info
     
     def get_observations(self) -> dict:
 
         self.update_cache_state()
         
-        # self.obs_buf = torch.cat([self.robot_joints, self._target_pose],
-        #                              dim=1)
-        
-        # current_euler_angles_x = torch.atan2(
-        #     self._ee_local_pos[:, 1] - self._wrist2_local_pos[:, 1],
-        #     self._ee_local_pos[:, 0] - self._wrist2_local_pos[:, 0])
-
-        # self.angle_x_dev = torch.atan2(
-        #     self._ee_local_pos[:, 2] - self._wrist2_local_pos[:, 2],
-        #     torch.linalg.norm(self._ee_local_pos[:, :2] -
-        #                       self._wrist2_local_pos[:, :2],
-        #                       dim=1))
-
-        # self.angle_z_dev = (current_euler_angles_x -
-        #                     torch.pi / 2) - self.target_angle
-
         cur_position = self._ee_local_pos.clone()
         cur_position[:, 0] = -cur_position[:, 0]
         self.ee_object_dist = torch.linalg.norm(self.target_ee_position -
@@ -305,11 +297,16 @@ class TofOptTask(RLTask):
                 
                 cur_object_pose.append(pose)
                 cur_object_rot.append(rot)
-            
-            # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right
-            #manip1, manip2, base, back, left,right, top
-            other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
+        
+            # Bin
+            # other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
+            other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27], [0.005, 0.01524, 1.27], [0.005, 0.01524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
+            # Concatenate to mianipulated objects
             self.scale_sizes = torch.cat((self.scale_size, other_scale))
+
+            # Get new vertices
+            self.sensor_meshes_verts = self.sensor_meshes.verts_padded() / self._cfg["raycast_mesh_size"]
+            self.sensor_meshes_norml = self.sensor_meshes.verts_normals_padded()
 
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
@@ -317,29 +314,16 @@ class TofOptTask(RLTask):
                 cur_object_pose,
                 cur_object_rot,
                 self.scale_sizes,
-                sensor_mesh=self.sensor_meshes)
+                sensor_mesh=self.sensor_meshes_verts,
+                sensor_norml=self.sensor_meshes_norml)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
 
-
-        # if isinstance(self._num_observations, dict):
-        #     self.obs_buf = {}
-        #     self.obs_buf["state"] = self.robot_joints
-        #     self.obs_buf["image"] = self.raycast_reading * 255
-        #     return self.obs_buf
-
         if self._task_cfg['Training']["use_oracle"]:
             
             self.obs_buf = torch.cat([
-                # current_euler_angles_x[:, None], # 1
-                # self.target_angle[:, None], # 1
-                # self.angle_z_dev[:, None], # 1
-                # cur_position, # 3
-                # self.target_ee_position, # 3
-                # self.target_ee_position - cur_position, # 3
-                self.raycast_reading, # 128
-                # self._end_effector.get_local_poses()[0], # 3
+                self.raycast_reading,
                 self.robot_joints # 6
             ], dim=1)
 
@@ -365,14 +349,20 @@ class TofOptTask(RLTask):
 
     def pre_physics_step(self, actions) -> None:
 
-        self.actions = actions
+        # Deform mesh
+        # deform_verts = torch.full(self.sensor_meshes.verts_packed().shape, 0.0, device=self.device, requires_grad=True)
+        actions /= 100
+
+        self.sensor_meshes = self.sensor_meshes.offset_verts(actions.reshape(self.num_envs * self.sensor_meshes.num_verts_per_mesh()[0], 3)) # 3 is for x, y, z
         
         # Use model trained on control
         obs = torch.cat([
-                self.raycast_reading, # 128
+                # self.raycast_reading, # 128
                 self.robot_joints # 6
                 ], dim=1)
         actions, _states = self.model.predict(obs)
+        # actions.zero_()
+        # actions[:,3] += 0.01
         self._robots.set_joint_position_targets(actions[:, :6] + self._robots.get_joint_positions())
 
         self._step += 1
@@ -389,125 +379,19 @@ class TofOptTask(RLTask):
                 articulation_num_dofs=self._robots.num_dof)
         self.reset()
 
-    def calculate_angledev_reward(self) -> None:
-
-        index = torch.where(abs(self.angle_z_dev) < 1.0 / 180 * torch.pi)
-        self.angle_z_dev[index] = 0
-
-        dev_percentage = self.angle_z_dev / self.init_angle_z_dev
-
-        # exceed the target
-        negative_index = torch.where(dev_percentage < 0)[0]
-        if not negative_index.size()[0] == 0:
-            dev_percentage[negative_index] = abs(
-                dev_percentage[negative_index]) + 1
-
-        dev = torch.clamp(dev_percentage, 0, 1.8)
-
-        angle_reward = abs((1 - dev)**3) * 5
-
-        negative_index = torch.where(dev > 1)[0]
-
-        angle_reward[negative_index] = -abs((1 - dev[negative_index])**3) * 5
-        return angle_reward
-
-    def calculate_targetangledev_reward(self) -> None:
-
-        angle_reward = -abs(self.angle_x_dev) * 3
-
-        return angle_reward
-
-    def calculate_raytrace_reward(self) -> None:
-
-        dev_percentage = torch.sum(self.raytrace_cover_range / 0.50, dim=1)
-
-        positive_reward = torch.where(dev_percentage > 1)[0]
-        raytrace_range_reward = -(1 - dev_percentage) * 1
-
-        if torch.numel(positive_reward) != 0:
-            raytrace_range_reward[positive_reward] = (
-                dev_percentage[positive_reward] - 1) * 1
-
-        return raytrace_range_reward
-
-    def calculate_dist_reward(self) -> None:
-
-        dev_percentage = self.ee_object_dist / self.init_ee_object_dist
-
-        # exceed the target
-        negative_index = torch.where(dev_percentage < 0)[0]
-        if not negative_index.size()[0] == 0:
-            dev_percentage[negative_index] = abs(
-                dev_percentage[negative_index]) + 1
-
-        dev = torch.clamp(dev_percentage, -1, 1.8)
-
-        dist_reward = abs((1 - dev)**2) * 1
-
-        negative_index = torch.where(dev > 1)[0]
-
-        dist_reward[negative_index] = -abs((1 - dev[negative_index])**2) * 1
-
-        # dist_reward = self._end_effector.get_local_poses()[0] - self._manipulated_object.get_local_poses()[0]
-        
-        return dist_reward
-
-    def calculate_raytrace_dev_reward(self):
-        dev = torch.mean(self.raytrace_dev / 0.04, axis=1)
-
-        dev_reward = torch.clip(1 - dev, -0.5, 1)**3 * 5
-        return dev_reward
-
     def calculate_metrics(self) -> None:
 
-        # Distance to target reward
-        robot_pose = self.t.to('cuda:0').transform_points(self._end_effector.get_local_poses()[0])
-        dist = torch.norm(robot_pose - self.target_pose, dim=1)
+        # Reward from number of hits
+        self.rew_buf = torch.sum(torch.gt(self.raycast_reading, 0), dim=1).float() / 100
 
-        # self.rew_buf = -torch.where(rew <= 0.1, torch.tensor(-100.0), rew * 100)
-        self.rew_buf = -10 * (dist - 0.5)
-
-        # Angle of gripper reward
-        
-        end_effector_target = torch.tensor([ 0.6995, 0.1027, 0.1306, 0.6951]).repeat(self.num_envs, 1).to(self.device)
-        angle = self._end_effector.get_local_poses()[1]
-        # angle_dev = torch.abs(torch.mean(angle - end_effector_target, dim = 1))
-        angle_dev = torch.norm(angle - end_effector_target, dim=1)
-        self.rew_buf -= angle_dev * 5
-
-        # 2*acos(abs(parts(p*conj(q))))
-        # quaternion_multiply(end_effector_target, torch.conj(angle[1]))
-
-        # self.rew_buf = self.calculate_dist_reward()
-
-        # self.rew_buf += self.calculate_angledev_reward()
-        # self.rew_buf += self.calculate_targetangledev_reward()
-        # self.rew_buf += self.calculate_raytrace_reward()
-        # self.rew_buf += self.calculate_raytrace_dev_reward()
-        # self.rew_buf /= 1.2
-
-        # controller_penalty = (self.cartesian_error**2) * -1e3
-        # self.rew_buf += controller_penalty
-
-        # action_penalty = torch.sum(
-        #     torch.clip(self._robots.get_joint_velocities(), -1, 1)**2, dim=1
-        # ) * -1 + torch.sum(torch.clip(self.actions, -1, 1)**2, dim=1) * -0.5
-
-        # self.rew_buf += action_penalty / 10
-
-        if self._step % 100 == 0:
-            print("Reward: ", dist)
-            # print("Angle: ", angle_dev)
-            # print("Action Penalty: ", action_penalty)
-            print("Total Reward: ", self.rew_buf)
-
+        # import pdb; pdb.set_trace()
+        cprint.ok(self.rew_buf)
         return self.rew_buf
 
     def is_done(self) -> None:
 
-        # return torch.full((self.num_envs,), 0, dtype=torch.int)
-
-        if (self._step + 1) % 1001 == 0: # Was 201 Episode length or horizon *1001*
+        if (self._step + 1) % 401 == 0: # Was 201 Episode length or horizon *1001*
+            plot_pointcloud(self.sensor_meshes[0], "final_mesh")
             if self._task_cfg["sim"]["Dataset"]:
                 self.dataset.to_pickle('dataset.pkl')
             self.episode += 1
@@ -521,8 +405,6 @@ class TofOptTask(RLTask):
 
         self._robots.set_joint_positions(
             torch.tensor([1.3648, -0.8152, -1.8983, -0.4315, -1.3999,  1.5710],
-            # torch.tensor([0.4173, -0.9501, -1.9673, -0.2257, -0.4174,  1.5721],
-            # torch.tensor([1.57, -1.57, 1.57 / 2 * 2, -1.57 * 2, -1.57, 0],
                          dtype=torch.float).repeat(self.num_envs,
                                                    1).clone().detach())
 
@@ -547,35 +429,6 @@ class TofOptTask(RLTask):
         base_position[:, 0] = self.init_ee_link_position[:, 0]
         self._base.set_world_poses(base_position)
 
-        # #init back position
-        # self._back.set_world_poses(self.back_positions, self.back_orientations)
-
-        # # init left position
-        # self._left.set_world_poses(self.left_positions, self.left_orientations)
-
-        # # init right position
-        # self._right.set_world_poses(self.right_positions, self.right_orientations)
-
-        # # init top position
-        # self._top.set_world_poses(self.top_positions, self.top_orientations)
-        
-        # init table position
-        # table_position, _ = self._table.get_world_poses()
-        # table_position[:, 0] = self.init_ee_link_position[:, 0]
-        # self._table.set_world_poses(table_position)
-
-        # init bin_bottom position
-        # bin_bottom_position, _ = self._bin_bottom.get_world_poses()
-        # bin_bottom_position[:, 0] = self.init_ee_link_position[:, 0]
-        # bin_bottom_position[:, 2] = 1
-        # self._bin_bottom.set_world_poses(bin_bottom_position)
-
-        # # init bin_top position
-        # bin_top_position, _ = self._bin_top.get_world_poses()
-        # bin_top_position[:, 0] = self.init_ee_link_position[:, 0]
-        # bin_top_position[:, 2] = 1
-        # self._bin_top.set_world_poses(bin_top_position)
-
         # init position
         object_target_position = target_obj_position.clone()
         object_target_position[:, 1] += 0.4 
@@ -588,31 +441,6 @@ class TofOptTask(RLTask):
 
         object_target_position[:, 1] -= 0.2
         object_target_position[:, 0] -= 0.05
-        # self._manipulated_object_2.set_world_poses(object_target_position,
-        #                                            object_target_quaternion)
-
-        if self._task_cfg["sim"]["Dataset"]:
-            # real life bin bounds for env 1
-            bound1 = torch.tensor([-1.8 - 0.12, 0.55, 1.0668], device='cuda:0') # middle of table: -1.8
-            bound2 = torch.tensor([-1.8 + 0.12, 0.55 + 0.13 , 1.0668], device='cuda:0') #0.1524
- 
-            # real life bin bounds for env 0
-            bound3 = torch.tensor([2.2 - 0.10, 0.55, 1.0668], device='cuda:0') # middle of table: 2.2 #0.1143
-            bound4 = torch.tensor([2.2 + 0.10, 0.55 + 0.13, 1.0668], device='cuda:0')
-
-
-            object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
-            object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
-
-            # self._manipulated_object_2.set_local_poses(object_target_position,
-            #                                             object_target_quaternion)
-            
-            object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
-            object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
-            
-            self._manipulated_object.set_world_poses(object_target_position,
-                                                 object_target_quaternion)
-
 
         for i in range(2): 
             self._env._world.step(render=False)
@@ -625,3 +453,9 @@ class TofOptTask(RLTask):
         self.init_angle_z_dev = -self.target_angle.clone()
         self.get_target_pose()
         self._step = 0
+
+        # Reset mesh
+        self.sensor_meshes = join_meshes_as_batch([ico_sphere(level=0).to(self._device) for mesh in range(self._num_envs)])
+        self.sensor_meshes_verts = self.sensor_meshes.verts_padded() / self._cfg["raycast_mesh_size"]
+        self.sensor_meshes_norml = self.sensor_meshes.verts_normals_padded()
+
