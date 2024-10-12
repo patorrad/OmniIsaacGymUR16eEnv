@@ -47,7 +47,7 @@ enable_livestream: False
 # timeout for MT script
 mt_timeout: 90
 
-wandb_activate: True
+wandb_activate: False
 wandb_group: ''
 wandb_name:  patorrad #${train.params.config.name}
 wandb_entity: ''

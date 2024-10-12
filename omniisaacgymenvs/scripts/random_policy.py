@@ -38,7 +38,7 @@ from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_d
 from omniisaacgymenvs.utils.task_util import initialize_task
 
 
-@hydra.main(config_name="config_opt", config_path="../cfg") #TODO version_base=None, 
+@hydra.main(config_name="config", config_path="../cfg") #TODO version_base=None, 
 def parse_hydra_configs(cfg: DictConfig):
 
     cfg_dict = omegaconf_to_dict(cfg)

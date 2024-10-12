@@ -124,10 +124,11 @@ class TofSensorTask(RLTask):
         robot = ROBOT(self.num_envs, self.default_zero_env_path,
                       self._robot_positions, self._robot_rotations,
                       self._robot_dof_target, self._sim_config,
-                      self._task_cfg['sim']["URRobot"]['robot_path'])
+                      self._task_cfg['sim']["URRobot"]['robot_path'],
+                      self._task_cfg['sim']["URRobot"]['gripper_path'])
 
         self.robot = robot.load_UR()
-        self.grippers = robot.add_gripper()
+        self.grippers = robot.add_custom_gripper()
 
         # load object
         object_loader = Object(self._sim_config, self.num_envs, self.device,

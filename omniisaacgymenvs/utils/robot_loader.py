@@ -11,7 +11,7 @@ class ROBOT:
 
     def __init__(self, num_envs, default_zero_env_path, _robot_positions,
                  _robot_rotations, _robot_dof_target, _sim_config,
-                 usd_path) -> None:
+                 usd_path, gripper_usd_path) -> None:
 
         self.num_envs = num_envs
 
@@ -23,6 +23,7 @@ class ROBOT:
         self._sim_config = _sim_config
 
         self.usd_path = usd_path
+        self.gripper_usd_path = gripper_usd_path
 
     def load_UR(self):
 
@@ -31,7 +32,7 @@ class ROBOT:
                           position=self._robot_positions,
                           orientation=self._robot_rotations,
                           attach_gripper=False,
-                          usd_path=self.usd_path
+                          usd_path=self.usd_path,
                           )  #self._task_cfg['sim']["URRobot"]['robot_path']
 
         self.robot.set_joint_positions(self._robot_dof_target)
@@ -45,9 +46,31 @@ class ROBOT:
 
     def add_gripper(self):
         assets_root_path = get_assets_root_path()
-
+        
         gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
-        # omniisaacgymenvs/assests/robots/ur16e/custom_gripper.usd
+
+        self.grippers = []
+
+        for i in range(self.num_envs):
+
+            add_reference_to_stage(
+                usd_path=gripper_usd,
+                prim_path=f"/World/envs/env_{i}/robot/ee_link")
+
+            surface_gripper = SurfaceGripper(
+                end_effector_prim_path=f"/World/envs/env_{i}/robot/ee_link",
+                translate=0.1611,
+                direction="y")
+            surface_gripper.set_force_limit(value=8.0e1)
+            surface_gripper.set_torque_limit(value=10.0e0)
+            # surface_gripper.initialize(physics_sim_view=None, articulation_num_dofs=self.robot.num_dof)
+            self.grippers.append(surface_gripper)
+
+        return self.grippers
+    
+    def add_custom_gripper(self):
+        
+        gripper_usd = self.gripper_usd_path
 
         self.grippers = []
 
