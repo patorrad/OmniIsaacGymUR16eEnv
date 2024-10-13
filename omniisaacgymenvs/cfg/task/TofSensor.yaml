@@ -83,7 +83,7 @@ sim:
   URRobot:
     # -1 to use default values
     robot_path: "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/ur16e.usd" 
-    gripper_path: "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/custom_gripper.usd"
+    gripper_path: "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/test2.usd"
     override_usd_defaults: False
     enable_self_collisions: False
     enable_gyroscopic_forces: True

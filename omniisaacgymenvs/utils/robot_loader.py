@@ -48,6 +48,7 @@ class ROBOT:
         assets_root_path = get_assets_root_path()
         
         gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
+        # gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/test2.usd"
 
         self.grippers = []
 
