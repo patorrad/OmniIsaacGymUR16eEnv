@@ -1,4 +1,5 @@
 import torch
+from cprint import *
 
 
 def recover_rule_based_action(num_envs, device, _end_effector, target_position,
@@ -13,7 +14,7 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
 
     delta_pose[:, 0] = target_position[:, 0] - cur_pos[:, 0]
     delta_pose[:, 1] = target_position[:, 1] - cur_pos[:, 1]
-
+    cprint.ok("angle_dev: ", angle_dev, "delta_pose: ", delta_pose)    
     satified_index = torch.where(abs(angle_dev) < 0.02)[0]
 
     if torch.numel(satified_index) != 0:

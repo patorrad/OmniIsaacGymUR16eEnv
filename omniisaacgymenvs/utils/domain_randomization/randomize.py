@@ -763,3 +763,6 @@ class Randomizer:
         else:
             print(f"The specified {operation} operation type is not supported.")
         set_densities(densities)
+
+    # def step_randomization(self):
+    #     omni.replicator.isaac.physics_view.step_randomization([0,1])

@@ -122,7 +122,8 @@ class UR10(Robot):
                 if assets_root_path is None:
                     carb.log_error("Could not find Isaac Sim assets folder")
                     return
-                gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
+                # gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/short_gripper.usd"
+                gripper_usd = "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/test3.usd"
                
                 add_reference_to_stage(usd_path=gripper_usd, prim_path=self._end_effector_prim_path)
                 self._gripper = SurfaceGripper(

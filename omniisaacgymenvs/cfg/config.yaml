@@ -1,4 +1,5 @@
 
+# working_dir: ${env:OMNIISAACGYMENVS_PATH} Would this work?
 # Task name - used to pick the class to load
 task_name: ${task.name}
 # experiment name. defaults to name of training config
@@ -68,18 +69,10 @@ defaults:
 
 
 # Debug
-raycast: True
+raycast: False
 debug: True 
 debug_with_trimesh: False 
 raycast_width: 8
 raycast_height: 8
 
-
-# depth renderer
-
-depth_renderer: False
-depth_debug: True 
-depth_with_trimesh: False 
-depth_width: 256
-depth_height: 256
 

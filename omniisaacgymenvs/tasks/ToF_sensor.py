@@ -5,8 +5,10 @@ from omni.isaac.core.utils.extensions import enable_extension
 enable_extension("omni.isaac.debug_draw")
 enable_extension("omni.isaac.manipulators")
 enable_extension("omni.isaac.motion_generation")
+enable_extension("omni.replicator.isaac")
 
 # import env setting
+from omniisaacgymenvs import envs
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 
 from omniisaacgymenvs.utils.tools.rotation_conversions import *
@@ -31,6 +33,8 @@ from omni.isaac.core.objects import cuboid
 
 import pandas as pd
 
+from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
+
 
 class TofSensorTask(RLTask):
 
@@ -41,6 +45,7 @@ class TofSensorTask(RLTask):
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
         self._device = self._cfg["rl_device"]
+        
 
         # env info
         self._num_envs = self._task_cfg["env"]["numEnvs"]
@@ -108,6 +113,9 @@ class TofSensorTask(RLTask):
             }
             self.dataset = pd.DataFrame(data)
         
+        self.randomization_params = self._task_cfg["domain_randomization"]["randomization_params"]
+        self.randomization_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+
         return
 
     def set_up_scene(self, scene) -> None:
@@ -119,10 +127,12 @@ class TofSensorTask(RLTask):
         robot = ROBOT(self.num_envs, self.default_zero_env_path,
                       self._robot_positions, self._robot_rotations,
                       self._robot_dof_target, self._sim_config,
-                      self._task_cfg['sim']["URRobot"]['robot_path'])
+                      self._task_cfg['sim']["URRobot"]['robot_path'],
+                      self._task_cfg['sim']["URRobot"]['num_sensors'])
+        
 
         self.robot = robot.load_UR()
-        self.grippers = robot.add_gripper()
+        # self.grippers = robot.add_gripper()
 
         # load object
         object_loader = Object(self._sim_config, self.num_envs, self.device,
@@ -174,7 +184,7 @@ class TofSensorTask(RLTask):
 
         super().set_up_scene(scene)
 
-        self._robots, self._end_effector, self.wrist_2_link= robot.add_scene(
+        self._robots, self._end_effector, self.wrist_2_link, self.sensor_1, self.sensor_2, self.sensor_3, self.sensor_0  = robot.add_scene(
             scene)
 
         self.manipulated_objects = []
@@ -247,15 +257,6 @@ class TofSensorTask(RLTask):
                     self._top.prim_paths[0],
                 ], ['Cylinder', 'Cube', 'Cube', 'Cube','Cube', 'Cube', 'Cube'], self._task_cfg, self._cfg, self.num_envs, self._device,
                 self.sensor_radius)
-        if self._cfg["depth_renderer"]:
-
-            self.sensor_radius = torch.as_tensor(
-                self._task_cfg['sim']["URRobot"]['sensor_radius']).repeat(
-                    self.num_envs, 1).to(self._device) * 0.0
-            self.depth_renderer = Renderer(
-                self._cfg["depth_width"], self._cfg["depth_height"],
-                self._manipulated_object.prim_paths[0], self._task_cfg,
-                self._cfg, self.num_envs, self._device, self.sensor_radius)
 
         self.controller = Controller(
             self.robot,
@@ -267,6 +268,12 @@ class TofSensorTask(RLTask):
             self.num_envs,
             control_type=self._task_cfg["sim"]["Control"],
             datagen=self._task_cfg["sim"]["Dataset"])
+        
+        if self._dr_randomizer.randomize:
+            self._dr_randomizer.apply_on_startup_domain_randomization(self)
+
+         # Viewer location
+        self.set_initial_camera_params(camera_position=self._task_cfg["viewport"]["camera_position"])
 
     def update_cache_state(self):
 
@@ -313,7 +320,8 @@ class TofSensorTask(RLTask):
             #manip1, manip2, base, back, left,right, top
             other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
             self.scale_sizes = torch.cat((self.scale_size, other_scale))
-       
+
+            # import pdb; pdb.set_trace()
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
@@ -339,18 +347,6 @@ class TofSensorTask(RLTask):
                 self.target_ee_position - cur_position, self.robot_joints
             ],
                                      dim=1)
-
-        if self._cfg["depth_renderer"]:
-            gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-
-            cur_object_pose, cur_object_rot = self._manipulated_object.get_world_poses(
-            )
-            self.depth_renderer.raytrace_step(gripper_pose,
-                                              gripper_rot,
-                                              cur_object_pose,
-                                              cur_object_rot,
-                                              self.scale_size,
-                                              sensor_radius=self.sensor_radius)
 
         return self.obs_buf
 
@@ -388,7 +384,7 @@ class TofSensorTask(RLTask):
             elif self._step >= 1:
                 target_ee_pos = self.controller.forward(actions[:, :6])
         elif self._task_cfg["sim"]["Dataset"]:
-            actions = torch.zeros_like(actions)
+            # actions = torch.zeros_like(actions)
 
             # Follow target
             # pose_test, rot_test = self.target.get_local_pose()
@@ -504,12 +500,20 @@ class TofSensorTask(RLTask):
                 self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
 
         else:
+            # from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
+            
+            # Check object velocity
+            object_vel = self._manipulated_object_2.get_linear_velocities().norm(dim=1)
+            indices = torch.nonzero(object_vel < 0.1).flatten()
 
-            from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
-
+            self.target_ee_position, self.target_ee_rotation = self._manipulated_object_2.get_local_poses()
+            # import pdb; pdb.set_trace()
+            self.target_ee_position = self.target_ee_position - torch.tensor([[0.0, 0.3, 0.0]]*self._num_envs, device='cuda:0')
+            # self.angle_z_dev = torch.zeros((self.num_envs, 1)).to(self._device)
             target_ee_pos = self.controller.forward(actions[:, :6],
                                                     self.target_ee_position,
-                                                    self.angle_z_dev)
+                                                    angle_z_dev=self.angle_z_dev,
+                                                    envs=indices)
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
@@ -520,10 +524,12 @@ class TofSensorTask(RLTask):
         self.robot.initialize()
         self.robot.disable_gravity()
 
-        for i in range(self.num_envs):
-            self.grippers[i].initialize(
-                articulation_num_dofs=self._robots.num_dof)
+        # for i in range(self.num_envs):
+        #     self.grippers[i].initialize(
+        #         articulation_num_dofs=self._robots.num_dof)
         self.reset()
+
+        
 
     def calculate_angledev_reward(self) -> None:
 
@@ -617,11 +623,11 @@ class TofSensorTask(RLTask):
 
         # return torch.full((self.num_envs,), 0, dtype=torch.int)
 
-        if (self._step + 1) % 60 == 0: # Was 201 Episode length or horizon *1001*
+        if (self._step + 1) % 100 == 0: # Was 201 Episode length or horizon *1001*
 
             #SAVE DATA TO DISK
-            #torch.save(self.episode_data, 'dataset.pt')
-            self.dataset.to_pickle('dataset.pkl')
+            if self._task_cfg["sim"]["Dataset"]:
+                self.dataset.to_pickle('dataset.pkl')
 
             self.episode += 1
             self._step = 0
@@ -634,9 +640,7 @@ class TofSensorTask(RLTask):
     def reset(self):
 
         self._robots.set_joint_positions(
-            torch.tensor([1.3648, -0.8152, -1.8983, -0.4315, -1.3999,  1.5710],
-            # torch.tensor([0.4173, -0.9501, -1.9673, -0.2257, -0.4174,  1.5721],
-            # torch.tensor([1.57, -1.57, 1.57 / 2 * 2, -1.57 * 2, -1.57, 0],
+            torch.tensor([1.3648, -0.8152, -1.8983, -0.4315, -1.3999,  1.5710, 0, 0, 0, 0],
                          dtype=torch.float).repeat(self.num_envs,
                                                    1).clone().detach())
 
@@ -656,73 +660,59 @@ class TofSensorTask(RLTask):
         object_target_quaternion = tf.axis_angle_to_quaternion(
             self.rand_orientation)
 
-        # init base position
-        base_position, _ = self._base.get_world_poses()
-        base_position[:, 0] = self.init_ee_link_position[:, 0]
-        self._base.set_world_poses(base_position)
-
-        # #init back position
-        # self._back.set_world_poses(self.back_positions, self.back_orientations)
-
-        # # init left position
-        # self._left.set_world_poses(self.left_positions, self.left_orientations)
-
-        # # init right position
-        # self._right.set_world_poses(self.right_positions, self.right_orientations)
-
-        # # init top position
-        # self._top.set_world_poses(self.top_positions, self.top_orientations)
-
-        #init pod position 
-        # pod_position, _ = self._pod.get_world_poses()
-        # pod_position[:, 0] = self.init_ee_link_position[:, 0]
-        # self._pod.set_world_poses(self.pod_positions[0])#pod_position
-
-        # init position
-        object_target_position = target_obj_position.clone()
-        
-        object_target_position[:, 1] += 0.4 
-        random_x = torch.rand(self.num_envs).to(self.device) * 0.0
-        object_target_position[:, 0] -= random_x
-        object_target_position[:, 1] += 0.2
-        object_target_position[:, 0] += 0.05
-        self._manipulated_object.set_world_poses(object_target_position,
-                                                 object_target_quaternion)
-
-        object_target_position[:, 1] -= 0.2
-        object_target_position[:, 0] -= 0.05
-        self._manipulated_object_2.set_world_poses(object_target_position,
-                                                   object_target_quaternion)
-
-        if self._task_cfg["sim"]["Dataset"]:
-            # real life bin bounds for env 1
-            #1.1850
-            bound1 = torch.tensor([-1.8 - 0.12, 0.55, 1.0668], device='cuda:0') # middle of table: -1.8
-            bound2 = torch.tensor([-1.8 + 0.12, 0.55 + 0.13 , 1.0668], device='cuda:0') #0.1524
+        # if self._task_cfg["sim"]["Dataset"]:
+        #     # real life bin bounds for env 1
+        #     #1.1850
+        #     bound1 = torch.tensor([-1.8 - 0.12, 0.55, 1.0668], device='cuda:0') # middle of table: -1.8
+        #     bound2 = torch.tensor([-1.8 + 0.12, 0.55 + 0.13 , 1.0668], device='cuda:0') #0.1524
  
-            # real life bin bounds for env 0
-            bound3 = torch.tensor([2.2 - 0.10, 0.55, 1.0668], device='cuda:0') # middle of table: 2.2 #0.1143
-            bound4 = torch.tensor([2.2 + 0.10, 0.55 + 0.13, 1.0668], device='cuda:0')
+        #     # real life bin bounds for env 0
+        #     bound3 = torch.tensor([2.2 - 0.10, 0.55, 1.0668], device='cuda:0') # middle of table: 2.2 #0.1143
+        #     bound4 = torch.tensor([2.2 + 0.10, 0.55 + 0.13, 1.0668], device='cuda:0')
 
 
-            object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
-            object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
+        #     object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
+        #     object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
 
-            self._manipulated_object_2.set_local_poses(object_target_position,
-                                                        object_target_quaternion)
+        #     self._manipulated_object_2.set_local_poses(object_target_position,
+        #                                                 object_target_quaternion)
             
-            object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
-            object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
+        #     object_target_position[0] = (bound4 - bound3) * torch.rand(3, device='cuda:0') + bound3
+        #     object_target_position[1] = (bound2 - bound1) * torch.rand(3, device='cuda:0') + bound1
             
-            self._manipulated_object.set_world_poses(object_target_position,
-                                                 object_target_quaternion)
+        #     self._manipulated_object.set_world_poses(object_target_position,
+        #                                          object_target_quaternion)
 
+        # Randomize the manipulated object position
+        if self._dr_randomizer.randomize:
+            self._dr_randomizer.set_up_domain_randomization(self)
+            self._dr_randomizer.randomize = False
+
+        if not self._dr_randomizer.randomize:
+            base_poses, base_rot = self._base.get_world_poses()
+            for i in range(self.num_envs):
+                distribution = [(base_poses[i] + torch.tensor([-.08,0,.65], device="cuda:0")).tolist(), (base_poses[i] + torch.tensor([.1,0,.65], device="cuda:0")).tolist()]
+                self._dr_randomizer.set_dr_distribution_parameters(
+                    distribution,
+                    "rigid_prim_views",
+                    "manipulated_object_view",
+                    "position",
+                    "on_reset")
+                self._dr_randomizer.set_dr_distribution_parameters(
+                    distribution,
+                    "rigid_prim_views",
+                    "manipulated_object_view_2",
+                    "position",
+                    "on_reset")
+                
+
+                self._dr_randomizer.dr.physics_view.step_randomization(torch.tensor([i]))
 
         for i in range(2): 
             self._env._world.step(render=False)
 
         self.init_ee_dev_local_pos, _ = self._end_effector.get_local_poses()
-        self.init_ee_dev_local_pos[:, 0] += random_x
+        # self.init_ee_dev_local_pos[:, 0] += random_x
 
         # reset goal orientation
         self.target_angle = -self.rand_orientation[:, 2].clone()

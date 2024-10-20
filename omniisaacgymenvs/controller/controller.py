@@ -5,7 +5,7 @@ from omni.isaac.core.utils.types import ArticulationActions
 from omniisaacgymenvs.controller.curobo import MotionGeneration
 
 from cprint import *
-
+import torch
 
 class Controller:
 
@@ -42,6 +42,7 @@ class Controller:
         target_ee_position=None,
         target_ee_orientation=None,
         angle_z_dev=None,
+        envs=[], # What environments are ready to be controlled once object settle
     ):
         actions = actions.to(self._device)
         actions[:, [2, 3, 4]] = 0
@@ -54,9 +55,14 @@ class Controller:
         if self.control_type == "diffik":
 
             current_dof = self.isaac_sim_robot.get_joint_positions()
-            targets_joint = current_dof + delta_dof_pos[:, :6]
+            targets_joint = current_dof[:, :6] + delta_dof_pos[:, :6]
+            # import pdb; pdb.set_trace()
+            import torch
+            zeros = torch.zeros((2,4), device="cuda:0")
+            targets_joint = torch.cat((targets_joint, zeros), dim=1)
 
-            targets_joint[:, -1] = 0
+
+            # targets_joint[:, -1] = 0
 
             self.isaac_sim_robot.set_joint_position_targets(targets_joint)
 
@@ -101,16 +107,23 @@ class Controller:
 
         else:
             import torch
+
+            angle_z_dev = torch.zeros((self.num_envs, 1)).to(self._device)
             delta_dof_pos, delta_pose = recover_rule_based_action(
                 self.num_envs, self._device, self._end_effector,
                 target_ee_position, angle_z_dev, self.isaac_sim_robot)
             current_dof = self.isaac_sim_robot.get_joint_positions()
-            targets_dof = torch.zeros((self.num_envs, 6)).to(self._device)
-            targets_dof = current_dof + delta_dof_pos[:,:6]
             
-            self.isaac_sim_robot.set_joint_position_targets(targets_dof)
+            targets_dof = torch.zeros((self.num_envs, 10)).to(self._device)
+            targets_dof[:,:6] = current_dof[:,:6] + delta_dof_pos[:,:6]
 
-            for i in range(1):
-                self._env._world.step(render=False)
+            # Gripper Control
+            targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
+
+            # cprint.ok("targets_dof: ", targets_dof)
+            self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
+
+            # for i in range(1):
+            #     self._env._world.step(render=False)
 
         return target_ee_pos
