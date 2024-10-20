@@ -58,6 +58,7 @@ def parse_hydra_configs(cfg: DictConfig):
         enable_viewport=enable_viewport,
         experience=experience
     )
+    
     # sets seed. if seed is -1 will pick a random one
     from omni.isaac.core.utils.torch.maths import set_seed
 
