@@ -7,15 +7,19 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
 
     delta_pose = torch.zeros((num_envs, 6)).to(device)
 
-    delta_pose[:, 5] = torch.as_tensor(torch.pi / 200)
-
+    # delta_pose[:, 5] = torch.as_tensor(torch.pi / 200) # Entong's way to align gripper with object in rule based control
+    
     cur_pos, _ = _end_effector.get_local_poses()
     cur_pos[:, 0] = -cur_pos[:, 0]
 
     delta_pose[:, 0] = target_position[:, 0] - cur_pos[:, 0]
     delta_pose[:, 1] = target_position[:, 1] - cur_pos[:, 1]
-    cprint.ok("angle_dev: ", angle_dev, "delta_pose: ", delta_pose)    
-    satified_index = torch.where(abs(angle_dev) < 0.02)[0]
+    # delta_pose[:, 2] = target_position[:, 2] - cur_pos[:, 2]
+    # import pdb; pdb.set_trace()
+    delta_pose[:, 5] = angle_dev.squeeze()
+    # print("delta_pose", delta_pose)
+   
+    satified_index = torch.where(abs(angle_dev) < 0.01)[0]
 
     if torch.numel(satified_index) != 0:
         delta_pose[satified_index, 5] = 0
@@ -23,7 +27,10 @@ def recover_rule_based_action(num_envs, device, _end_effector, target_position,
     jacobians = _robots.get_jacobians(clone=False)
     delta_dof_pos = diffik(jacobian_end_effector=jacobians[:, 8, :, :],
                        delta_pose=delta_pose)
-
+    
+    # delta_pose[:, 2] = target_position[:, 2] - cur_pos[:, 2]
+    # import pdb; pdb.set_trace()
+    # print("delta_pose", delta_pose)
     return delta_dof_pos / 2, delta_pose
 
 

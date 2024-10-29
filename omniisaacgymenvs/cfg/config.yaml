@@ -69,7 +69,7 @@ defaults:
 
 
 # Debug
-raycast: False
+raycast: True
 debug: True 
 debug_with_trimesh: False 
 raycast_width: 8

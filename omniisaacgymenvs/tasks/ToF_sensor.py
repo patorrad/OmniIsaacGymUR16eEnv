@@ -88,6 +88,10 @@ class TofSensorTask(RLTask):
 
         self.robot_joints_buffer = []
 
+        # Raycasting variables
+        self.object_tracker = np.array([])
+        self.raycast_reading = np.array([]) 
+
         self.target = cuboid.VisualCuboid(
             "/World/envs/env_0/target",
             position=np.array([0., 0., 0.]),
@@ -129,7 +133,6 @@ class TofSensorTask(RLTask):
                       self._robot_dof_target, self._sim_config,
                       self._task_cfg['sim']["URRobot"]['robot_path'],
                       self._task_cfg['sim']["URRobot"]['num_sensors'])
-        
 
         self.robot = robot.load_UR()
         # self.grippers = robot.add_gripper()
@@ -184,8 +187,7 @@ class TofSensorTask(RLTask):
 
         super().set_up_scene(scene)
 
-        self._robots, self._end_effector, self.wrist_2_link, self.sensor_1, self.sensor_2, self.sensor_3, self.sensor_0  = robot.add_scene(
-            scene)
+        self._robots, self._end_effector, self.wrist_2_link, self.sensor_0, self.sensor_1, self.sensor_2, self.sensor_3, self.finger_0  = robot.add_scene(scene)
 
         self.manipulated_objects = []
         self._manipulated_object = object_loader.add_scene(
@@ -297,7 +299,7 @@ class TofSensorTask(RLTask):
 
         self.angle_z_dev = (current_euler_angles_x -
                             torch.pi / 2) - self.target_angle
-
+ 
         cur_position = self._ee_local_pos.clone()
         cur_position[:, 0] = -cur_position[:, 0]
         self.ee_object_dist = torch.linalg.norm(self.target_ee_position -
@@ -320,15 +322,18 @@ class TofSensorTask(RLTask):
             #manip1, manip2, base, back, left,right, top
             other_scale = torch.tensor([[0.2286, 0.1524, 1.0668], [0.2286, 0.005, 1.27] , [0.005, 0.1524, 1.27], [0.005, 0.1524, 1.27], [0.2286, 0.005, 0.1524]], device = 'cuda')
             self.scale_sizes = torch.cat((self.scale_size, other_scale))
-
-            # import pdb; pdb.set_trace()
+            
+            # Retrieve sensor poses
+            sensor_poses = [self.sensor_0.get_world_poses()[0], self.sensor_1.get_world_poses()[0], self.sensor_2.get_world_poses()[0], self.sensor_3.get_world_poses()[0]]
+            
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
                 cur_object_pose,
                 cur_object_rot,
                 self.scale_sizes,
-                sensor_radius=self.sensor_radius)
+                sensor_radius=self.sensor_radius,
+                sensor_poses=sensor_poses)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -348,6 +353,7 @@ class TofSensorTask(RLTask):
             ],
                                      dim=1)
 
+        print(f"Force", self.finger_0.get_net_contact_forces(clone=False))
         return self.obs_buf
 
     def get_target_pose(self):
@@ -502,18 +508,22 @@ class TofSensorTask(RLTask):
         else:
             # from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
             
-            # Check object velocity
+            # Check object velocity to start robot control
             object_vel = self._manipulated_object_2.get_linear_velocities().norm(dim=1)
             indices = torch.nonzero(object_vel < 0.1).flatten()
 
             self.target_ee_position, self.target_ee_rotation = self._manipulated_object_2.get_local_poses()
-            # import pdb; pdb.set_trace()
-            self.target_ee_position = self.target_ee_position - torch.tensor([[0.0, 0.3, 0.0]]*self._num_envs, device='cuda:0')
-            # self.angle_z_dev = torch.zeros((self.num_envs, 1)).to(self._device)
+            
+            self.target_ee_position = self.target_ee_position - torch.tensor([[0.0, 0.3, 0.2]]*self._num_envs, device='cuda:0')
+            self.target.set_local_pose(self.target_ee_position[0].cpu(), self.target_ee_rotation[0].cpu())
+            
+
             target_ee_pos = self.controller.forward(actions[:, :6],
                                                     self.target_ee_position,
                                                     angle_z_dev=self.angle_z_dev,
-                                                    envs=indices)
+                                                    envs=indices,
+                                                    rays=self.object_tracker, # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right 
+                                                    ray_readings=self.raycast_reading)
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
@@ -655,10 +665,11 @@ class TofSensorTask(RLTask):
         rand_ori_z = torch.rand(self.num_envs).to(self.device) / 2 + 0.2
         self.rand_orientation = torch.zeros((self.num_envs, 3)).to(self.device)
 
-        self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5 * (
-            torch.randint(0, 2, (self.num_envs, )) * 2 - 1).to(self._device)
-        object_target_quaternion = tf.axis_angle_to_quaternion(
-            self.rand_orientation)
+        # Set a random orientation for the object (not used right now)
+        # self.rand_orientation[:, 2] = rand_ori_z * torch.pi / 2 / 0.7 * 0.5 * (
+        #     torch.randint(0, 2, (self.num_envs, )) * 2 - 1).to(self._device)
+        # object_target_quaternion = tf.axis_angle_to_quaternion(
+        #     self.rand_orientation)
 
         # if self._task_cfg["sim"]["Dataset"]:
         #     # real life bin bounds for env 1
@@ -715,8 +726,7 @@ class TofSensorTask(RLTask):
         # self.init_ee_dev_local_pos[:, 0] += random_x
 
         # reset goal orientation
-        self.target_angle = -self.rand_orientation[:, 2].clone()
+        self.target_angle = -self.rand_orientation[:, 2].clone() # z axis?
         self.init_angle_z_dev = -self.target_angle.clone()
         self.get_target_pose()
         self._step = 0
-

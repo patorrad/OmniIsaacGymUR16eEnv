@@ -466,15 +466,15 @@ class Raycast:
                         quaternion_to_matrix(
                             quaternion_invert(cur_object_rot[index]))).translate(
                                 cur_object_pose[index])
+
             else:
                 transform = Transform3d(
-                    device=self.device).scale(torch.stack((scale_sizes[index], scale_sizes[index]))).rotate(
+                    device=self.device).scale(torch.stack([scale_sizes[index]] * self.num_envs)).rotate(
                         quaternion_to_matrix(
                             quaternion_invert(cur_object_rot[index]))).translate(
                                 cur_object_pose[index])
-            
-            transformed_vertices = transform.transform_points(
-                mesh_vertices[index].clone().to(self.device))
+
+            transformed_vertices = transform.transform_points(mesh_vertices[index].clone().to(self.device))
 
             max_xyz = torch.max(transformed_vertices, dim=1).values
             min_xyz = torch.min(transformed_vertices, dim=1).values
@@ -521,8 +521,9 @@ class Raycast:
         return self.ray_dist, self.ray_dir, self.normal_vec, self.ray_faces
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_sizes, sensor_radius) -> None:
+                      cur_object_rot, scale_sizes, sensor_radius, sensor_poses) -> None:
 
+        
         _, _, transformed_vertices = self.transform_mesh(
             cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
 
@@ -583,17 +584,17 @@ class Raycast:
 
         num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
         # ray average distance
-        self.raytrace_dist = torch.zeros((self.num_envs, 2)).to(self.device)
+        self.raytrace_dist = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray tracing reading
         self.raytrace_reading = torch.zeros(
             (self.num_envs,
              self._cfg["raycast_width"] * self._cfg["raycast_height"],
-             2)).to(self.device)
+             self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray trace coverage
         self.raytrace_cover_range = torch.zeros(
-            (self.num_envs, 2)).to(self.device)
+            (self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray trace max min dist
-        self.raytrace_dev = torch.zeros((self.num_envs, 2)).to(self.device)
+        self.raytrace_dev = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
 
         point_cloud = []
 
@@ -611,7 +612,7 @@ class Raycast:
 
             # import time
             # start = time.time()
-            ray_t, ray_dir, normal,ray_face = self.render(raycast_circle[env][i],
+            ray_t, ray_dir, normal,ray_face = self.render(sensor_poses[i][env], #raycast_circle[env][i],
                                                  gripper_rot[env])
         
             ray_t = wp.torch.to_torch(ray_t)
@@ -663,7 +664,7 @@ class Raycast:
             else:
                 self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
 
-            sensor_ray_pos_np = raycast_circle[env][i]
+            sensor_ray_pos_np = sensor_poses[i][env] #raycast_circle[env][i]
             sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1],
                                     sensor_ray_pos_np[2])
             
@@ -686,7 +687,7 @@ class Raycast:
 
             if self._cfg["debug"]:
 
-                sensor_ray_pos_np = raycast_circle[env][i].cpu().numpy()
+                sensor_ray_pos_np = sensor_poses[i][env].cpu().numpy() #raycast_circle[env][i].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
@@ -725,7 +726,7 @@ class Raycast:
                         debug_start_point_colors.append(start_point_colors)
 
                         debug_circle.append(
-                            [raycast_circle[env][i].cpu().numpy()])
+                            [sensor_poses[i][env].cpu().numpy()]) # [raycast_circle[env][i].cpu().numpy()])
 
         if self._cfg["debug"] and self._task_cfg["sim"]["TofSensor"]["track_objects"]:
             self.face_tracker = torch.cat(self.face_tracker, dim=0)
@@ -748,9 +749,7 @@ class Raycast:
                               debug_ray_hit_points_list, debug_ray_colors,
                               debug_ray_sizes, debug_end_point_colors,
                               debug_point_sizes, debug_start_point_colors,
-                              debug_circle)
-                pass
-                
+                              debug_circle)                
 
         elif self._cfg["debug"] and not self._task_cfg["sim"]["TofSensor"]["track_objects"]:
 
@@ -786,7 +785,7 @@ class Raycast:
         action = torch.clip(actions, -1, 1)
 
         cur_sensor_radius = self.default_sensor_radius + action * 0.02
-        print(cur_sensor_radius)
+
         return cur_sensor_radius
 
 

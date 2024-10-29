@@ -35,21 +35,16 @@ class ROBOT:
                           position=self._robot_positions,
                           orientation=self._robot_rotations,
                           attach_gripper=True,
-                          usd_path=self.usd_path,
-                        #   gripper_usd="/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/short_gripper.usd",
-                          )  #self._task_cfg['sim']["URRobot"]['robot_path']
-
+                          usd_path=self.usd_path)
+        
         self.robot.set_joint_positions(self._robot_dof_target)
         self.robot.set_joints_default_state(self._robot_dof_target)
+
+        self.robot.num_sensors = self.num_sensors
 
         self._sim_config.apply_articulation_settings(
             "robot", get_prim_at_path(self.robot.prim_path),
             self._sim_config.parse_actor_config("robot"))
-
-        # gripper_usd = "/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/assests/robots/ur16e/short_gripper.usd"
-        # add_reference_to_stage(
-        #         usd_path=gripper_usd,
-        #         prim_path=f"/World/envs/gripper")
 
         return self.robot
 
@@ -114,7 +109,6 @@ class ROBOT:
         # end-effectors view
         self._end_effector = RigidPrimView(
             prim_paths_expr="/World/envs/.*/robot/ee_link",
-            # prim_paths_expr="/World/envs/.*/gripper",
             name="end_effector_view",
             reset_xform_properties=False)
 
@@ -126,26 +120,29 @@ class ROBOT:
             reset_xform_properties=False)
         scene.add(self.wrist_2_link)
 
+        self.finger_0 = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_0_01",
+            name="finger_0_view",
+            reset_xform_properties=False,
+            track_contact_forces=True)
+        scene.add(self.finger_0)
+
         # Add sensor views   
-        self.sensor_1 = ArticulationView(
-            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_1_01/Sensor_1",
-            name="sensor_1_view",
-            reset_xform_properties=False)
-
-        self.sensor_2 = ArticulationView(
-            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_2_01/Sensor_2",
-            name="sensor_2_view",
-            reset_xform_properties=False)
-
-        self.sensor_3 = ArticulationView(
-            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_3_01/Sensor_3",
-            name="sensor_3_view",
-            reset_xform_properties=False)
-
         self.sensor_0 = ArticulationView(
-            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_0_01/Sensor_0",
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_0_01/Sensor_0_proxy",
             name="sensor_0_view",
             reset_xform_properties=False)
-
+        self.sensor_1 = ArticulationView(
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_1_01/Sensor_1_proxy",
+            name="sensor_1_view",
+            reset_xform_properties=False)
+        self.sensor_2 = ArticulationView(
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_2_01/Sensor_2_proxy",
+            name="sensor_2_view",
+            reset_xform_properties=False)
+        self.sensor_3 = ArticulationView(
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_3_01/Sensor_3_proxy",
+            name="sensor_3_view",
+            reset_xform_properties=False)
         
-        return self._robots, self._end_effector, self.wrist_2_link, self.sensor_1, self.sensor_2, self.sensor_3, self.sensor_0
+        return self._robots, self._end_effector, self.wrist_2_link, self.sensor_0, self.sensor_1, self.sensor_2, self.sensor_3, self.finger_0

@@ -36,6 +36,8 @@ class Controller:
                                                       self._env._world,
                                                       n_envs=self.num_envs)
 
+        self.joint_positions = torch.zeros((self.num_envs, 10)).to(self._device)
+
     def forward(
         self,
         actions,
@@ -43,6 +45,8 @@ class Controller:
         target_ee_orientation=None,
         angle_z_dev=None,
         envs=[], # What environments are ready to be controlled once object settle
+        rays=torch.tensor([]),
+        ray_readings=torch.tensor([]),
     ):
         actions = actions.to(self._device)
         actions[:, [2, 3, 4]] = 0
@@ -108,7 +112,6 @@ class Controller:
         else:
             import torch
 
-            angle_z_dev = torch.zeros((self.num_envs, 1)).to(self._device)
             delta_dof_pos, delta_pose = recover_rule_based_action(
                 self.num_envs, self._device, self._end_effector,
                 target_ee_position, angle_z_dev, self.isaac_sim_robot)
@@ -118,12 +121,50 @@ class Controller:
             targets_dof[:,:6] = current_dof[:,:6] + delta_dof_pos[:,:6]
 
             # Gripper Control
-            targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
+            if rays.shape[0] == 0:
+                targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
+            
+            elif rays.shape[0] > 0 and ray_readings.shape[0] > 0:
+                # Find rays belonging to target object
+                ray_index = torch.where(rays == 1)
+                readings = ray_readings.clone()
+                mask = torch.zeros(readings.flatten().shape[0], dtype=torch.bool, device='cuda:0')
+                mask[ray_index] = True
+                mask = mask.reshape(2, 4, 64)
+                readings = readings.reshape(2, 4, 64)
 
-            # cprint.ok("targets_dof: ", targets_dof)
+                # Apply the mask to the tensor, setting masked elements to NaN
+                masked_tensor = torch.where(mask, readings, torch.tensor(float('nan'), device='cuda:0'))
+
+                # Calculate the mean along a specific dimension (e.g., axis=2) while ignoring NaN values
+                mean_value = torch.nanmean(masked_tensor, dim=2)
+                mean_value = torch.nan_to_num(mean_value, nan=0.)
+                if torch.any(torch.isnan(mean_value)):
+                    import pdb; pdb.set_trace()
+            
+                vel = self.isaac_sim_robot.get_joint_velocities()[:,:6].norm(dim=1) < 0.01
+                dist = delta_pose.norm(dim=1) < 0.1
+                condition = vel * dist
+                mean_value[~condition] = 0. 
+                # import pdb; pdb.set_trace()
+                print(mean_value)
+                
+                target_subset = targets_dof[:, 6:]
+                mask = target_subset < mean_value
+                target_subset[mask] = mean_value[mask]
+                target_subset[target_subset < 0.1] = 0.1
+                targets_dof[:, 6:] = target_subset
+
+                # targets_dof[:, 6:] = mean_value
+                
+                # targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
+
+            self.joint_positions = targets_dof[:, :]
             self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
 
             # for i in range(1):
-            #     self._env._world.step(render=False)
+                # self._env._world.step(render=False)
 
         return target_ee_pos
+
+

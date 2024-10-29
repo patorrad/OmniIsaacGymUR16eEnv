@@ -87,7 +87,7 @@ def parse_hydra_configs(cfg: DictConfig):
         
         end = time.time()
         # avg_time_step = (avg_time_step  + time.time() - begin) / (env._world.current_time_step_index + 1)
-        print("pre_physics_step time: ", end - begin)
+        # print("pre_physics_step time: ", end - begin)
 
     env._simulation_app.close()
 
