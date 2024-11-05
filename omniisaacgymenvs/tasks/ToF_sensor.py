@@ -102,7 +102,8 @@ class TofSensorTask(RLTask):
 
         self.episode = 0
 
-        if self._task_cfg["sim"]["Dataset"]:
+        # if self._task_cfg["sim"]["Dataset"]:
+        if True:
             data = {
                 'Episode': [],
                 'Env': [],
@@ -119,6 +120,8 @@ class TofSensorTask(RLTask):
         
         self.randomization_params = self._task_cfg["domain_randomization"]["randomization_params"]
         self.randomization_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+
+        self.flag = True
 
         return
 
@@ -353,7 +356,6 @@ class TofSensorTask(RLTask):
             ],
                                      dim=1)
 
-        print(f"Force", self.finger_0.get_net_contact_forces(clone=False))
         return self.obs_buf
 
     def get_target_pose(self):
@@ -512,18 +514,32 @@ class TofSensorTask(RLTask):
             object_vel = self._manipulated_object_2.get_linear_velocities().norm(dim=1)
             indices = torch.nonzero(object_vel < 0.1).flatten()
 
-            self.target_ee_position, self.target_ee_rotation = self._manipulated_object_2.get_local_poses()
+            self.target_ee_position, self.target_ee_rotation = self._manipulated_object.get_local_poses()
             
             self.target_ee_position = self.target_ee_position - torch.tensor([[0.0, 0.3, 0.2]]*self._num_envs, device='cuda:0')
             self.target.set_local_pose(self.target_ee_position[0].cpu(), self.target_ee_rotation[0].cpu())
             
 
-            target_ee_pos = self.controller.forward(actions[:, :6],
+            target_ee_pos, condition = self.controller.forward(actions[:, :6],
                                                     self.target_ee_position,
                                                     angle_z_dev=self.angle_z_dev,
                                                     envs=indices,
                                                     rays=self.object_tracker, # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right 
                                                     ray_readings=self.raycast_reading)
+            
+            if torch.all(condition) and self._step > 1 and self.flag:
+                rows = []
+                row = pd.Series({
+                                'Episode': self.episode, 
+                                'Hits_Pose': np.array(self.debug_ray_hit_points_list),
+                                'Object_hit': self.object_tracker.cpu().numpy(), # 256 is the total number of rays
+                                'Number_sensors': self._task_cfg['sim']["URRobot"]['num_sensors']})
+                rows.append(row)
+                # import pdb; pdb.set_trace()
+                # self.epidsode_data.append(rows)
+                new_data = pd.DataFrame(rows)
+                self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
+                self.flag = False
 
         curr_position, _ = self._end_effector.get_local_poses()
         self.cartesian_error = torch.linalg.norm(curr_position - target_ee_pos,
@@ -636,8 +652,10 @@ class TofSensorTask(RLTask):
         if (self._step + 1) % 100 == 0: # Was 201 Episode length or horizon *1001*
 
             #SAVE DATA TO DISK
-            if self._task_cfg["sim"]["Dataset"]:
+            # if self._task_cfg["sim"]["Dataset"]:
+            if True:
                 self.dataset.to_pickle('dataset.pkl')
+                self.flag = True
 
             self.episode += 1
             self._step = 0

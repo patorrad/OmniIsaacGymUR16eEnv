@@ -38,6 +38,8 @@ class Controller:
 
         self.joint_positions = torch.zeros((self.num_envs, 10)).to(self._device)
 
+        self.condition = torch.tensor([]*self.num_envs, device=self._device)
+
     def forward(
         self,
         actions,
@@ -143,17 +145,19 @@ class Controller:
                     import pdb; pdb.set_trace()
             
                 vel = self.isaac_sim_robot.get_joint_velocities()[:,:6].norm(dim=1) < 0.01
-                dist = delta_pose.norm(dim=1) < 0.1
+                dist = delta_pose.norm(dim=1) < 0.05
                 condition = vel * dist
+                self.condition = condition
                 mean_value[~condition] = 0. 
+                # targets_dof[~condition, :] = self.joint_positions[~condition, :]
                 # import pdb; pdb.set_trace()
-                print(mean_value)
+                # print(mean_value)
                 
-                target_subset = targets_dof[:, 6:]
-                mask = target_subset < mean_value
-                target_subset[mask] = mean_value[mask]
-                target_subset[target_subset < 0.1] = 0.1
-                targets_dof[:, 6:] = target_subset
+                # target_subset = targets_dof[:, 6:]
+                # mask = target_subset < mean_value
+                # target_subset[mask] = mean_value[mask]
+                # target_subset[target_subset < 0.1] = 0.1
+                # targets_dof[:, 6:] = target_subset
 
                 # targets_dof[:, 6:] = mean_value
                 
@@ -165,6 +169,6 @@ class Controller:
             # for i in range(1):
                 # self._env._world.step(render=False)
 
-        return target_ee_pos
+        return target_ee_pos, self.condition
 
 

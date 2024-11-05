@@ -602,9 +602,9 @@ class Raycast:
 
         for i, env in zip(
                 torch.arange(
-                    self._task_cfg['sim']["URRobot"]['num_sensors']).repeat(
+                    self._task_cfg['sim']["URRobot"]['num_sensors']).repeat( # tensor([0, 1, 2, 3, 0, 1, 2, 3])
                         self.num_envs),
-                torch.arange(self.num_envs).repeat_interleave(
+                torch.arange(self.num_envs).repeat_interleave(               # tensor([0, 0, 0, 0, 1, 1, 1, 1])
                     self._task_cfg['sim']["URRobot"]['num_sensors'])):
 
             self.set_geom(wp.from_torch(transformed_vertices[env]),

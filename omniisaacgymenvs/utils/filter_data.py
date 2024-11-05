@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-path = '/home/shaktis/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/outputs/2024-05-23/18-44-57/dataset.pkl'
+path = '/home/shaktis/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-10-30/16-29-45/dataset.pkl'
 df = pd.read_pickle(path)
 
 # get only environment 0 
@@ -24,7 +24,7 @@ keep_indices = []
 
 # movement threshold
 max = 0.0001 #0.015 #0.03 #0.015 #0.6 inches
-
+import pdb; pdb.set_trace()
 # Iterate over the groups
 for name, group in grouped:
     group_num += 1
