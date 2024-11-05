@@ -36,7 +36,7 @@ import pandas as pd
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
 
-class TofSensorTask(RLTask):
+class CustomGripperTask(RLTask):
 
     def __init__(self, name, sim_config, env, offset=None) -> None:
 
@@ -324,8 +324,8 @@ class TofSensorTask(RLTask):
             self.scale_sizes = torch.cat((self.scale_size, other_scale))
             
             # Retrieve sensor poses
-            self.sensor_poses = [self.sensor_0.get_world_poses()[0], self.sensor_1.get_world_poses()[0], self.sensor_2.get_world_poses()[0], self.sensor_3.get_world_poses()[0]]
-            
+            self.sensor_world_poses = [self.sensor_0.get_world_poses()[0], self.sensor_1.get_world_poses()[0], self.sensor_2.get_world_poses()[0], self.sensor_3.get_world_poses()[0]]
+         
             self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev , self.debug_ray_hit_points_list, self.object_tracker = self.raytracer.raytrace_step(
                 gripper_pose,
                 gripper_rot,
@@ -333,7 +333,7 @@ class TofSensorTask(RLTask):
                 cur_object_rot,
                 self.scale_sizes,
                 sensor_radius=self.sensor_radius,
-                sensor_poses=self.sensor_poses)
+                sensor_poses=self.sensor_world_poses)
 
             self.obs_buf = torch.cat([self.robot_joints, self.raycast_reading],
                                      dim=1)
@@ -353,7 +353,6 @@ class TofSensorTask(RLTask):
             ],
                                      dim=1)
 
-        # print(f"Force", self.finger_0.get_net_contact_forces(clone=False))
         return self.obs_buf
 
     def get_target_pose(self):
@@ -390,124 +389,26 @@ class TofSensorTask(RLTask):
             elif self._step >= 1:
                 target_ee_pos = self.controller.forward(actions[:, :6])
         elif self._task_cfg["sim"]["Dataset"]:
-            # actions = torch.zeros_like(actions)
-
-            # Follow target
-            # pose_test, rot_test = self.target.get_local_pose()
-            # pose = torch.tensor(pose_test, device='cuda:0')
-            # pose = torch.stack([pose, pose], dim=0)
-            # rot = torch.tensor(rot_test, device='cuda:0')
-
-            # from pytorch3d.transforms import Transform3d, quaternion_to_matrix 
-            # # t = Transform3d().translate(torch.tensor([self._robot_positions], dtype = torch.float))
-            # # t_inv = t.inverse()
             
-            # # if self._step == 2:
-            # #     pose = t.to('cuda:0').transform_points(pose)
-            # #     self.target.set_local_pose(pose[0].cpu(), rot.cpu())
-            # # elif self._step == 3:
-            # #     pose = t_inv.to('cuda:0').transform_points(pose)
-            # #     self.target.set_local_pose(pose[0].cpu(), rot.cpu())
+            # Check object velocity to start robot control
+            object_vel = self._manipulated_object_2.get_linear_velocities().norm(dim=1)
+            indices = torch.nonzero(object_vel < 0.1).flatten()
 
-            # rot_mat = quaternion_to_matrix(torch.tensor([self._robot_rotations], dtype=torch.float))
-            # t = Transform3d().rotate(rot_mat).translate(torch.tensor([self._robot_positions], dtype = torch.float))
-            # t_inv = t.inverse()
-
-            # if torch.linalg.norm(self.old_target_pose[0] - pose[0][0], dim=0) > 0.001:
-            #     self.target.set_local_pose(pose[0].cpu(), rot.cpu())
-            #     pose = t_inv.to('cuda:0').transform_points(pose)
-
-            # rot = torch.stack([torch.tensor([0.707,0.,0.,0.707]), torch.tensor([0.707,0.,0.,0.707])])
-
-
-            # Follow target that follows manipulated object 2
-            pose_test, rot_test = self._manipulated_object_2.get_local_poses()
-            # pose_test, rot_test = self.target.get_local_pose()
-            pose = torch.tensor(pose_test, device='cuda:0')
-            # pose = torch.stack([pose, pose], dim=0)
-            rot = torch.tensor(rot_test, device='cuda:0')
-
-            from pytorch3d.transforms import Transform3d, quaternion_to_matrix 
-
-            rot_mat = quaternion_to_matrix(torch.tensor([self._robot_rotations], dtype=torch.float))
-            t = Transform3d().rotate(rot_mat).translate(torch.tensor([self._robot_positions], dtype = torch.float))
-            t_inv = t.inverse()
-
-            if torch.linalg.norm(self.old_target_pose[0] - pose[0][0], dim=0) > 0.001:
-                self.target.set_local_pose(pose[0].cpu(), rot[0].cpu())
-                pose = t_inv.to('cuda:0').transform_points(pose)
-
-            rot = torch.stack([torch.tensor([0.707,0.,0.,0.707]), torch.tensor([0.707,0.,0.,0.707])])
-
-            # Don't follow target for first few steps; let is stabilize
-            if self._step < 15:
-                pose = torch.zeros_like(pose) 
+            self.target_ee_position, self.target_ee_rotation = self._manipulated_object_2.get_local_poses()
             
-            target_ee_pos = self.controller.forward(actions[:, :6],
-                                                    pose, #self.target_ee_position,.
-                                                    rot,
-                                                    self.angle_z_dev)
+            self.target_ee_position = self.target_ee_position - torch.tensor([[0.0, 0.3, 0.2]]*self._num_envs, device='cuda:0')
+            self.target.set_local_pose(self.target_ee_position[0].cpu(), self.target_ee_rotation[0].cpu())
             
-            self.old_target_pose = pose
 
-            # Test
-            # get data for all envs
-            if self._step > 1:
-                rows = []
-                for i in range(self.num_envs):
-                    """
-                    data = {
-                    'Episode': [],
-                    'Env': [],
-                    'Step': [],
-                    'Joints': [],
-                    'Gripper_pose': [],
-                    'Position': [],
-                    'Tof_reading': [],
-                    'Object_hit': [],
-                    'Object1_position': [],
-                    'Object2_position': [],
-                    """
-                    gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-
-                    # data = [
-                    #     torch.tensor([self.episode]), 
-                    #     torch.tensor([i]),
-                    #     torch.tensor([self._step]),
-                    #     torch.clone(self._robots.get_joint_positions()[i]),
-                    #     torch.clone(torch.cat((gripper_pose[i], gripper_rot[i]))),
-                    #     torch.clone(self.raycast_reading[i]),
-                    #     torch.clone(self.object_tracker[i*128 : (i + 1)*128]),
-                    #     torch.clone(self._manipulated_object.get_local_poses()[0][i]),
-                    #     torch.clone(self._manipulated_object_2.get_local_poses()[0][i]),
-                    #     torch.tensor([self._task_cfg['sim']["URRobot"]['num_sensors']])
-                    # ]
-                    tof_readings = self.raycast_reading[i].cpu().numpy()
-                    gripper_pose, gripper_rot = self._end_effector.get_world_poses()
-
-                    while len(self.debug_ray_hit_points_list) < 4: #% 2 != 0:
-                        self.debug_ray_hit_points_list.append(np.array([]))
-
-                    row = pd.Series({
-                                    'Episode': self.episode, 
-                                    'Env': i,
-                                    'Step': self._step, 
-                                    'Joints': self._robots.get_joint_positions()[i].cpu().numpy(), 
-                                    'Gripper_pose': np.array(list(gripper_pose[i].cpu().numpy()) + list(gripper_rot[i].cpu().numpy())), 
-                                    'Hits_Pose': np.array(self.debug_ray_hit_points_list[2*i].tolist() + self.debug_ray_hit_points_list[2*i + 1].tolist()) if len(self.debug_ray_hit_points_list) > i else '',
-                                    'Tof_reading': tof_readings,
-                                    'Object_hit': self.object_tracker[i*128 : (i + 1)*128].cpu().numpy(), # 128 is the total number of rays
-                                    'Object1_position': self._manipulated_object.get_local_poses()[0][i].cpu().numpy(), 
-                                    'Object2_position': self._manipulated_object_2.get_local_poses()[0][i].cpu().numpy(),
-                                    'Number_sensors': self._task_cfg['sim']["URRobot"]['num_sensors']})
-                    rows.append(row)
-                # self.epidsode_data.append(rows)
-                new_data = pd.DataFrame(rows)
-                self.dataset = pd.concat([self.dataset, new_data], ignore_index=True)
+            target_ee_pos = self.controller.forward(actions,
+                                                    self.target_ee_position,
+                                                    angle_z_dev=self.angle_z_dev,
+                                                    envs=indices,
+                                                    rays=self.object_tracker, # 0 - cylinder,1 - box,2 - top ,3 - back,4 - base, 5 -left, 6 right 
+                                                    ray_readings=self.raycast_reading)
 
         else:
-            # from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
-            
+
             # Check object velocity to start robot control
             object_vel = self._manipulated_object_2.get_linear_velocities().norm(dim=1)
             indices = torch.nonzero(object_vel < 0.1).flatten()
@@ -539,36 +440,6 @@ class TofSensorTask(RLTask):
         #         articulation_num_dofs=self._robots.num_dof)
         self.reset()
 
-        
-
-    def calculate_angledev_reward(self) -> None:
-
-        index = torch.where(abs(self.angle_z_dev) < 1.0 / 180 * torch.pi)
-        self.angle_z_dev[index] = 0
-
-        dev_percentage = self.angle_z_dev / self.init_angle_z_dev
-
-        # exceed the target
-        negative_index = torch.where(dev_percentage < 0)[0]
-        if not negative_index.size()[0] == 0:
-            dev_percentage[negative_index] = abs(
-                dev_percentage[negative_index]) + 1
-
-        dev = torch.clamp(dev_percentage, 0, 1.8)
-
-        angle_reward = abs((1 - dev)**3) * 5
-
-        negative_index = torch.where(dev > 1)[0]
-
-        angle_reward[negative_index] = -abs((1 - dev[negative_index])**3) * 5
-        return angle_reward
-
-    def calculate_targetangledev_reward(self) -> None:
-
-        angle_reward = -abs(self.angle_x_dev) * 3
-
-        return angle_reward
-
     def calculate_raytrace_reward(self) -> None:
 
         dev_percentage = torch.sum(self.raytrace_cover_range / 0.50, dim=1)
@@ -583,6 +454,8 @@ class TofSensorTask(RLTask):
         return raytrace_range_reward
 
     def calculate_dist_reward(self) -> None:
+
+        pose, rot = self._manipulated_object_2.get_world_poses()
 
         dev_percentage = self.ee_object_dist / self.init_ee_object_dist
 
@@ -610,19 +483,34 @@ class TofSensorTask(RLTask):
 
     def calculate_metrics(self) -> None:
 
-        self.rew_buf = self.calculate_dist_reward()
+        # Calculate the distance between the gripper and the object
+        norms = []
+        for sensor_pose in self.sensor_world_poses:
+            norm = torch.norm(sensor_pose - self._manipulated_object_2.get_world_poses()[0], dim=1)
+            norms.append(norm)
 
-        self.rew_buf += self.calculate_angledev_reward()
+        norms = torch.stack(norms)
+        summed_norms = torch.sum(norms, dim=0)
+        proximity_reward = torch.clip(1 - summed_norms, 0, 1) * 10  # Reward scales with proximity
+        self.rew_buf = proximity_reward
+
+        # Contact with object penalty
+        # import pdb; pdb.set_trace()
+        # self.finger_0.get_net_contact_forces(clone=False)
+        self.rew_buf -= self._manipulated_object_2.get_linear_velocities().norm(dim=1)
+        
+
+        # self.rew_buf += self.calculate_angledev_reward()
         # self.rew_buf += self.calculate_targetangledev_reward()
         # self.rew_buf += self.calculate_raytrace_reward()
         # self.rew_buf += self.calculate_raytrace_dev_reward()
-        self.rew_buf /= 1.2
+        # self.rew_buf /= 1.2
 
-        controller_penalty = (self.cartesian_error**2) * -1e3
-        self.rew_buf += controller_penalty
+        # controller_penalty = (self.cartesian_error**2) * -1e3
+        # self.rew_buf += controller_penalty
 
         action_penalty = torch.sum(
-            torch.clip(self._robots.get_joint_velocities(), -1, 1)**2, dim=1
+            torch.clip(self._robots.get_joint_velocities()[:,:6], -1, 1)**2, dim=1
         ) * -1 + torch.sum(torch.clip(self.actions, -1, 1)**2, dim=1) * -0.5
 
         self.rew_buf += action_penalty

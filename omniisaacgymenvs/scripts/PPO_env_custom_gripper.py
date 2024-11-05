@@ -107,7 +107,7 @@ def parse_hydra_configs(cfg: DictConfig):
     # init wandb
     horizon = 100
     env_iter = 10000000
-    exp_name = "custom_gripper"
+    exp_name = "custom_gripper_PPO_proximity_reward"
     config = {
         'n_env_horizon': training_config['n_env_horizon'],
         

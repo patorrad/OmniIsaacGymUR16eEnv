@@ -48,13 +48,13 @@ class Controller:
         rays=torch.tensor([]),
         ray_readings=torch.tensor([]),
     ):
-        actions = actions.to(self._device)
-        actions[:, [2, 3, 4]] = 0
-        delta_dof_pos, delta_pose = recover_action(actions,
-                                                   self.velocity_limit,
-                                                   self._env, self.isaac_sim_robot)
-        cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
-        target_ee_pos = cur_ee_pos + delta_pose[:, :3]
+        # actions = actions.to(self._device)
+        # actions[:, [2, 3, 4]] = 0
+        # delta_dof_pos, delta_pose = recover_action(actions,
+        #                                            self.velocity_limit,
+        #                                            self._env, self.isaac_sim_robot)
+        # cur_ee_pos, cur_ee_orientation = self._end_effector.get_local_poses()
+        # target_ee_pos = cur_ee_pos + delta_pose[:, :3]
 
         if self.control_type == "diffik":
 
@@ -109,12 +109,28 @@ class Controller:
                 for i in range(1):
                     self._env._world.step(render=False)
 
-        else:
+        elif self.control_type == "custom_gripper_rl":
             import torch
-
             delta_dof_pos, delta_pose = recover_rule_based_action(
                 self.num_envs, self._device, self._end_effector,
                 target_ee_position, angle_z_dev, self.isaac_sim_robot)
+            target_ee_pos = target_ee_position
+            current_dof = self.isaac_sim_robot.get_joint_positions()
+            
+            targets_dof = torch.zeros((self.num_envs, 10)).to(self._device)
+            targets_dof[:,:6] = current_dof[:,:6] + delta_dof_pos[:,:6]
+
+            targets_dof[:, 6:] = actions
+
+            self.joint_positions = targets_dof[:, :]
+            self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
+
+        else:
+            import torch
+            delta_dof_pos, delta_pose = recover_rule_based_action(
+                self.num_envs, self._device, self._end_effector,
+                target_ee_position, angle_z_dev, self.isaac_sim_robot)
+            target_ee_pos = target_ee_position
             current_dof = self.isaac_sim_robot.get_joint_positions()
             
             targets_dof = torch.zeros((self.num_envs, 10)).to(self._device)
@@ -130,11 +146,16 @@ class Controller:
                 readings = ray_readings.clone()
                 mask = torch.zeros(readings.flatten().shape[0], dtype=torch.bool, device='cuda:0')
                 mask[ray_index] = True
+                # import pdb; pdb.set_trace()
                 mask = mask.reshape(2, 4, 64)
                 readings = readings.reshape(2, 4, 64)
 
                 # Apply the mask to the tensor, setting masked elements to NaN
                 masked_tensor = torch.where(mask, readings, torch.tensor(float('nan'), device='cuda:0'))
+                # import pdb; pdb.set_trace()
+                print(f"{readings[0,:]}")
+                print(f"{masked_tensor}")
+                
 
                 # Calculate the mean along a specific dimension (e.g., axis=2) while ignoring NaN values
                 mean_value = torch.nanmean(masked_tensor, dim=2)
@@ -143,19 +164,19 @@ class Controller:
                     import pdb; pdb.set_trace()
             
                 vel = self.isaac_sim_robot.get_joint_velocities()[:,:6].norm(dim=1) < 0.01
-                dist = delta_pose.norm(dim=1) < 0.1
+                dist = delta_pose.norm(dim=1) < 0.05
                 condition = vel * dist
-                mean_value[~condition] = 0. 
-                # import pdb; pdb.set_trace()
-                print(mean_value)
+                mean_value[~condition] = 0.
+                print(f"{mean_value} {vel} {dist} {condition}")
                 
-                target_subset = targets_dof[:, 6:]
-                mask = target_subset < mean_value
-                target_subset[mask] = mean_value[mask]
-                target_subset[target_subset < 0.1] = 0.1
-                targets_dof[:, 6:] = target_subset
+                # target_subset = targets_dof[:, 6:]
+                # mask = target_subset < mean_value
+                # target_subset[mask] = mean_value[mask]
+                # target_subset[target_subset < 0.1] = 0.1
+                # targets_dof[:, 6:] = target_subset
 
-                # targets_dof[:, 6:] = mean_value
+                mean_value = mean_value.clamp(0., 0.085)
+                targets_dof[:, 6:] = mean_value
                 
                 # targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
 

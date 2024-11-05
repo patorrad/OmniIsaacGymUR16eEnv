@@ -614,6 +614,7 @@ class Raycast:
             # start = time.time()
             ray_t, ray_dir, normal,ray_face = self.render(sensor_poses[i][env], #raycast_circle[env][i],
                                                  gripper_rot[env])
+            print(f"RAY_TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT {ray_t}")
         
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)

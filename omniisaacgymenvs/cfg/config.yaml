@@ -48,11 +48,11 @@ enable_livestream: False
 # timeout for MT script
 mt_timeout: 90
 
-wandb_activate: False
+wandb_activate: True
 wandb_group: ''
-wandb_name: ${train.params.config.name}
+wandb_name: patorrad #${train.params.config.name}
 wandb_entity: ''
-wandb_project: 'omniisaacgymenvs'
+wandb_project: 'custom_gripper'
 
 # path to a kit app file
 kit_app: ''

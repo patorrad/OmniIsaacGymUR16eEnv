@@ -52,6 +52,7 @@ def import_tasks():
     
     
     from omniisaacgymenvs.tasks.ToF_sensor import TofSensorTask
+    from omniisaacgymenvs.tasks.custom_gripper_rl import CustomGripperTask
 
     # Mappings from strings to environments
     task_map = {
@@ -75,6 +76,7 @@ def import_tasks():
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
         "TofSensor":TofSensorTask,
+        "CustomGripper":CustomGripperTask,
     }
 
     task_map_warp = {
