@@ -6,6 +6,7 @@ enable_extension("omni.isaac.debug_draw")
 enable_extension("omni.isaac.manipulators")
 enable_extension("omni.isaac.motion_generation")
 enable_extension("omni.replicator.isaac")
+enable_extension("omni.isaac.ros_bridge")
 
 # import env setting
 from omniisaacgymenvs import envs
@@ -34,6 +35,13 @@ from omni.isaac.core.objects import cuboid
 import pandas as pd
 
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
+
+import rospy
+from std_msgs.msg import Float32MultiArray, UInt16MultiArray
+
+from omniisaacgymenvs.utils.tof_to_pcd import Tof_to_pcd
+
+from omni.isaac.debug_draw import _debug_draw
 
 
 class TofSensorTask(RLTask):
@@ -122,8 +130,7 @@ class TofSensorTask(RLTask):
         self.randomization_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
 
         self.flag = True
-
-        return
+        
 
     def set_up_scene(self, scene) -> None:
 
@@ -652,7 +659,6 @@ class TofSensorTask(RLTask):
         if (self._step + 1) % 100 == 0: # Was 201 Episode length or horizon *1001*
 
             #SAVE DATA TO DISK
-            # if self._task_cfg["sim"]["Dataset"]:
             if True:
                 self.dataset.to_pickle('dataset.pkl')
                 self.flag = True

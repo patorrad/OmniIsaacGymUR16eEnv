@@ -617,6 +617,10 @@ class Raycast:
         
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
+
+            # Add noise to ray_t
+            noise = torch.randn_like(ray_t) * 0.005  # Adjust the scale of the noise as needed
+            ray_t += noise
            
             self.face_catogery_index[wp.torch.to_torch(ray_face)]
             # print(torch.unique(wp.torch.to_torch(ray_face)))
