@@ -132,8 +132,8 @@ class Controller:
                 readings = ray_readings.clone()
                 mask = torch.zeros(readings.flatten().shape[0], dtype=torch.bool, device='cuda:0')
                 mask[ray_index] = True
-                mask = mask.reshape(2, 4, 64)
-                readings = readings.reshape(2, 4, 64)
+                mask = mask.reshape(self.num_envs, 4, 64)
+                readings = readings.reshape(self.num_envs, 4, 64)
 
                 # Apply the mask to the tensor, setting masked elements to NaN
                 masked_tensor = torch.where(mask, readings, torch.tensor(float('nan'), device='cuda:0'))

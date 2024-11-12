@@ -265,7 +265,6 @@ def draw_raytrace(debug_draw, debug_sensor_ray_pos_list,
     # Debug draw the gripper pose
     debug_draw.draw_points(debug_circle, [(1, 0, 0, 1)], [10])
 
-
 @wp.kernel
 def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          height: int, pixels: wp.array(dtype=wp.vec3),
@@ -523,49 +522,11 @@ class Raycast:
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
                       cur_object_rot, scale_sizes, sensor_radius, sensor_poses) -> None:
 
-        
         _, _, transformed_vertices = self.transform_mesh(
             cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
 
         normals = find_plane_normal(self.num_envs, gripper_rot)
 
-        if self.circle_test is None:
-            # Generate points on the circles
-            self.t = torch.arange(0,
-                            2 * torch.pi,
-                            step=2 * torch.pi / 2, #num_points,
-                            device='cuda:0')
-            self.circle_test = circle_points(
-                sensor_radius, gripper_pose, normals,
-                self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
-        else:
-            # t1 = Transform3d(device='cuda:0').rotate(quaternion_to_matrix(self.old_gripper_rot)).translate(self.old_gripper_pose)#
-            # # t1 = t1.get_matrix()
-            # t2 = Transform3d(device='cuda:0').rotate(quaternion_to_matrix(gripper_rot)).translate(gripper_pose)#
-            # # t2 = t2.get_matrix()
-            # # diff = t1 - t2
-            # # diff = torch.repeat_interleave(diff,2,0)
-            # # ones = torch.ones(self.circle_test.shape[0], self.circle_test.shape[1], 1, device='cuda:0')
-            # # circle = torch.cat((self.circle_test, ones), dim=-1)
-            # # t12 = t1.inverse().compose(t2).get_matrix()
-            # t1_inv = t1.inverse()
-            # t = t1_inv.transform_points(self.circle_test)
-            # self.circle_test = t2.transform_points(t)
-            # print(self.circle_test)
-            self.circle_test = circle_points(
-                sensor_radius, gripper_pose, normals,
-                self._task_cfg['sim']["URRobot"]['num_sensors'], self.t)
-        
-        # self.old_gripper_pose = gripper_pose
-        # cprint.ok("gripper_pose", gripper_pose)
-        # self.old_gripper_rot = gripper_rot
-
-        raycast_circle = self.circle_test #tensor 2 x 2 
-
-        # raycast_circle = circle_points(
-        #     sensor_radius, gripper_pose, normals,
-        #     self._task_cfg['sim']["URRobot"]['num_sensors'])
-        # for draw point
         if self._cfg["debug"]:
             debug_sensor_ray_pos_list = []
             debug_ray_hit_points_list = []
@@ -584,19 +545,17 @@ class Raycast:
 
         num_pixel = self._cfg["raycast_width"] * self._cfg["raycast_height"]
         # ray average distance
-        self.raytrace_dist = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
+        # self.raytrace_dist = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray tracing reading
-        self.raytrace_reading = torch.zeros(
-            (self.num_envs,
-             self._cfg["raycast_width"] * self._cfg["raycast_height"],
-             self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
+        # self.raytrace_reading = torch.zeros(
+        #     (self.num_envs,
+        #      self._cfg["raycast_width"] * self._cfg["raycast_height"],
+        #      self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray trace coverage
-        self.raytrace_cover_range = torch.zeros(
-            (self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
+        # self.raytrace_cover_range = torch.zeros(
+        #     (self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
         # ray trace max min dist
-        self.raytrace_dev = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
-
-        point_cloud = []
+        # self.raytrace_dev = torch.zeros((self.num_envs, self._task_cfg['sim']["URRobot"]['num_sensors'])).to(self.device)
 
         self.face_tracker = []
 
@@ -610,20 +569,16 @@ class Raycast:
             self.set_geom(wp.from_torch(transformed_vertices[env]),
                           mesh_index=0)
 
-            # import time
-            # start = time.time()
             ray_t, ray_dir, normal,ray_face = self.render(sensor_poses[i][env], #raycast_circle[env][i],
                                                  gripper_rot[env])
         
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
 
-            # Add noise to ray_t
-            noise = torch.randn_like(ray_t) * 0.005  # Adjust the scale of the noise as needed
-            ray_t += noise
-           
+            test = ray_t.clone()
+
+            #
             self.face_catogery_index[wp.torch.to_torch(ray_face)]
-            # print(torch.unique(wp.torch.to_torch(ray_face)))
 
             face_category = self.face_catogery_index[1:]
             faces = face_category[wp.torch.to_torch(ray_face)]
@@ -635,26 +590,28 @@ class Raycast:
                 # normalize tof reading
                 reading = ray_t[torch.where(ray_t > 0)]
 
+                # Add noise
                 noise_distance = torch.rand(len(torch.where(ray_t > 0)[0]),
                                             device=self.device) / 1000 * 20
                 reading += noise_distance
+
+                # Normalize the readings
                 reading = (reading - torch.min(reading)) / (
                     torch.max(reading) - torch.min(reading) + 1e-5)
-
+                
                 self.raycast_reading[env][i * num_pixel +
                                           torch.where(ray_t > 0)[0]] = reading
 
-                average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
-                cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
+                # average_distance = torch.mean(ray_t[torch.where(ray_t > 0)])
+                # cover_percentage = len(torch.where(ray_t > 0)[0]) / 64
             else:
                 reading = ray_t
-                average_distance = -0.01
-                cover_percentage = 0
-            # print(time.time()-start,cover_percentage)
+                # average_distance = -0.01
+                # cover_percentage = 0
 
-            self.raytrace_dist[env][i] = average_distance
-            self.raytrace_cover_range[env][i] = cover_percentage
-            self.raytrace_reading[env, :, i] = ray_t
+            # self.raytrace_dist[env][i] = average_distance
+            # self.raytrace_cover_range[env][i] = cover_percentage
+            # self.raytrace_reading[env, :, i] = ray_t
 
             # replace the zero value
 
@@ -663,15 +620,10 @@ class Raycast:
                 index = torch.where(ray_t <= 0)[0]
                 ray_t[index] = torch.max(ray_t)
 
-            if torch.max(ray_t) < 1e-2:
-                self.raytrace_dev[env][i] = 10
-            else:
-                self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)
-
-            sensor_ray_pos_np = sensor_poses[i][env] #raycast_circle[env][i]
-            sensor_ray_pos_tuple = (sensor_ray_pos_np[0], sensor_ray_pos_np[1],
-                                    sensor_ray_pos_np[2])
-            
+            # if torch.max(ray_t) < 1e-2:
+            #     self.raytrace_dev[env][i] = 10
+            # else:
+            #     self.raytrace_dev[env][i] = torch.max(ray_t) - torch.min(ray_t)            
 
             #IF YOU WANT FULL COORDINATES comment out line below
             ray_t = ray_t_copy
@@ -683,21 +635,14 @@ class Raycast:
 
             line_vec = line_vec[torch.any(line_vec)]
 
-            real_3d_coord = self.get_tof_angles([8, 8], 12.5, 12.5,
-                                                ray_t.cpu().numpy().reshape(
-                                                    8, 8)).reshape(-1, 3)
-
-            point_cloud.append(line_vec)
-
             if self._cfg["debug"]:
 
-                sensor_ray_pos_np = sensor_poses[i][env].cpu().numpy() #raycast_circle[env][i].cpu().numpy()
+                sensor_ray_pos_np = sensor_poses[i][env].cpu().numpy()
                 sensor_ray_pos_tuple = (sensor_ray_pos_np[0],
                                         sensor_ray_pos_np[1],
                                         sensor_ray_pos_np[2])
 
                 ray_t = ray_t_copy.cpu().numpy()
-                #ray_t = ray_t.cpu().numpy()
                 ray_dir = ray_dir.cpu().numpy()
 
                 line_vec = np.transpose(np.multiply(np.transpose(ray_dir), ray_t))
@@ -737,15 +682,10 @@ class Raycast:
             mask = self.face_tracker != -1
             ray_colors = [(1, 1 if 1 in element else 0, 0, 1) for element in self.face_tracker[mask]]
             split_indices = list([0]) + list(np.cumsum([len(sublist) for sublist in debug_ray_colors]))
-            # sublist = [ray_colors[start:end] for start, end in zip(split_indices[::2], split_indices[1::2])]
 
             debug_ray_colors = []
-            # if len(split_indices) > 1: debug_ray_colors.append(ray_colors[split_indices[0]:split_indices[1]])
-            # if len(split_indices) == 3: debug_ray_colors.append(ray_colors[split_indices[1]:split_indices[2]])
             if len(split_indices) > 1:
                 debug_ray_colors += [ray_colors[split_indices[i]:split_indices[i+1]] for i in range(len(split_indices)-1)]
-
-            # debug_ray_colors = debug_ray_colors[:1]
 
             if len(debug_sensor_ray_pos_list) > 0:
 
@@ -767,7 +707,7 @@ class Raycast:
 
         # return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, self.face_catogery_index
 
-        return self.raycast_reading, self.raytrace_cover_range, self.raytrace_dev, debug_ray_hit_points_list, self.face_tracker
+        return self.raycast_reading, debug_ray_hit_points_list, self.face_tracker
 
     def get_tof_angles(self, sensor_resolution, fov_h, fov_v, distances):
         h = np.arange(0, fov_h,

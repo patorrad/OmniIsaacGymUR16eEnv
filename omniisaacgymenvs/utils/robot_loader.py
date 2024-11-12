@@ -120,12 +120,12 @@ class ROBOT:
             reset_xform_properties=False)
         scene.add(self.wrist_2_link)
 
-        self.finger_0 = RigidPrimView(
-            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Finger_0_01",
+        self.body = RigidPrimView(
+            prim_paths_expr="/World/envs/.*/robot/gripper_mod_01/Simp_suction_array/Simp_suction_array/Body",
             name="finger_0_view",
             reset_xform_properties=False,
             track_contact_forces=True)
-        scene.add(self.finger_0)
+        scene.add(self.body)
 
         # Add sensor views   
         self.sensor_0 = ArticulationView(
@@ -145,4 +145,4 @@ class ROBOT:
             name="sensor_3_view",
             reset_xform_properties=False)
         
-        return self._robots, self._end_effector, self.wrist_2_link, self.sensor_0, self.sensor_1, self.sensor_2, self.sensor_3, self.finger_0
+        return self._robots, self._end_effector, self.wrist_2_link, self.sensor_0, self.sensor_1, self.sensor_2, self.sensor_3, self.body

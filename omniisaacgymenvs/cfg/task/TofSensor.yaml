@@ -118,7 +118,7 @@ sim:
   Control:
     "" #"diffik" #"MotionGeneration" 
   Design: False
-  Dataset: False
+  Dataset: True
     
 Training:
   use_oracle: False #False
