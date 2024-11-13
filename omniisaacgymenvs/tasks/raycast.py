@@ -575,11 +575,8 @@ class Raycast:
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
 
-            test = ray_t.clone()
-
             #
             self.face_catogery_index[wp.torch.to_torch(ray_face)]
-
             face_category = self.face_catogery_index[1:]
             faces = face_category[wp.torch.to_torch(ray_face)]
             faces[(ray_t == 0).nonzero()] = -1

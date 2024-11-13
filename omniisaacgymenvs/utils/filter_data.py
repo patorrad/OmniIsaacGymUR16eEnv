@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-path = '/home/shaktis/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-10-30/16-29-45/dataset.pkl'
+path = '/home/paolo/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-11-12/12-44-35/dataset.pkl'
 df = pd.read_pickle(path)
 
 # get only environment 0 
