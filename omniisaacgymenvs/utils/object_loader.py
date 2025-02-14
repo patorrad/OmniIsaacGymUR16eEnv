@@ -19,7 +19,8 @@ import omni.isaac.core.utils.nucleus as nucleus_utils
 
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, is_prim_path_valid
 import os
-
+import random
+from cprint import *
 
 class Object:
 
@@ -34,26 +35,44 @@ class Object:
         self.scale_size = torch.as_tensor(scale).to(self.device)
         #self.scale_size = torch.as_tensor(scale).repeat(self.num_envs,1).to(self.device)
 
+        # Cylinder scale
+        # Cylinder scale:  0.04278853596915767 0.10075032265668002
+        # Cylinder scale:  0.030985669961447092 0.09100043020890668
+        # radius=random.uniform(0.03, 0.05) #orig shakti 0.0381, # opt range 0.04 to 0.85
+        # height=random.uniform(0.1, 0.13) #orig shakti 0.0889, # opt range 0.08 to 0.17      
+
         for i in range(self.num_envs):
             
             for j in range(1,num_object+1):
                 
                 if objects[j-1] == 'DynamicCuboid':
+                    # Randomize scale
+                    rand = torch.rand((3), device='cuda:0')
+                    min = [0.05, 0.05, 0.08]
+                    max = [0.1, 0.1, 0.12]
+                    rand[0] = min[0] + (max[0] - min[0]) * rand[0]
+                    rand[1] = min[1] + (max[1] - min[1]) * rand[1]
+                    rand[2] = min[2] + (max[2] - min[2]) * rand[2]
+                    # import pdb; pdb.set_trace()
                     target = DynamicCuboid(
                         prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
                         name=f"manipulated_object_{j}",
                         position=[0, 0, 2.02],
-                        # scale = np.array(scale),
-                        scale=np.array(scale[j-1]),
+                        scale = rand,
+                        # scale=np.array(scale[j-1]),
                         color=torch.tensor([0, 169 / 255, 1]))
                 else:
+                    # Randomize scale
+                    radius=random.uniform(0.03, 0.05) #orig shakti 0.0381, # opt range 0.04 to 0.85
+                    height=random.uniform(0.1, 0.13) #orig shakti 0.0889, # opt range 0.08 to 0.17
+                    cprint.ok("Cylinder scale: ", radius, height)
                     target = DynamicCylinder(
                         prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
                         name=f"manipulated_object_{j}",
                         position=[0, 0, 2.02],
                         # scale=np.array(scale[j-1]),
-                        radius=0.0381,
-                        height=0.0889,
+                        radius=radius, #orig shakti 0.0381, # opt range 0.04 to 0.85
+                        height=height, #orig shakti 0.0889, # opt range 0.08 to 0.17
                         color=torch.tensor([1, 0, 0]))
                     # target = DynamicSphere(
                     #     prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",

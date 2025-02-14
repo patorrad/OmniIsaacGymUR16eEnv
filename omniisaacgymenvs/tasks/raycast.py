@@ -270,7 +270,7 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
          height: int, pixels: wp.array(dtype=wp.vec3),
          ray_dist: wp.array(dtype=wp.float32),
          ray_dir: wp.array(dtype=wp.vec3), normal_vec: wp.array(dtype=wp.vec3),
-         ray_face: wp.array(dtype=wp.int32)):
+         ray_face: wp.array(dtype=wp.int32), fov: float = 12.5):
     # Warp quaternion is x, y, z, w
     q2 = wp.quat(cam_dir[1], cam_dir[2], cam_dir[3], cam_dir[0])
 
@@ -281,10 +281,10 @@ def draw(mesh_id: wp.uint64, cam_pos: wp.vec3, cam_dir: wp.vec4, width: int,
     z = tid % width
 
     # For 25 degree cone
-    EMITTER_DIAMETER = wp.tan(12.5 * pi / 180.) * 4.
+    EMITTER_DIAMETER = wp.tan(fov * pi / 180.) * 4. # Original Shakti was 12.5
 
     # For inner edge of noise cone
-    NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
+    # NO_NOISE_DIAMETER = wp.tan(11.486 * pi / 180.) * 2.
 
     sy = EMITTER_DIAMETER / (float(height) -
                              1.) * float(y) - float(EMITTER_DIAMETER) / 2.
@@ -511,16 +511,17 @@ class Raycast:
     def render(self,
                cam_pos=(0.0, 1.5, 2.5),
                cam_dir=np.array([1, 0, 0, 0]),
-               is_live=False):
+               is_live=False, 
+               fov=12.5):
 
-        wp.launch(kernel=draw,dim=self.width * self.height,inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height,self.pixels, self.ray_dist, self.ray_dir,self.normal_vec, self.ray_faces])
+        wp.launch(kernel=draw,dim=self.width * self.height,inputs=[self.mesh.id, cam_pos, cam_dir, self.width, self.height,self.pixels, self.ray_dist, self.ray_dir,self.normal_vec, self.ray_faces, fov])
 
         wp.synchronize_device()
 
         return self.ray_dist, self.ray_dir, self.normal_vec, self.ray_faces
 
     def raytrace_step(self, gripper_pose, gripper_rot, cur_object_pose,
-                      cur_object_rot, scale_sizes, sensor_radius, sensor_poses) -> None:
+                      cur_object_rot, scale_sizes, sensor_radius, sensor_poses, fov) -> None:
 
         _, _, transformed_vertices = self.transform_mesh(
             cur_object_pose, cur_object_rot, scale_sizes, self.mesh_vertices)
@@ -570,7 +571,7 @@ class Raycast:
                           mesh_index=0)
 
             ray_t, ray_dir, normal,ray_face = self.render(sensor_poses[i][env], #raycast_circle[env][i],
-                                                 gripper_rot[env])
+                                                 gripper_rot[env], fov)
         
             ray_t = wp.torch.to_torch(ray_t)
             ray_dir = wp.torch.to_torch(ray_dir)
@@ -677,7 +678,8 @@ class Raycast:
         if self._cfg["debug"] and self._task_cfg["sim"]["TofSensor"]["track_objects"]:
             self.face_tracker = torch.cat(self.face_tracker, dim=0)
             mask = self.face_tracker != -1
-            ray_colors = [(1, 1 if 1 in element else 0, 0, 1) for element in self.face_tracker[mask]]
+            # 0: cyl 1: box 2: bottom 3: back 4: left 5: right 6: top
+            ray_colors = [(1, 1 if 6 in element else 0, 0, 1) for element in self.face_tracker[mask]]
             split_indices = list([0]) + list(np.cumsum([len(sublist) for sublist in debug_ray_colors]))
 
             debug_ray_colors = []
