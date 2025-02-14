@@ -341,8 +341,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                    iteration,
                                    exclude="wandb")
                
-                self.logger.record("rollout/rollout_rew_mean",
-                                   self.last_rollout_reward.cpu().item())
+                # self.logger.record("rollout/rollout_rew_mean",
+                #                    self.last_rollout_reward.cpu().item())
                 if len(self.ep_info_buffer) > 0 and len(
                         self.ep_info_buffer[0]) > 0:
                     self.logger.record(

@@ -52,7 +52,7 @@ def import_tasks():
     
     
     from omniisaacgymenvs.tasks.ToF_sensor import TofSensorTask
-    from omniisaacgymenvs.tasks.custom_gripper_rl import CustomGripperTask
+    from omniisaacgymenvs.tasks.custom_gripper_rl_multi_finger import CustomGripperTask
 
     # Mappings from strings to environments
     task_map = {

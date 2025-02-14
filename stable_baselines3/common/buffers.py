@@ -539,7 +539,20 @@ class RolloutBuffer(BaseBuffer):
         # self.values[self.pos] = value.clone().cpu().numpy().flatten()
         # self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
    
-        
+        import torch
+        if isinstance(obs, np.ndarray):
+            obs = torch.tensor(obs, device="cuda:0")
+        if isinstance(action, np.ndarray):
+            action = torch.tensor(action, device="cuda:0")
+        if isinstance(reward, np.ndarray):
+            reward = torch.tensor(reward, device="cuda:0")
+        # if isinstance(episode_start, np.ndarray):
+        #     episode_start = torch.tensor(episode_start, device="cuda:0")
+        # if isinstance(value, np.ndarray):
+        #     value = torch.tensor(value, device="cuda:0")
+        # if isinstance(log_prob, np.ndarray):
+        #     log_prob = torch.tensor(log_prob, device="cuda:0")
+        # Copy to avoid modification by reference
         self.observations[self.pos] = obs
         self.actions[self.pos] = action
         self.rewards[self.pos] = reward

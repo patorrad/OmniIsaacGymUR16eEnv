@@ -2,7 +2,7 @@ from omniisaacgymenvs.controller.ik import recover_action, recover_rule_based_ac
 
 from pytorch3d.transforms import quaternion_to_matrix, Transform3d, quaternion_invert, quaternion_to_axis_angle, quaternion_multiply, axis_angle_to_quaternion
 from omni.isaac.core.utils.types import ArticulationActions
-from omniisaacgymenvs.controller.curobo import MotionGeneration
+# from omniisaacgymenvs.controller.curobo import MotionGeneration
 
 from cprint import *
 import torch
@@ -111,19 +111,25 @@ class Controller:
 
         elif self.control_type == "custom_gripper_rl":
             import torch
-            delta_dof_pos, delta_pose = recover_rule_based_action(
-                self.num_envs, self._device, self._end_effector,
-                target_ee_position, angle_z_dev, self.isaac_sim_robot)
+            # delta_dof_pos, delta_pose = recover_rule_based_action(
+            #     self.num_envs, self._device, self._end_effector,
+            #     target_ee_position, angle_z_dev, self.isaac_sim_robot)
             target_ee_pos = target_ee_position
-            current_dof = self.isaac_sim_robot.get_joint_positions()
+            # current_dof = self.isaac_sim_robot.get_joint_positions()
             
-            targets_dof = torch.zeros((self.num_envs, 10)).to(self._device)
-            targets_dof[:,:6] = current_dof[:,:6] + delta_dof_pos[:,:6]
+            # targets_dof = torch.zeros((self.num_envs, 10)).to(self._device)
+            # targets_dof[:,:6] = current_dof[:,:6] + delta_dof_pos[:,:6]
 
-            targets_dof[:, 6:] = actions
+            # targets_dof[:, 6:] = actions
 
-            self.joint_positions = targets_dof[:, :]
-            self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
+            
+            self.joint_positions = torch.tensor([1.5606, -0.5066, -1.5923, -1.05, -1.5696,  1.5604,  0, 0, 0, 0],
+                         dtype=torch.float).repeat(self.num_envs, 1).clone().detach().to(self._device)
+            self.joint_positions[:, 7:10] = torch.tensor(actions).to(self._device)
+            self.isaac_sim_robot.set_joint_position_targets(self.joint_positions[envs,:], indices=envs)
+
+            # self.joint_positions = targets_dof[:, :]
+            # self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
 
         else:
             import torch
@@ -181,6 +187,7 @@ class Controller:
                 # targets_dof[:, 6:] = torch.zeros((self.num_envs, 4)).to(self._device)
 
             self.joint_positions = targets_dof[:, :]
+            
             self.isaac_sim_robot.set_joint_position_targets(targets_dof[envs,:], indices=envs)
 
             # for i in range(1):

@@ -18,6 +18,7 @@ AtariStepReturn = Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]
 TensorDict = Dict[str, th.Tensor]
 OptimizerStateDict = Dict[str, Any]
 MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.BaseCallback]
+PyTorchObs = Union[th.Tensor, TensorDict]
 
 # A schedule takes the remaining progress as input
 # and ouputs a scalar (e.g. learning rate, clip range, ...)

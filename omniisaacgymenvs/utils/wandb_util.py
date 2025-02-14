@@ -5,7 +5,6 @@ from typing import Optional, Callable, List
 
 import wandb
 from stable_baselines3.common.callbacks import BaseCallback
-import wandb
 from wandb.sdk.lib import telemetry as wb_telemetry
 
 import numpy as np
@@ -136,7 +135,8 @@ class WandbCallback(BaseCallback):
 def setup_wandb(parser_config,
                 exp_name,
                 tags=None,
-                project="TofSensor"):
+                project="TofSensor",
+                notes=None):
     wandb.login()
     run = wandb.init(
         project=project,
@@ -145,5 +145,7 @@ def setup_wandb(parser_config,
         monitor_gym=False,
         save_code=True,  # optional
         tags=tags,
+        notes=notes,
         )
-    return run
+    log = logging.getLogger("wandb")
+    return run, log

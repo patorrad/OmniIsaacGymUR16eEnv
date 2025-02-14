@@ -37,6 +37,9 @@ solver_type: 1 # 0: pgs, 1: tgs
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
 # used to set checkpoint path
+# checkpoint: '/home/heisenberg/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-11-14/14-11-48_first_distance/results/1114/TofSensor2/model/model_160.zip'
+# checkpoint: '/home/heisenberg/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2024-11-16/11-31-24_smooth_move/results/1116/TofSensor2/model/model_140.zip'
+# checkpoint: '/home/heisenberg/Documents/OmniIsaacGymUR16eEnv/omniisaacgymenvs/scripts/outputs/2025-02-07/19-31-55/results/27/TofSensor2/model/model_50.zip'
 checkpoint: ''
 # evaluate checkpoint
 evaluation: False

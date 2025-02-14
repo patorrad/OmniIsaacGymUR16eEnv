@@ -42,7 +42,7 @@ class Object:
                     target = DynamicCuboid(
                         prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
                         name=f"manipulated_object_{j}",
-                        position=[0, 0, 2.02],
+                        position=[0.225, 0.555, 1.1],
                         # scale = np.array(scale),
                         scale=np.array(scale[j-1]),
                         color=torch.tensor([0, 169 / 255, 1]))
@@ -50,10 +50,10 @@ class Object:
                     target = DynamicCylinder(
                         prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
                         name=f"manipulated_object_{j}",
-                        position=[0, 0, 2.02],
+                        position=[0.225, 10.555, 1.2],
                         # scale=np.array(scale[j-1]),
-                        radius=0.0381,
-                        height=0.0889,
+                        radius=0.03, # 0.0381,
+                        height=0.085, #0.0889,
                         color=torch.tensor([1, 0, 0]))
                     # target = DynamicSphere(
                     #     prim_path=f"/World/envs/env_{i}/manipulated_object_{j}",
